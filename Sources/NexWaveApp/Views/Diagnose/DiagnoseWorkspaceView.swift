@@ -1,11 +1,22 @@
 import SwiftUI
 import NetworkCore
 import DiagnosticsEngine
+import TracerouteEngine
 import InvestigationKit
+
+public enum DiagnoseTab: String, CaseIterable, Identifiable {
+    case all = "Comprehensive Overview"
+    case path = "Path Topology"
+    case dns = "DNS Records"
+    case app = "TLS & HTTP Response"
+
+    public var id: String { rawValue }
+}
 
 public struct DiagnoseWorkspaceView: View {
     @Bindable var state: AppState
     @State private var copiedReport = false
+    @State private var selectedTab: DiagnoseTab = .all
 
     public init(state: AppState) {
         self.state = state
@@ -13,11 +24,11 @@ public struct DiagnoseWorkspaceView: View {
 
     public var body: some View {
         VStack(spacing: 0) {
-            // MARK: - Hero Target Input Bar
+            // MARK: - Header Bar
             headerBar
                 .padding(.horizontal, 20)
-                .padding(.vertical, 14)
-                .background(Color(nsColor: .windowBackgroundColor))
+                .padding(.vertical, 12)
+                .background(Theme.surfaceBackground)
 
             Divider()
 
@@ -27,10 +38,50 @@ public struct DiagnoseWorkspaceView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if let result = state.latestResult {
                 ScrollView {
-                    VStack(alignment: .leading, spacing: 20) {
+                    VStack(alignment: .leading, spacing: 18) {
                         overallStatusBanner(result: result)
-                        findingsSection(result: result)
-                        multiLayerObservationsGrid(result: result)
+
+                        // Segmented View Filter
+                        Picker("View Mode", selection: $selectedTab) {
+                            ForEach(DiagnoseTab.allCases) { tab in
+                                Text(tab.rawValue).tag(tab)
+                            }
+                        }
+                        .pickerStyle(.segmented)
+                        .frame(maxWidth: 480)
+
+                        switch selectedTab {
+                        case .all:
+                            findingsSection(result: result)
+                            if let lat = result.latency, lat.received > 0 {
+                                LatencySparklineView(
+                                    samples: [lat.minMs, (lat.minMs + lat.medianMs)/2, lat.medianMs, (lat.medianMs + lat.maxMs)/2, lat.maxMs],
+                                    minMs: lat.minMs,
+                                    maxMs: lat.maxMs,
+                                    medianMs: lat.medianMs
+                                )
+                                .engineeringCard()
+                            }
+                            if let path = result.path, !path.hops.isEmpty {
+                                PathTopologyView(hops: path.hops, latencyJumpHop: path.latencyJumpHop)
+                            }
+                            multiLayerObservationsGrid(result: result)
+
+                        case .path:
+                            if let path = result.path {
+                                PathTopologyView(hops: path.hops, latencyJumpHop: path.latencyJumpHop)
+                                hopsTableView(path: path)
+                            } else {
+                                Text("No path hops recorded.")
+                                    .foregroundStyle(.secondary)
+                            }
+
+                        case .dns:
+                            dnsDetailView(result: result)
+
+                        case .app:
+                            httpDetailView(result: result)
+                        }
                     }
                     .padding(20)
                 }
@@ -39,7 +90,7 @@ public struct DiagnoseWorkspaceView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
-        .background(Color(nsColor: .underPageBackgroundColor))
+        .background(Theme.secondaryBackground)
     }
 
     // MARK: - Header Bar
@@ -48,12 +99,12 @@ public struct DiagnoseWorkspaceView: View {
             HStack(spacing: 12) {
                 Image(systemName: "stethoscope")
                     .font(.system(size: 20))
-                    .foregroundStyle(Color.accentColor)
+                    .foregroundStyle(Theme.cyanPulse)
 
                 HStack(spacing: 8) {
                     TextField("Enter target host, IP, URL, or subnet...", text: $state.targetInput)
                         .textFieldStyle(.plain)
-                        .font(.system(size: 15, design: .monospaced))
+                        .font(Theme.monoText(15))
                         .onChange(of: state.targetInput) { _, newValue in
                             state.updateTargetClassification(newValue)
                         }
@@ -66,22 +117,21 @@ public struct DiagnoseWorkspaceView: View {
                             .font(.system(size: 11, weight: .semibold))
                             .padding(.horizontal, 8)
                             .padding(.vertical, 3)
-                            .background(Color.accentColor.opacity(0.12))
-                            .foregroundStyle(Color.accentColor)
-                            .clipShape(RoundedRectangle(cornerRadius: 6))
+                            .background(Theme.azurePro.opacity(0.15))
+                            .foregroundStyle(Theme.azurePro)
+                            .clipShape(Capsule())
                     }
                 }
                 .padding(.horizontal, 12)
                 .padding(.vertical, 8)
-                .background(Color(nsColor: .controlBackgroundColor))
+                .background(Theme.cardBackground)
                 .clipShape(RoundedRectangle(cornerRadius: 8))
-                .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.primary.opacity(0.1), lineWidth: 1))
+                .overlay(RoundedRectangle(cornerRadius: 8).stroke(Theme.borderLight, lineWidth: 1))
 
                 Button(action: triggerDiagnosis) {
                     HStack(spacing: 6) {
                         if state.isDiagnosing {
-                            ProgressView()
-                                .controlSize(.small)
+                            ProgressView().controlSize(.small)
                         } else {
                             Image(systemName: "play.fill")
                         }
@@ -95,7 +145,7 @@ public struct DiagnoseWorkspaceView: View {
                 .disabled(state.classifiedTarget == nil || state.isDiagnosing)
             }
 
-            // Pre-canned quick test chips
+            // Quick Targets
             HStack(spacing: 8) {
                 Text("Quick Targets:")
                     .font(.system(size: 11, weight: .medium))
@@ -107,11 +157,11 @@ public struct DiagnoseWorkspaceView: View {
                         triggerDiagnosis()
                     }
                     .buttonStyle(.plain)
-                    .font(.system(size: 11, design: .monospaced))
+                    .font(Theme.monoText(11))
                     .padding(.horizontal, 8)
                     .padding(.vertical, 3)
-                    .background(Color.primary.opacity(0.05))
-                    .clipShape(RoundedRectangle(cornerRadius: 5))
+                    .background(Color.primary.opacity(0.04))
+                    .clipShape(RoundedRectangle(cornerRadius: 4))
                 }
             }
         }
@@ -142,7 +192,7 @@ public struct DiagnoseWorkspaceView: View {
                         .foregroundStyle(.secondary)
 
                     Text(result.target.displayString)
-                        .font(.system(size: 15, weight: .semibold, design: .monospaced))
+                        .font(Theme.monoText(15, weight: .bold))
 
                     Spacer()
 
@@ -174,25 +224,21 @@ public struct DiagnoseWorkspaceView: View {
                     .foregroundStyle(.secondary)
             }
         }
-        .padding(16)
-        .background(Color(nsColor: .controlBackgroundColor))
-        .clipShape(RoundedRectangle(cornerRadius: 10))
-        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.primary.opacity(0.08), lineWidth: 1))
+        .engineeringCard()
     }
 
     // MARK: - Findings Section
     private func findingsSection(result: DiagnosticResult) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("ANALYTICAL FINDINGS")
-                .font(.system(size: 12, weight: .bold))
+                .font(.system(size: 10, weight: .bold, design: .monospaced))
                 .foregroundStyle(.secondary)
 
             VStack(spacing: 8) {
                 ForEach(result.findings) { finding in
                     HStack(alignment: .top, spacing: 12) {
-                        // Classification Pill (Observed, Derived, Inferred)
                         Text(finding.classification.rawValue.uppercased())
-                            .font(.system(size: 10, weight: .bold, design: .monospaced))
+                            .font(.system(size: 9, weight: .bold, design: .monospaced))
                             .padding(.horizontal, 6)
                             .padding(.vertical, 3)
                             .background(classificationColor(finding.classification).opacity(0.15))
@@ -210,23 +256,29 @@ public struct DiagnoseWorkspaceView: View {
                                     .font(.system(size: 11))
                                     .foregroundStyle(.secondary)
 
-                                Text("•")
-                                    .foregroundStyle(.secondary)
+                                Text("•").foregroundStyle(.secondary)
 
-                                Text("Confidence: \(finding.confidence.rawValue)")
-                                    .font(.system(size: 11, weight: .medium))
-                                    .foregroundStyle(.secondary)
+                                HStack(spacing: 3) {
+                                    ForEach(0..<3) { idx in
+                                        Circle()
+                                            .fill(confidenceDotColor(idx: idx, conf: finding.confidence))
+                                            .frame(width: 5, height: 5)
+                                    }
+                                    Text("\(finding.confidence.rawValue)")
+                                        .font(.system(size: 11, weight: .medium))
+                                        .foregroundStyle(.secondary)
+                                }
                             }
 
                             Text(finding.statement)
                                 .font(.system(size: 12))
-                                .foregroundStyle(Color.primary.opacity(0.85))
+                                .foregroundStyle(Color.primary.opacity(0.9))
                         }
                     }
                     .padding(12)
-                    .background(Color(nsColor: .controlBackgroundColor))
+                    .background(Theme.cardBackground)
                     .clipShape(RoundedRectangle(cornerRadius: 8))
-                    .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.primary.opacity(0.06), lineWidth: 1))
+                    .overlay(RoundedRectangle(cornerRadius: 8).stroke(Theme.borderLight, lineWidth: 1))
                 }
             }
         }
@@ -236,7 +288,7 @@ public struct DiagnoseWorkspaceView: View {
     private func multiLayerObservationsGrid(result: DiagnosticResult) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("MULTI-LAYER OBSERVATIONS")
-                .font(.system(size: 12, weight: .bold))
+                .font(.system(size: 10, weight: .bold, design: .monospaced))
                 .foregroundStyle(.secondary)
 
             LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 14) {
@@ -250,7 +302,7 @@ public struct DiagnoseWorkspaceView: View {
                             metricRow(label: "IPv6", value: dns.ipv6Addresses.first?.description ?? "None")
                         }
                     } else {
-                        Text("Not applicable for direct IP targets").font(.system(size: 12)).foregroundStyle(.secondary)
+                        Text("Not applicable for direct IP").font(.system(size: 12)).foregroundStyle(.secondary)
                     }
                 }
 
@@ -260,7 +312,6 @@ public struct DiagnoseWorkspaceView: View {
                         VStack(alignment: .leading, spacing: 6) {
                             metricRow(label: "Median RTT", value: String(format: "%.1f ms", lat.medianMs))
                             metricRow(label: "Min / Max", value: "\(String(format: "%.1f", lat.minMs)) / \(String(format: "%.1f", lat.maxMs)) ms")
-                            metricRow(label: "P95 Latency", value: String(format: "%.1f ms", lat.p95Ms))
                             metricRow(label: "RFC 3550 Jitter", value: String(format: "%.1f ms", lat.jitterMs))
                             metricRow(label: "Packet Loss", value: String(format: "%.0f%% (%d/%d)", lat.lossPercentage, lat.lost, lat.sent), isSuccess: lat.lossPercentage == 0)
                         }
@@ -293,7 +344,6 @@ public struct DiagnoseWorkspaceView: View {
                             metricRow(label: "HTTP Status", value: "\(http.statusCode)", isSuccess: (200...399).contains(http.statusCode))
                             metricRow(label: "TTFB", value: http.ttfbMs != nil ? String(format: "%.1f ms", http.ttfbMs!) : "N/A")
                             if let cert = http.certificateInfo {
-                                metricRow(label: "TLS Subject", value: cert.subjectSummary)
                                 metricRow(label: "Certificate Expiry", value: cert.daysUntilExpiry != nil ? "\(cert.daysUntilExpiry!) days" : "Valid", isSuccess: !cert.isExpired)
                             }
                         }
@@ -309,17 +359,14 @@ public struct DiagnoseWorkspaceView: View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 8) {
                 Image(systemName: icon)
-                    .foregroundStyle(Color.accentColor)
+                    .foregroundStyle(Theme.azurePro)
                 Text(title)
                     .font(.system(size: 13, weight: .semibold))
             }
             Divider()
             content()
         }
-        .padding(14)
-        .background(Color(nsColor: .controlBackgroundColor))
-        .clipShape(RoundedRectangle(cornerRadius: 8))
-        .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.primary.opacity(0.06), lineWidth: 1))
+        .engineeringCard(padding: 14)
     }
 
     private func metricRow(label: String, value: String, isSuccess: Bool? = nil) -> some View {
@@ -329,12 +376,147 @@ public struct DiagnoseWorkspaceView: View {
                 .foregroundStyle(.secondary)
             Spacer()
             Text(value)
-                .font(.system(size: 12, weight: .medium, design: .monospaced))
-                .foregroundStyle(isSuccess == nil ? Color.primary : (isSuccess! ? Color.green : Color.red))
+                .font(Theme.monoText(12, weight: .medium))
+                .foregroundStyle(isSuccess == nil ? Color.primary : (isSuccess! ? Theme.emeraldHealthy : Theme.crimsonCritical))
         }
     }
 
-    // MARK: - Progress View
+    // MARK: - Specialized Views
+    private func hopsTableView(path: PathObservation) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("HOP ROUTING TABLE")
+                .font(.system(size: 10, weight: .bold, design: .monospaced))
+                .foregroundStyle(.secondary)
+
+            Table(path.hops) {
+                TableColumn("Hop") { hop in
+                    Text("\(hop.hopNumber)")
+                        .font(Theme.monoText(12, weight: .bold))
+                }
+                .width(50)
+
+                TableColumn("IP Address") { hop in
+                    Text(hop.address ?? "* * *")
+                        .font(Theme.monoText(12))
+                        .foregroundStyle(hop.isTimeout ? .secondary : Color.primary)
+                }
+                .width(200)
+
+                TableColumn("Round-Trip Time") { hop in
+                    if let rtt = hop.rttMs {
+                        Text(String(format: "%.1f ms", rtt))
+                            .font(Theme.monoText(12))
+                            .foregroundStyle(hop.hopNumber == path.latencyJumpHop ? Theme.amberWarning : Theme.cyanPulse)
+                    } else {
+                        Text("Timeout").font(.system(size: 11)).foregroundStyle(Theme.crimsonCritical)
+                    }
+                }
+                .width(120)
+
+                TableColumn("Status") { hop in
+                    if hop.isTimeout {
+                        Text("Filtered / No ICMP").font(.system(size: 11)).foregroundStyle(.secondary)
+                    } else if hop.hopNumber == path.latencyJumpHop {
+                        Text("Latency Spike Detected").font(.system(size: 11, weight: .semibold)).foregroundStyle(Theme.amberWarning)
+                    } else {
+                        Text("Responded").font(.system(size: 11)).foregroundStyle(Theme.emeraldHealthy)
+                    }
+                }
+            }
+            .frame(minHeight: 220)
+        }
+        .engineeringCard()
+    }
+
+    private func dnsDetailView(result: DiagnosticResult) -> some View {
+        VStack(alignment: .leading, spacing: 14) {
+            if let dns = result.dns {
+                HStack {
+                    Text("DNS RECORDS (\(dns.records.count))")
+                        .font(.system(size: 10, weight: .bold, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    Text("Resolver: \(dns.resolverName) (\(String(format: "%.1f", dns.queryTimeMs)) ms)")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                }
+
+                Table(dns.records) {
+                    TableColumn("Type") { rec in
+                        Text(rec.type.rawValue)
+                            .font(.system(size: 10, weight: .bold, design: .monospaced))
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(Theme.azurePro.opacity(0.12))
+                            .foregroundStyle(Theme.azurePro)
+                            .clipShape(Capsule())
+                    }
+                    .width(65)
+
+                    TableColumn("Value") { rec in
+                        Text(rec.value)
+                            .font(Theme.monoText(12))
+                    }
+
+                    TableColumn("TTL") { rec in
+                        Text("\(rec.ttl)s")
+                            .font(.system(size: 11))
+                            .foregroundStyle(.secondary)
+                    }
+                    .width(70)
+                }
+                .frame(minHeight: 200)
+            }
+        }
+        .engineeringCard()
+    }
+
+    private func httpDetailView(result: DiagnosticResult) -> some View {
+        VStack(alignment: .leading, spacing: 14) {
+            if let http = result.http {
+                Text("HTTP & TLS PROTOCOL METRICS")
+                    .font(.system(size: 10, weight: .bold, design: .monospaced))
+                    .foregroundStyle(.secondary)
+
+                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
+                    paramCell(label: "HTTP Status", val: "\(http.statusCode)", color: (200...399).contains(http.statusCode) ? Theme.emeraldHealthy : Theme.crimsonCritical)
+                    paramCell(label: "Protocol Version", val: http.httpVersion ?? "HTTP/1.1")
+                    paramCell(label: "Total Duration", val: String(format: "%.1f ms", http.totalTimeMs))
+                    paramCell(label: "DNS Stage", val: http.dnsTimeMs != nil ? String(format: "%.1f ms", http.dnsTimeMs!) : "Cached")
+                    paramCell(label: "TCP Handshake", val: http.connectTimeMs != nil ? String(format: "%.1f ms", http.connectTimeMs!) : "-")
+                    paramCell(label: "TLS Handshake", val: http.tlsTimeMs != nil ? String(format: "%.1f ms", http.tlsTimeMs!) : "-")
+                }
+
+                if let cert = http.certificateInfo {
+                    Divider()
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("X.509 CERTIFICATE DETAILS")
+                            .font(.system(size: 10, weight: .bold, design: .monospaced))
+                            .foregroundStyle(.secondary)
+                        Text("Subject: \(cert.subjectSummary)")
+                            .font(Theme.monoText(12))
+                        Text("Expires on: \(cert.expirationDate?.formatted() ?? "Unknown") (\(cert.daysUntilExpiry ?? 0) days remaining)")
+                            .font(.system(size: 11))
+                            .foregroundStyle(cert.isExpired ? Theme.crimsonCritical : Theme.emeraldHealthy)
+                    }
+                }
+            }
+        }
+        .engineeringCard()
+    }
+
+    private func paramCell(label: String, val: String, color: Color? = nil) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(label).font(.system(size: 10)).foregroundStyle(.secondary)
+            Text(val).font(Theme.monoText(13, weight: .bold)).foregroundStyle(color ?? Color.primary)
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.primary.opacity(0.02))
+        .clipShape(RoundedRectangle(cornerRadius: 6))
+    }
+
+    // MARK: - Progress & Empty States
     private var progressView: some View {
         VStack(spacing: 16) {
             ProgressView(value: state.currentProgress?.percentage ?? 0.0)
@@ -352,12 +534,11 @@ public struct DiagnoseWorkspaceView: View {
         }
     }
 
-    // MARK: - Empty State
     private var emptyStateView: some View {
         VStack(spacing: 14) {
             Image(systemName: "network.badge.shield.half.filled")
                 .font(.system(size: 48))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Theme.cyanPulse)
 
             Text("Global Diagnose Engine")
                 .font(.system(size: 18, weight: .bold))
@@ -372,18 +553,29 @@ public struct DiagnoseWorkspaceView: View {
 
     private func statusColor(_ status: OverallHealthStatus) -> Color {
         switch status {
-        case .healthy: return .green
-        case .degraded: return .orange
-        case .critical: return .red
-        case .unreachable: return .red
+        case .healthy: return Theme.emeraldHealthy
+        case .degraded: return Theme.amberWarning
+        case .critical: return Theme.crimsonCritical
+        case .unreachable: return Theme.crimsonCritical
         }
     }
 
     private func classificationColor(_ c: FindingClassification) -> Color {
         switch c {
-        case .observed: return .blue
-        case .derived: return .purple
-        case .inferred: return .orange
+        case .observed: return Theme.azurePro
+        case .derived: return Theme.amberWarning
+        case .inferred: return Theme.purpleInferred
+        }
+    }
+
+    private func confidenceDotColor(idx: Int, conf: ConfidenceLevel) -> Color {
+        switch conf {
+        case .high:
+            return Theme.emeraldHealthy
+        case .medium:
+            return idx < 2 ? Theme.amberWarning : Color.primary.opacity(0.15)
+        case .low:
+            return idx == 0 ? Theme.crimsonCritical : Color.primary.opacity(0.15)
         }
     }
 }

@@ -12,7 +12,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
            let img = NSImage(contentsOf: iconURL) {
             NSApp.applicationIconImage = img
         } else {
-            // Check adjacent Resources folder if unbundled
             let execDir = Bundle.main.bundleURL.deletingLastPathComponent()
             let fallbackURL = execDir.appendingPathComponent("../Resources/AppIcon.icns")
             if let img = NSImage(contentsOf: fallbackURL) {
@@ -26,6 +25,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 struct NexWaveApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
     @State private var state = AppState()
+    @State private var showInspector = true
 
     var body: some Scene {
         WindowGroup {
@@ -34,7 +34,32 @@ struct NexWaveApp: App {
             } detail: {
                 detailViewForWorkspace(state.selectedWorkspace)
             }
-            .frame(minWidth: 1050, minHeight: 680)
+            .inspector(isPresented: $showInspector) {
+                NetworkInspectorView(result: state.latestResult)
+            }
+            .toolbar {
+                ToolbarItemGroup(placement: .automatic) {
+                    Button(action: { state.showCommandPalette = true }) {
+                        HStack(spacing: 5) {
+                            Image(systemName: "magnifyingglass")
+                            Text("Command Palette")
+                            Text("⌘K")
+                                .font(.system(size: 10, weight: .bold, design: .monospaced))
+                                .padding(.horizontal, 4)
+                                .padding(.vertical, 1)
+                                .background(Color.primary.opacity(0.08))
+                                .clipShape(RoundedRectangle(cornerRadius: 3))
+                        }
+                    }
+                    .help("Open Command Palette (Cmd+K)")
+
+                    Button(action: { showInspector.toggle() }) {
+                        Image(systemName: "sidebar.right")
+                    }
+                    .help("Toggle Network Inspector (Cmd+I)")
+                }
+            }
+            .frame(minWidth: 1100, minHeight: 700)
             .sheet(isPresented: $state.showCommandPalette) {
                 CommandPaletteView(state: state)
             }
@@ -64,6 +89,11 @@ struct NexWaveApp: App {
                     state.showCommandPalette = true
                 }
                 .keyboardShortcut("k", modifiers: [.command])
+
+                Button("Toggle Inspector") {
+                    showInspector.toggle()
+                }
+                .keyboardShortcut("i", modifiers: [.command])
             }
 
             CommandMenu("Workspaces") {
@@ -96,27 +126,14 @@ struct NexWaveApp: App {
             HomeDashboardView(state: state)
         case .diagnose:
             DiagnoseWorkspaceView(state: state)
+        case .toolbox:
+            ToolboxWorkspaceContainerView()
         case .investigations:
             InvestigationsWorkspaceView(state: state)
         case .commandLibrary:
             CommandLibraryView()
         case .history:
             HistoryWorkspaceView(state: state)
-        case .toolbox:
-            SecondaryWorkspaceView(
-                title: "Engineering Toolbox",
-                icon: "wrench.and.screwdriver",
-                subtitle: "Advanced stand-alone network utilities",
-                capabilities: [
-                    "Continuous Multi-Ping with percentile latency",
-                    "Path Analysis & MTR with hop drift",
-                    "IPv4 & IPv6 Subnet Calculator with VLSM",
-                    "DNS Studio (Do53, DoH, DoT, DNSSEC)",
-                    "TCP & Port Diagnostic Probes",
-                    "HTTP/TLS Inspector with Certificate Chains",
-                    "Internet Intelligence (ASN, RDAP, RPKI)"
-                ]
-            )
         case .devices:
             SecondaryWorkspaceView(
                 title: "Device Workbench",
