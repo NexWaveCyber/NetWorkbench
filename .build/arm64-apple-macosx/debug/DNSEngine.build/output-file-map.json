@@ -1,0 +1,19 @@
+{
+  "": {
+    "swift-dependencies": "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/DNSEngine.build/primary.swiftdeps"
+  },
+  "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Sources/DNSEngine/DNSModels.swift": {
+    "dependencies": "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/DNSEngine.build/DNSModels.d",
+    "object": "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/DNSEngine.build/DNSModels.swift.o",
+    "swiftmodule": "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/DNSEngine.build/DNSModels~partial.swiftmodule",
+    "swift-dependencies": "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/DNSEngine.build/DNSModels.swiftdeps",
+    "diagnostics": "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/DNSEngine.build/DNSModels.dia"
+  },
+  "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Sources/DNSEngine/DNSResolver.swift": {
+    "dependencies": "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/DNSEngine.build/DNSResolver.d",
+    "object": "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/DNSEngine.build/DNSResolver.swift.o",
+    "swiftmodule": "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/DNSEngine.build/DNSResolver~partial.swiftmodule",
+    "swift-dependencies": "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/DNSEngine.build/DNSResolver.swiftdeps",
+    "diagnostics": "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/DNSEngine.build/DNSResolver.dia"
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "": {
+    "swift-dependencies": "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/NetworkCoreTests.build/primary.swiftdeps"
+  },
+  "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Tests/NetworkCoreTests/NetworkCoreTests.swift": {
+    "dependencies": "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/NetworkCoreTests.build/NetworkCoreTests.d",
+    "object": "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/NetworkCoreTests.build/NetworkCoreTests.swift.o",
+    "swiftmodule": "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/NetworkCoreTests.build/NetworkCoreTests~partial.swiftmodule",
+    "swift-dependencies": "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/NetworkCoreTests.build/NetworkCoreTests.swiftdeps",
+    "diagnostics": "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/NetworkCoreTests.build/NetworkCoreTests.dia"
+  }
+}

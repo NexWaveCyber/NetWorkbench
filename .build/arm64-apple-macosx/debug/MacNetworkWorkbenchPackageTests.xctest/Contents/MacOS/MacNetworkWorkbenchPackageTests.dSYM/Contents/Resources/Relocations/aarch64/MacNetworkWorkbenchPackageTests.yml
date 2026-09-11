@@ -1,0 +1,5 @@
+---
+triple:          'arm64-apple-darwin'
+binary-path:     '/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/MacNetworkWorkbenchPackageTests.xctest/Contents/MacOS/MacNetworkWorkbenchPackageTests'
+relocations:     []
+...

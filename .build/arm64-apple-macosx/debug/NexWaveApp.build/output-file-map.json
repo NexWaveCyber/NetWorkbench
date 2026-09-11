@@ -1,0 +1,75 @@
+{
+  "": {
+    "swift-dependencies": "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/NexWaveApp.build/primary.swiftdeps"
+  },
+  "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Sources/NexWaveApp/App.swift": {
+    "dependencies": "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/NexWaveApp.build/App.d",
+    "object": "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/NexWaveApp.build/App.swift.o",
+    "swiftmodule": "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/NexWaveApp.build/App~partial.swiftmodule",
+    "swift-dependencies": "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/NexWaveApp.build/App.swiftdeps",
+    "diagnostics": "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/NexWaveApp.build/App.dia"
+  },
+  "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Sources/NexWaveApp/AppState.swift": {
+    "dependencies": "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/NexWaveApp.build/AppState.d",
+    "object": "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/NexWaveApp.build/AppState.swift.o",
+    "swiftmodule": "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/NexWaveApp.build/AppState~partial.swiftmodule",
+    "swift-dependencies": "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/NexWaveApp.build/AppState.swiftdeps",
+    "diagnostics": "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/NexWaveApp.build/AppState.dia"
+  },
+  "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Sources/NexWaveApp/Views/CommandLibrary/CommandLibraryView.swift": {
+    "dependencies": "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/NexWaveApp.build/CommandLibraryView.d",
+    "object": "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/NexWaveApp.build/CommandLibraryView.swift.o",
+    "swiftmodule": "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/NexWaveApp.build/CommandLibraryView~partial.swiftmodule",
+    "swift-dependencies": "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/NexWaveApp.build/CommandLibraryView.swiftdeps",
+    "diagnostics": "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/NexWaveApp.build/CommandLibraryView.dia"
+  },
+  "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Sources/NexWaveApp/Views/CommandPalette/CommandPaletteView.swift": {
+    "dependencies": "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/NexWaveApp.build/CommandPaletteView.d",
+    "object": "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/NexWaveApp.build/CommandPaletteView.swift.o",
+    "swiftmodule": "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/NexWaveApp.build/CommandPaletteView~partial.swiftmodule",
+    "swift-dependencies": "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/NexWaveApp.build/CommandPaletteView.swiftdeps",
+    "diagnostics": "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/NexWaveApp.build/CommandPaletteView.dia"
+  },
+  "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Sources/NexWaveApp/Views/Diagnose/DiagnoseWorkspaceView.swift": {
+    "dependencies": "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/NexWaveApp.build/DiagnoseWorkspaceView.d",
+    "object": "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/NexWaveApp.build/DiagnoseWorkspaceView.swift.o",
+    "swiftmodule": "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/NexWaveApp.build/DiagnoseWorkspaceView~partial.swiftmodule",
+    "swift-dependencies": "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/NexWaveApp.build/DiagnoseWorkspaceView.swiftdeps",
+    "diagnostics": "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/NexWaveApp.build/DiagnoseWorkspaceView.dia"
+  },
+  "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Sources/NexWaveApp/Views/History/HistoryWorkspaceView.swift": {
+    "dependencies": "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/NexWaveApp.build/HistoryWorkspaceView.d",
+    "object": "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/NexWaveApp.build/HistoryWorkspaceView.swift.o",
+    "swiftmodule": "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/NexWaveApp.build/HistoryWorkspaceView~partial.swiftmodule",
+    "swift-dependencies": "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/NexWaveApp.build/HistoryWorkspaceView.swiftdeps",
+    "diagnostics": "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/NexWaveApp.build/HistoryWorkspaceView.dia"
+  },
+  "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Sources/NexWaveApp/Views/Home/HomeDashboardView.swift": {
+    "dependencies": "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/NexWaveApp.build/HomeDashboardView.d",
+    "object": "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/NexWaveApp.build/HomeDashboardView.swift.o",
+    "swiftmodule": "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/NexWaveApp.build/HomeDashboardView~partial.swiftmodule",
+    "swift-dependencies": "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/NexWaveApp.build/HomeDashboardView.swiftdeps",
+    "diagnostics": "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/NexWaveApp.build/HomeDashboardView.dia"
+  },
+  "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Sources/NexWaveApp/Views/Investigations/InvestigationsWorkspaceView.swift": {
+    "dependencies": "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/NexWaveApp.build/InvestigationsWorkspaceView.d",
+    "object": "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/NexWaveApp.build/InvestigationsWorkspaceView.swift.o",
+    "swiftmodule": "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/NexWaveApp.build/InvestigationsWorkspaceView~partial.swiftmodule",
+    "swift-dependencies": "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/NexWaveApp.build/InvestigationsWorkspaceView.swiftdeps",
+    "diagnostics": "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/NexWaveApp.build/InvestigationsWorkspaceView.dia"
+  },
+  "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Sources/NexWaveApp/Views/Placeholders/ToolboxWorkspaces.swift": {
+    "dependencies": "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/NexWaveApp.build/ToolboxWorkspaces.d",
+    "object": "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/NexWaveApp.build/ToolboxWorkspaces.swift.o",
+    "swiftmodule": "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/NexWaveApp.build/ToolboxWorkspaces~partial.swiftmodule",
+    "swift-dependencies": "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/NexWaveApp.build/ToolboxWorkspaces.swiftdeps",
+    "diagnostics": "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/NexWaveApp.build/ToolboxWorkspaces.dia"
+  },
+  "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Sources/NexWaveApp/Views/Sidebar/AppSidebar.swift": {
+    "dependencies": "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/NexWaveApp.build/AppSidebar.d",
+    "object": "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/NexWaveApp.build/AppSidebar.swift.o",
+    "swiftmodule": "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/NexWaveApp.build/AppSidebar~partial.swiftmodule",
+    "swift-dependencies": "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/NexWaveApp.build/AppSidebar.swiftdeps",
+    "diagnostics": "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/NexWaveApp.build/AppSidebar.dia"
+  }
+}

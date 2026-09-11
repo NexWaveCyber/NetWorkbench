@@ -1,0 +1,3790 @@
+{
+  "builtTestProducts" : [
+    {
+      "binaryPath" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/MacNetworkWorkbenchPackageTests.xctest/Contents/MacOS/MacNetworkWorkbenchPackageTests",
+      "packagePath" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench",
+      "productName" : "MacNetworkWorkbenchPackageTests"
+    }
+  ],
+  "copyCommands" : {
+
+  },
+  "explicitTargetDependencyImportCheckingMode" : {
+    "none" : {
+
+    }
+  },
+  "generatedSourceTargetSet" : [
+
+  ],
+  "pluginDescriptions" : [
+
+  ],
+  "swiftCommands" : {
+    "C.CommandLibrary-arm64-apple-macosx-debug.module" : {
+      "executable" : "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc",
+      "fileList" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/CommandLibrary.build/sources",
+      "importPath" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/Modules",
+      "inputs" : [
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Sources/CommandLibrary/CommandModels.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/swift-version--58304C5D6DBC2206.txt"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/Modules/NetworkCore.swiftmodule"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/CommandLibrary.build/sources"
+        }
+      ],
+      "isLibrary" : true,
+      "moduleName" : "CommandLibrary",
+      "moduleOutputPath" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/Modules/CommandLibrary.swiftmodule",
+      "objects" : [
+        "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/CommandLibrary.build/CommandModels.swift.o"
+      ],
+      "otherArguments" : [
+        "-target",
+        "arm64-apple-macosx15.0",
+        "-incremental",
+        "-enable-batch-mode",
+        "-serialize-diagnostics",
+        "-index-store-path",
+        "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/index/store",
+        "-Onone",
+        "-enable-testing",
+        "-j14",
+        "-DSWIFT_PACKAGE",
+        "-DDEBUG",
+        "-DSWIFT_MODULE_RESOURCE_BUNDLE_UNAVAILABLE",
+        "-module-cache-path",
+        "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/ModuleCache",
+        "-parseable-output",
+        "-parse-as-library",
+        "-emit-objc-header",
+        "-emit-objc-header-path",
+        "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/CommandLibrary.build/include/CommandLibrary-Swift.h",
+        "-swift-version",
+        "6",
+        "-plugin-path",
+        "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/host/plugins/testing",
+        "-sdk",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk",
+        "-F",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks",
+        "-I",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib",
+        "-L",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib",
+        "-g",
+        "-Xcc",
+        "-isysroot",
+        "-Xcc",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk",
+        "-Xcc",
+        "-F",
+        "-Xcc",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks",
+        "-Xcc",
+        "-fPIC",
+        "-Xcc",
+        "-g",
+        "-package-name",
+        "mac_network_workbench"
+      ],
+      "outputFileMapPath" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/CommandLibrary.build/output-file-map.json",
+      "outputs" : [
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/CommandLibrary.build/CommandModels.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/Modules/CommandLibrary.swiftmodule"
+        }
+      ],
+      "prepareForIndexing" : false,
+      "sources" : [
+        "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Sources/CommandLibrary/CommandModels.swift"
+      ],
+      "tempsPath" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/CommandLibrary.build",
+      "wholeModuleOptimization" : false
+    },
+    "C.DNSEngine-arm64-apple-macosx-debug.module" : {
+      "executable" : "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc",
+      "fileList" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/DNSEngine.build/sources",
+      "importPath" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/Modules",
+      "inputs" : [
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Sources/DNSEngine/DNSModels.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Sources/DNSEngine/DNSResolver.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/swift-version--58304C5D6DBC2206.txt"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/Modules/NetworkCore.swiftmodule"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/DNSEngine.build/sources"
+        }
+      ],
+      "isLibrary" : true,
+      "moduleName" : "DNSEngine",
+      "moduleOutputPath" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/Modules/DNSEngine.swiftmodule",
+      "objects" : [
+        "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/DNSEngine.build/DNSModels.swift.o",
+        "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/DNSEngine.build/DNSResolver.swift.o"
+      ],
+      "otherArguments" : [
+        "-target",
+        "arm64-apple-macosx15.0",
+        "-incremental",
+        "-enable-batch-mode",
+        "-serialize-diagnostics",
+        "-index-store-path",
+        "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/index/store",
+        "-Onone",
+        "-enable-testing",
+        "-j14",
+        "-DSWIFT_PACKAGE",
+        "-DDEBUG",
+        "-DSWIFT_MODULE_RESOURCE_BUNDLE_UNAVAILABLE",
+        "-module-cache-path",
+        "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/ModuleCache",
+        "-parseable-output",
+        "-parse-as-library",
+        "-emit-objc-header",
+        "-emit-objc-header-path",
+        "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/DNSEngine.build/include/DNSEngine-Swift.h",
+        "-swift-version",
+        "6",
+        "-plugin-path",
+        "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/host/plugins/testing",
+        "-sdk",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk",
+        "-F",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks",
+        "-I",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib",
+        "-L",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib",
+        "-g",
+        "-Xcc",
+        "-isysroot",
+        "-Xcc",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk",
+        "-Xcc",
+        "-F",
+        "-Xcc",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks",
+        "-Xcc",
+        "-fPIC",
+        "-Xcc",
+        "-g",
+        "-package-name",
+        "mac_network_workbench"
+      ],
+      "outputFileMapPath" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/DNSEngine.build/output-file-map.json",
+      "outputs" : [
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/DNSEngine.build/DNSModels.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/DNSEngine.build/DNSResolver.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/Modules/DNSEngine.swiftmodule"
+        }
+      ],
+      "prepareForIndexing" : false,
+      "sources" : [
+        "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Sources/DNSEngine/DNSModels.swift",
+        "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Sources/DNSEngine/DNSResolver.swift"
+      ],
+      "tempsPath" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/DNSEngine.build",
+      "wholeModuleOptimization" : false
+    },
+    "C.DNSEngineTests-arm64-apple-macosx-debug.module" : {
+      "executable" : "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc",
+      "fileList" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/DNSEngineTests.build/sources",
+      "importPath" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/Modules",
+      "inputs" : [
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Tests/DNSEngineTests/DNSEngineTests.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/swift-version--58304C5D6DBC2206.txt"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/Modules/DNSEngine.swiftmodule"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/Modules/NetworkCore.swiftmodule"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/DNSEngineTests.build/sources"
+        }
+      ],
+      "isLibrary" : true,
+      "moduleName" : "DNSEngineTests",
+      "moduleOutputPath" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/Modules/DNSEngineTests.swiftmodule",
+      "objects" : [
+        "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/DNSEngineTests.build/DNSEngineTests.swift.o"
+      ],
+      "otherArguments" : [
+        "-target",
+        "arm64-apple-macosx15.0",
+        "-incremental",
+        "-enable-batch-mode",
+        "-serialize-diagnostics",
+        "-index-store-path",
+        "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/index/store",
+        "-Onone",
+        "-enable-testing",
+        "-Xfrontend",
+        "-enable-cross-import-overlays",
+        "-j14",
+        "-DSWIFT_PACKAGE",
+        "-DDEBUG",
+        "-DSWIFT_MODULE_RESOURCE_BUNDLE_UNAVAILABLE",
+        "-module-cache-path",
+        "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/ModuleCache",
+        "-parseable-output",
+        "-parse-as-library",
+        "-swift-version",
+        "6",
+        "-plugin-path",
+        "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/host/plugins/testing",
+        "-sdk",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk",
+        "-F",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks",
+        "-I",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib",
+        "-L",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib",
+        "-g",
+        "-Xcc",
+        "-isysroot",
+        "-Xcc",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk",
+        "-Xcc",
+        "-F",
+        "-Xcc",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks",
+        "-Xcc",
+        "-fPIC",
+        "-Xcc",
+        "-g",
+        "-package-name",
+        "mac_network_workbench"
+      ],
+      "outputFileMapPath" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/DNSEngineTests.build/output-file-map.json",
+      "outputs" : [
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/DNSEngineTests.build/DNSEngineTests.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/Modules/DNSEngineTests.swiftmodule"
+        }
+      ],
+      "prepareForIndexing" : false,
+      "sources" : [
+        "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Tests/DNSEngineTests/DNSEngineTests.swift"
+      ],
+      "tempsPath" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/DNSEngineTests.build",
+      "wholeModuleOptimization" : false
+    },
+    "C.DiagnosticsEngine-arm64-apple-macosx-debug.module" : {
+      "executable" : "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc",
+      "fileList" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/DiagnosticsEngine.build/sources",
+      "importPath" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/Modules",
+      "inputs" : [
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Sources/DiagnosticsEngine/CorrelationEngine.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Sources/DiagnosticsEngine/DiagnosticFinding.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Sources/DiagnosticsEngine/DiagnosticPipeline.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/swift-version--58304C5D6DBC2206.txt"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/Modules/NetworkCore.swiftmodule"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/Modules/PingEngine.swiftmodule"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/Modules/DNSEngine.swiftmodule"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/Modules/TracerouteEngine.swiftmodule"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/Modules/HTTPInspector.swiftmodule"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/DiagnosticsEngine.build/sources"
+        }
+      ],
+      "isLibrary" : true,
+      "moduleName" : "DiagnosticsEngine",
+      "moduleOutputPath" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/Modules/DiagnosticsEngine.swiftmodule",
+      "objects" : [
+        "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/DiagnosticsEngine.build/CorrelationEngine.swift.o",
+        "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/DiagnosticsEngine.build/DiagnosticFinding.swift.o",
+        "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/DiagnosticsEngine.build/DiagnosticPipeline.swift.o"
+      ],
+      "otherArguments" : [
+        "-target",
+        "arm64-apple-macosx15.0",
+        "-incremental",
+        "-enable-batch-mode",
+        "-serialize-diagnostics",
+        "-index-store-path",
+        "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/index/store",
+        "-Onone",
+        "-enable-testing",
+        "-j14",
+        "-DSWIFT_PACKAGE",
+        "-DDEBUG",
+        "-DSWIFT_MODULE_RESOURCE_BUNDLE_UNAVAILABLE",
+        "-module-cache-path",
+        "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/ModuleCache",
+        "-parseable-output",
+        "-parse-as-library",
+        "-emit-objc-header",
+        "-emit-objc-header-path",
+        "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/DiagnosticsEngine.build/include/DiagnosticsEngine-Swift.h",
+        "-swift-version",
+        "6",
+        "-plugin-path",
+        "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/host/plugins/testing",
+        "-sdk",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk",
+        "-F",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks",
+        "-I",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib",
+        "-L",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib",
+        "-g",
+        "-Xcc",
+        "-isysroot",
+        "-Xcc",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk",
+        "-Xcc",
+        "-F",
+        "-Xcc",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks",
+        "-Xcc",
+        "-fPIC",
+        "-Xcc",
+        "-g",
+        "-package-name",
+        "mac_network_workbench"
+      ],
+      "outputFileMapPath" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/DiagnosticsEngine.build/output-file-map.json",
+      "outputs" : [
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/DiagnosticsEngine.build/CorrelationEngine.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/DiagnosticsEngine.build/DiagnosticFinding.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/DiagnosticsEngine.build/DiagnosticPipeline.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/Modules/DiagnosticsEngine.swiftmodule"
+        }
+      ],
+      "prepareForIndexing" : false,
+      "sources" : [
+        "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Sources/DiagnosticsEngine/CorrelationEngine.swift",
+        "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Sources/DiagnosticsEngine/DiagnosticFinding.swift",
+        "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Sources/DiagnosticsEngine/DiagnosticPipeline.swift"
+      ],
+      "tempsPath" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/DiagnosticsEngine.build",
+      "wholeModuleOptimization" : false
+    },
+    "C.DiagnosticsEngineTests-arm64-apple-macosx-debug.module" : {
+      "executable" : "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc",
+      "fileList" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/DiagnosticsEngineTests.build/sources",
+      "importPath" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/Modules",
+      "inputs" : [
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Tests/DiagnosticsEngineTests/CorrelationEngineTests.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Tests/DiagnosticsEngineTests/PipelineIntegrationTests.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/swift-version--58304C5D6DBC2206.txt"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/Modules/DiagnosticsEngine.swiftmodule"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/Modules/NetworkCore.swiftmodule"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/Modules/PingEngine.swiftmodule"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/DiagnosticsEngineTests.build/sources"
+        }
+      ],
+      "isLibrary" : true,
+      "moduleName" : "DiagnosticsEngineTests",
+      "moduleOutputPath" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/Modules/DiagnosticsEngineTests.swiftmodule",
+      "objects" : [
+        "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/DiagnosticsEngineTests.build/CorrelationEngineTests.swift.o",
+        "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/DiagnosticsEngineTests.build/PipelineIntegrationTests.swift.o"
+      ],
+      "otherArguments" : [
+        "-target",
+        "arm64-apple-macosx15.0",
+        "-incremental",
+        "-enable-batch-mode",
+        "-serialize-diagnostics",
+        "-index-store-path",
+        "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/index/store",
+        "-Onone",
+        "-enable-testing",
+        "-Xfrontend",
+        "-enable-cross-import-overlays",
+        "-j14",
+        "-DSWIFT_PACKAGE",
+        "-DDEBUG",
+        "-DSWIFT_MODULE_RESOURCE_BUNDLE_UNAVAILABLE",
+        "-module-cache-path",
+        "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/ModuleCache",
+        "-parseable-output",
+        "-parse-as-library",
+        "-swift-version",
+        "6",
+        "-plugin-path",
+        "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/host/plugins/testing",
+        "-sdk",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk",
+        "-F",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks",
+        "-I",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib",
+        "-L",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib",
+        "-g",
+        "-Xcc",
+        "-isysroot",
+        "-Xcc",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk",
+        "-Xcc",
+        "-F",
+        "-Xcc",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks",
+        "-Xcc",
+        "-fPIC",
+        "-Xcc",
+        "-g",
+        "-package-name",
+        "mac_network_workbench"
+      ],
+      "outputFileMapPath" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/DiagnosticsEngineTests.build/output-file-map.json",
+      "outputs" : [
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/DiagnosticsEngineTests.build/CorrelationEngineTests.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/DiagnosticsEngineTests.build/PipelineIntegrationTests.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/Modules/DiagnosticsEngineTests.swiftmodule"
+        }
+      ],
+      "prepareForIndexing" : false,
+      "sources" : [
+        "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Tests/DiagnosticsEngineTests/CorrelationEngineTests.swift",
+        "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Tests/DiagnosticsEngineTests/PipelineIntegrationTests.swift"
+      ],
+      "tempsPath" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/DiagnosticsEngineTests.build",
+      "wholeModuleOptimization" : false
+    },
+    "C.HTTPInspector-arm64-apple-macosx-debug.module" : {
+      "executable" : "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc",
+      "fileList" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/HTTPInspector.build/sources",
+      "importPath" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/Modules",
+      "inputs" : [
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Sources/HTTPInspector/HTTPInspector.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Sources/HTTPInspector/HTTPInspectorModels.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/swift-version--58304C5D6DBC2206.txt"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/Modules/NetworkCore.swiftmodule"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/HTTPInspector.build/sources"
+        }
+      ],
+      "isLibrary" : true,
+      "moduleName" : "HTTPInspector",
+      "moduleOutputPath" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/Modules/HTTPInspector.swiftmodule",
+      "objects" : [
+        "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/HTTPInspector.build/HTTPInspector.swift.o",
+        "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/HTTPInspector.build/HTTPInspectorModels.swift.o"
+      ],
+      "otherArguments" : [
+        "-target",
+        "arm64-apple-macosx15.0",
+        "-incremental",
+        "-enable-batch-mode",
+        "-serialize-diagnostics",
+        "-index-store-path",
+        "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/index/store",
+        "-Onone",
+        "-enable-testing",
+        "-j14",
+        "-DSWIFT_PACKAGE",
+        "-DDEBUG",
+        "-DSWIFT_MODULE_RESOURCE_BUNDLE_UNAVAILABLE",
+        "-module-cache-path",
+        "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/ModuleCache",
+        "-parseable-output",
+        "-parse-as-library",
+        "-emit-objc-header",
+        "-emit-objc-header-path",
+        "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/HTTPInspector.build/include/HTTPInspector-Swift.h",
+        "-swift-version",
+        "6",
+        "-plugin-path",
+        "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/host/plugins/testing",
+        "-sdk",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk",
+        "-F",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks",
+        "-I",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib",
+        "-L",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib",
+        "-g",
+        "-Xcc",
+        "-isysroot",
+        "-Xcc",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk",
+        "-Xcc",
+        "-F",
+        "-Xcc",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks",
+        "-Xcc",
+        "-fPIC",
+        "-Xcc",
+        "-g",
+        "-package-name",
+        "mac_network_workbench"
+      ],
+      "outputFileMapPath" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/HTTPInspector.build/output-file-map.json",
+      "outputs" : [
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/HTTPInspector.build/HTTPInspector.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/HTTPInspector.build/HTTPInspectorModels.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/Modules/HTTPInspector.swiftmodule"
+        }
+      ],
+      "prepareForIndexing" : false,
+      "sources" : [
+        "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Sources/HTTPInspector/HTTPInspector.swift",
+        "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Sources/HTTPInspector/HTTPInspectorModels.swift"
+      ],
+      "tempsPath" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/HTTPInspector.build",
+      "wholeModuleOptimization" : false
+    },
+    "C.InvestigationKit-arm64-apple-macosx-debug.module" : {
+      "executable" : "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc",
+      "fileList" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/InvestigationKit.build/sources",
+      "importPath" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/Modules",
+      "inputs" : [
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Sources/InvestigationKit/AuditReportExporter.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Sources/InvestigationKit/Investigation.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Sources/InvestigationKit/InvestigationManager.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/swift-version--58304C5D6DBC2206.txt"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/Modules/NetworkCore.swiftmodule"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/Modules/DiagnosticsEngine.swiftmodule"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/Modules/PersistenceKit.swiftmodule"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/InvestigationKit.build/sources"
+        }
+      ],
+      "isLibrary" : true,
+      "moduleName" : "InvestigationKit",
+      "moduleOutputPath" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/Modules/InvestigationKit.swiftmodule",
+      "objects" : [
+        "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/InvestigationKit.build/AuditReportExporter.swift.o",
+        "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/InvestigationKit.build/Investigation.swift.o",
+        "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/InvestigationKit.build/InvestigationManager.swift.o"
+      ],
+      "otherArguments" : [
+        "-target",
+        "arm64-apple-macosx15.0",
+        "-incremental",
+        "-enable-batch-mode",
+        "-serialize-diagnostics",
+        "-index-store-path",
+        "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/index/store",
+        "-Onone",
+        "-enable-testing",
+        "-j14",
+        "-DSWIFT_PACKAGE",
+        "-DDEBUG",
+        "-DSWIFT_MODULE_RESOURCE_BUNDLE_UNAVAILABLE",
+        "-module-cache-path",
+        "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/ModuleCache",
+        "-parseable-output",
+        "-parse-as-library",
+        "-emit-objc-header",
+        "-emit-objc-header-path",
+        "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/InvestigationKit.build/include/InvestigationKit-Swift.h",
+        "-swift-version",
+        "6",
+        "-plugin-path",
+        "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/host/plugins/testing",
+        "-sdk",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk",
+        "-F",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks",
+        "-I",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib",
+        "-L",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib",
+        "-g",
+        "-Xcc",
+        "-isysroot",
+        "-Xcc",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk",
+        "-Xcc",
+        "-F",
+        "-Xcc",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks",
+        "-Xcc",
+        "-fPIC",
+        "-Xcc",
+        "-g",
+        "-package-name",
+        "mac_network_workbench"
+      ],
+      "outputFileMapPath" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/InvestigationKit.build/output-file-map.json",
+      "outputs" : [
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/InvestigationKit.build/AuditReportExporter.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/InvestigationKit.build/Investigation.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/InvestigationKit.build/InvestigationManager.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/Modules/InvestigationKit.swiftmodule"
+        }
+      ],
+      "prepareForIndexing" : false,
+      "sources" : [
+        "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Sources/InvestigationKit/AuditReportExporter.swift",
+        "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Sources/InvestigationKit/Investigation.swift",
+        "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Sources/InvestigationKit/InvestigationManager.swift"
+      ],
+      "tempsPath" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/InvestigationKit.build",
+      "wholeModuleOptimization" : false
+    },
+    "C.MacNetworkWorkbenchPackageTests-arm64-apple-macosx-debug.module" : {
+      "executable" : "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc",
+      "fileList" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/MacNetworkWorkbenchPackageTests.build/sources",
+      "importPath" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/Modules",
+      "inputs" : [
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/MacNetworkWorkbenchPackageTests.derived/runner.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/swift-version--58304C5D6DBC2206.txt"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/Modules/PingEngineTests.swiftmodule"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/Modules/PersistenceKitTests.swiftmodule"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/Modules/NetworkCoreTests.swiftmodule"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/Modules/DiagnosticsEngineTests.swiftmodule"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/Modules/DNSEngineTests.swiftmodule"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/MacNetworkWorkbenchPackageTests.build/sources"
+        }
+      ],
+      "isLibrary" : true,
+      "moduleName" : "MacNetworkWorkbenchPackageTests",
+      "moduleOutputPath" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/Modules/MacNetworkWorkbenchPackageTests.swiftmodule",
+      "objects" : [
+        "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/MacNetworkWorkbenchPackageTests.build/runner.swift.o"
+      ],
+      "otherArguments" : [
+        "-target",
+        "arm64-apple-macosx15.0",
+        "-incremental",
+        "-enable-batch-mode",
+        "-serialize-diagnostics",
+        "-index-store-path",
+        "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/index/store",
+        "-Onone",
+        "-enable-testing",
+        "-Xfrontend",
+        "-enable-cross-import-overlays",
+        "-j14",
+        "-DSWIFT_PACKAGE",
+        "-DDEBUG",
+        "-DSWIFT_MODULE_RESOURCE_BUNDLE_UNAVAILABLE",
+        "-module-cache-path",
+        "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/ModuleCache",
+        "-parseable-output",
+        "-parse-as-library",
+        "-emit-objc-header",
+        "-emit-objc-header-path",
+        "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/MacNetworkWorkbenchPackageTests.build/include/MacNetworkWorkbenchPackageTests-Swift.h",
+        "-plugin-path",
+        "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/host/plugins/testing",
+        "-sdk",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk",
+        "-F",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks",
+        "-I",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib",
+        "-L",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib",
+        "-g",
+        "-Xcc",
+        "-isysroot",
+        "-Xcc",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk",
+        "-Xcc",
+        "-F",
+        "-Xcc",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks",
+        "-Xcc",
+        "-fPIC",
+        "-Xcc",
+        "-g",
+        "-package-name",
+        "mac_network_workbench"
+      ],
+      "outputFileMapPath" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/MacNetworkWorkbenchPackageTests.build/output-file-map.json",
+      "outputs" : [
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/MacNetworkWorkbenchPackageTests.build/runner.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/Modules/MacNetworkWorkbenchPackageTests.swiftmodule"
+        }
+      ],
+      "prepareForIndexing" : false,
+      "sources" : [
+        "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/MacNetworkWorkbenchPackageTests.derived/runner.swift"
+      ],
+      "tempsPath" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/MacNetworkWorkbenchPackageTests.build",
+      "wholeModuleOptimization" : false
+    },
+    "C.NetworkCore-arm64-apple-macosx-debug.module" : {
+      "executable" : "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc",
+      "fileList" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/NetworkCore.build/sources",
+      "importPath" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/Modules",
+      "inputs" : [
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Sources/NetworkCore/IPAddress.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Sources/NetworkCore/IPNetwork.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Sources/NetworkCore/NetworkTarget.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Sources/NetworkCore/Port.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Sources/NetworkCore/TargetClassifier.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/swift-version--58304C5D6DBC2206.txt"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/NetworkCore.build/sources"
+        }
+      ],
+      "isLibrary" : true,
+      "moduleName" : "NetworkCore",
+      "moduleOutputPath" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/Modules/NetworkCore.swiftmodule",
+      "objects" : [
+        "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/NetworkCore.build/IPAddress.swift.o",
+        "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/NetworkCore.build/IPNetwork.swift.o",
+        "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/NetworkCore.build/NetworkTarget.swift.o",
+        "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/NetworkCore.build/Port.swift.o",
+        "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/NetworkCore.build/TargetClassifier.swift.o"
+      ],
+      "otherArguments" : [
+        "-target",
+        "arm64-apple-macosx15.0",
+        "-incremental",
+        "-enable-batch-mode",
+        "-serialize-diagnostics",
+        "-index-store-path",
+        "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/index/store",
+        "-Onone",
+        "-enable-testing",
+        "-j14",
+        "-DSWIFT_PACKAGE",
+        "-DDEBUG",
+        "-DSWIFT_MODULE_RESOURCE_BUNDLE_UNAVAILABLE",
+        "-module-cache-path",
+        "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/ModuleCache",
+        "-parseable-output",
+        "-parse-as-library",
+        "-emit-objc-header",
+        "-emit-objc-header-path",
+        "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/NetworkCore.build/include/NetworkCore-Swift.h",
+        "-swift-version",
+        "6",
+        "-plugin-path",
+        "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/host/plugins/testing",
+        "-sdk",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk",
+        "-F",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks",
+        "-I",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib",
+        "-L",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib",
+        "-g",
+        "-Xcc",
+        "-isysroot",
+        "-Xcc",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk",
+        "-Xcc",
+        "-F",
+        "-Xcc",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks",
+        "-Xcc",
+        "-fPIC",
+        "-Xcc",
+        "-g",
+        "-package-name",
+        "mac_network_workbench"
+      ],
+      "outputFileMapPath" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/NetworkCore.build/output-file-map.json",
+      "outputs" : [
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/NetworkCore.build/IPAddress.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/NetworkCore.build/IPNetwork.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/NetworkCore.build/NetworkTarget.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/NetworkCore.build/Port.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/NetworkCore.build/TargetClassifier.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/Modules/NetworkCore.swiftmodule"
+        }
+      ],
+      "prepareForIndexing" : false,
+      "sources" : [
+        "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Sources/NetworkCore/IPAddress.swift",
+        "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Sources/NetworkCore/IPNetwork.swift",
+        "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Sources/NetworkCore/NetworkTarget.swift",
+        "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Sources/NetworkCore/Port.swift",
+        "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Sources/NetworkCore/TargetClassifier.swift"
+      ],
+      "tempsPath" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/NetworkCore.build",
+      "wholeModuleOptimization" : false
+    },
+    "C.NetworkCoreTests-arm64-apple-macosx-debug.module" : {
+      "executable" : "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc",
+      "fileList" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/NetworkCoreTests.build/sources",
+      "importPath" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/Modules",
+      "inputs" : [
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Tests/NetworkCoreTests/NetworkCoreTests.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/swift-version--58304C5D6DBC2206.txt"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/Modules/NetworkCore.swiftmodule"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/NetworkCoreTests.build/sources"
+        }
+      ],
+      "isLibrary" : true,
+      "moduleName" : "NetworkCoreTests",
+      "moduleOutputPath" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/Modules/NetworkCoreTests.swiftmodule",
+      "objects" : [
+        "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/NetworkCoreTests.build/NetworkCoreTests.swift.o"
+      ],
+      "otherArguments" : [
+        "-target",
+        "arm64-apple-macosx15.0",
+        "-incremental",
+        "-enable-batch-mode",
+        "-serialize-diagnostics",
+        "-index-store-path",
+        "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/index/store",
+        "-Onone",
+        "-enable-testing",
+        "-Xfrontend",
+        "-enable-cross-import-overlays",
+        "-j14",
+        "-DSWIFT_PACKAGE",
+        "-DDEBUG",
+        "-DSWIFT_MODULE_RESOURCE_BUNDLE_UNAVAILABLE",
+        "-module-cache-path",
+        "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/ModuleCache",
+        "-parseable-output",
+        "-parse-as-library",
+        "-swift-version",
+        "6",
+        "-plugin-path",
+        "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/host/plugins/testing",
+        "-sdk",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk",
+        "-F",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks",
+        "-I",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib",
+        "-L",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib",
+        "-g",
+        "-Xcc",
+        "-isysroot",
+        "-Xcc",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk",
+        "-Xcc",
+        "-F",
+        "-Xcc",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks",
+        "-Xcc",
+        "-fPIC",
+        "-Xcc",
+        "-g",
+        "-package-name",
+        "mac_network_workbench"
+      ],
+      "outputFileMapPath" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/NetworkCoreTests.build/output-file-map.json",
+      "outputs" : [
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/NetworkCoreTests.build/NetworkCoreTests.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/Modules/NetworkCoreTests.swiftmodule"
+        }
+      ],
+      "prepareForIndexing" : false,
+      "sources" : [
+        "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Tests/NetworkCoreTests/NetworkCoreTests.swift"
+      ],
+      "tempsPath" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/NetworkCoreTests.build",
+      "wholeModuleOptimization" : false
+    },
+    "C.NexWaveApp-arm64-apple-macosx-debug.module" : {
+      "executable" : "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc",
+      "fileList" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/NexWaveApp.build/sources",
+      "importPath" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/Modules",
+      "inputs" : [
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Sources/NexWaveApp/App.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Sources/NexWaveApp/AppState.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Sources/NexWaveApp/Views/CommandLibrary/CommandLibraryView.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Sources/NexWaveApp/Views/CommandPalette/CommandPaletteView.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Sources/NexWaveApp/Views/Diagnose/DiagnoseWorkspaceView.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Sources/NexWaveApp/Views/History/HistoryWorkspaceView.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Sources/NexWaveApp/Views/Home/HomeDashboardView.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Sources/NexWaveApp/Views/Investigations/InvestigationsWorkspaceView.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Sources/NexWaveApp/Views/Placeholders/ToolboxWorkspaces.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Sources/NexWaveApp/Views/Sidebar/AppSidebar.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/swift-version--58304C5D6DBC2206.txt"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/Modules/NetworkCore.swiftmodule"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/Modules/DiagnosticsEngine.swiftmodule"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/Modules/PingEngine.swiftmodule"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/Modules/DNSEngine.swiftmodule"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/Modules/TracerouteEngine.swiftmodule"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/Modules/HTTPInspector.swiftmodule"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/Modules/InvestigationKit.swiftmodule"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/Modules/PersistenceKit.swiftmodule"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/Modules/SecurityKit.swiftmodule"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/Modules/CommandLibrary.swiftmodule"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/NexWaveApp.build/sources"
+        }
+      ],
+      "isLibrary" : false,
+      "moduleName" : "NexWaveApp",
+      "moduleOutputPath" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/Modules/NexWaveApp.swiftmodule",
+      "objects" : [
+        "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/NexWaveApp.build/App.swift.o",
+        "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/NexWaveApp.build/AppState.swift.o",
+        "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/NexWaveApp.build/CommandLibraryView.swift.o",
+        "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/NexWaveApp.build/CommandPaletteView.swift.o",
+        "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/NexWaveApp.build/DiagnoseWorkspaceView.swift.o",
+        "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/NexWaveApp.build/HistoryWorkspaceView.swift.o",
+        "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/NexWaveApp.build/HomeDashboardView.swift.o",
+        "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/NexWaveApp.build/InvestigationsWorkspaceView.swift.o",
+        "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/NexWaveApp.build/ToolboxWorkspaces.swift.o",
+        "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/NexWaveApp.build/AppSidebar.swift.o"
+      ],
+      "otherArguments" : [
+        "-target",
+        "arm64-apple-macosx15.0",
+        "-incremental",
+        "-enable-batch-mode",
+        "-serialize-diagnostics",
+        "-index-store-path",
+        "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/index/store",
+        "-Onone",
+        "-enable-testing",
+        "-j14",
+        "-DSWIFT_PACKAGE",
+        "-DDEBUG",
+        "-DSWIFT_MODULE_RESOURCE_BUNDLE_UNAVAILABLE",
+        "-module-cache-path",
+        "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/ModuleCache",
+        "-parseable-output",
+        "-Xfrontend",
+        "-entry-point-function-name",
+        "-Xfrontend",
+        "NexWaveApp_main",
+        "-swift-version",
+        "6",
+        "-plugin-path",
+        "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/host/plugins/testing",
+        "-sdk",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk",
+        "-F",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks",
+        "-I",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib",
+        "-L",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib",
+        "-g",
+        "-Xcc",
+        "-isysroot",
+        "-Xcc",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk",
+        "-Xcc",
+        "-F",
+        "-Xcc",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks",
+        "-Xcc",
+        "-fPIC",
+        "-Xcc",
+        "-g",
+        "-package-name",
+        "mac_network_workbench"
+      ],
+      "outputFileMapPath" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/NexWaveApp.build/output-file-map.json",
+      "outputs" : [
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/NexWaveApp.build/App.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/NexWaveApp.build/AppState.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/NexWaveApp.build/CommandLibraryView.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/NexWaveApp.build/CommandPaletteView.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/NexWaveApp.build/DiagnoseWorkspaceView.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/NexWaveApp.build/HistoryWorkspaceView.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/NexWaveApp.build/HomeDashboardView.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/NexWaveApp.build/InvestigationsWorkspaceView.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/NexWaveApp.build/ToolboxWorkspaces.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/NexWaveApp.build/AppSidebar.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/Modules/NexWaveApp.swiftmodule"
+        }
+      ],
+      "prepareForIndexing" : false,
+      "sources" : [
+        "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Sources/NexWaveApp/App.swift",
+        "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Sources/NexWaveApp/AppState.swift",
+        "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Sources/NexWaveApp/Views/CommandLibrary/CommandLibraryView.swift",
+        "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Sources/NexWaveApp/Views/CommandPalette/CommandPaletteView.swift",
+        "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Sources/NexWaveApp/Views/Diagnose/DiagnoseWorkspaceView.swift",
+        "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Sources/NexWaveApp/Views/History/HistoryWorkspaceView.swift",
+        "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Sources/NexWaveApp/Views/Home/HomeDashboardView.swift",
+        "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Sources/NexWaveApp/Views/Investigations/InvestigationsWorkspaceView.swift",
+        "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Sources/NexWaveApp/Views/Placeholders/ToolboxWorkspaces.swift",
+        "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Sources/NexWaveApp/Views/Sidebar/AppSidebar.swift"
+      ],
+      "tempsPath" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/NexWaveApp.build",
+      "wholeModuleOptimization" : false
+    },
+    "C.PersistenceKit-arm64-apple-macosx-debug.module" : {
+      "executable" : "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc",
+      "fileList" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/PersistenceKit.build/sources",
+      "importPath" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/Modules",
+      "inputs" : [
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Sources/PersistenceKit/Models.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Sources/PersistenceKit/Repositories.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Sources/PersistenceKit/SQLiteDatabase.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/swift-version--58304C5D6DBC2206.txt"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/Modules/NetworkCore.swiftmodule"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/PersistenceKit.build/sources"
+        }
+      ],
+      "isLibrary" : true,
+      "moduleName" : "PersistenceKit",
+      "moduleOutputPath" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/Modules/PersistenceKit.swiftmodule",
+      "objects" : [
+        "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/PersistenceKit.build/Models.swift.o",
+        "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/PersistenceKit.build/Repositories.swift.o",
+        "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/PersistenceKit.build/SQLiteDatabase.swift.o"
+      ],
+      "otherArguments" : [
+        "-target",
+        "arm64-apple-macosx15.0",
+        "-incremental",
+        "-enable-batch-mode",
+        "-serialize-diagnostics",
+        "-index-store-path",
+        "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/index/store",
+        "-Onone",
+        "-enable-testing",
+        "-j14",
+        "-DSWIFT_PACKAGE",
+        "-DDEBUG",
+        "-DSWIFT_MODULE_RESOURCE_BUNDLE_UNAVAILABLE",
+        "-module-cache-path",
+        "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/ModuleCache",
+        "-parseable-output",
+        "-parse-as-library",
+        "-emit-objc-header",
+        "-emit-objc-header-path",
+        "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/PersistenceKit.build/include/PersistenceKit-Swift.h",
+        "-swift-version",
+        "6",
+        "-plugin-path",
+        "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/host/plugins/testing",
+        "-sdk",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk",
+        "-F",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks",
+        "-I",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib",
+        "-L",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib",
+        "-g",
+        "-Xcc",
+        "-isysroot",
+        "-Xcc",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk",
+        "-Xcc",
+        "-F",
+        "-Xcc",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks",
+        "-Xcc",
+        "-fPIC",
+        "-Xcc",
+        "-g",
+        "-package-name",
+        "mac_network_workbench"
+      ],
+      "outputFileMapPath" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/PersistenceKit.build/output-file-map.json",
+      "outputs" : [
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/PersistenceKit.build/Models.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/PersistenceKit.build/Repositories.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/PersistenceKit.build/SQLiteDatabase.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/Modules/PersistenceKit.swiftmodule"
+        }
+      ],
+      "prepareForIndexing" : false,
+      "sources" : [
+        "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Sources/PersistenceKit/Models.swift",
+        "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Sources/PersistenceKit/Repositories.swift",
+        "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Sources/PersistenceKit/SQLiteDatabase.swift"
+      ],
+      "tempsPath" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/PersistenceKit.build",
+      "wholeModuleOptimization" : false
+    },
+    "C.PersistenceKitTests-arm64-apple-macosx-debug.module" : {
+      "executable" : "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc",
+      "fileList" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/PersistenceKitTests.build/sources",
+      "importPath" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/Modules",
+      "inputs" : [
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Tests/PersistenceKitTests/PersistenceKitTests.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/swift-version--58304C5D6DBC2206.txt"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/Modules/PersistenceKit.swiftmodule"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/Modules/NetworkCore.swiftmodule"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/Modules/InvestigationKit.swiftmodule"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/PersistenceKitTests.build/sources"
+        }
+      ],
+      "isLibrary" : true,
+      "moduleName" : "PersistenceKitTests",
+      "moduleOutputPath" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/Modules/PersistenceKitTests.swiftmodule",
+      "objects" : [
+        "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/PersistenceKitTests.build/PersistenceKitTests.swift.o"
+      ],
+      "otherArguments" : [
+        "-target",
+        "arm64-apple-macosx15.0",
+        "-incremental",
+        "-enable-batch-mode",
+        "-serialize-diagnostics",
+        "-index-store-path",
+        "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/index/store",
+        "-Onone",
+        "-enable-testing",
+        "-Xfrontend",
+        "-enable-cross-import-overlays",
+        "-j14",
+        "-DSWIFT_PACKAGE",
+        "-DDEBUG",
+        "-DSWIFT_MODULE_RESOURCE_BUNDLE_UNAVAILABLE",
+        "-module-cache-path",
+        "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/ModuleCache",
+        "-parseable-output",
+        "-parse-as-library",
+        "-swift-version",
+        "6",
+        "-plugin-path",
+        "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/host/plugins/testing",
+        "-sdk",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk",
+        "-F",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks",
+        "-I",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib",
+        "-L",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib",
+        "-g",
+        "-Xcc",
+        "-isysroot",
+        "-Xcc",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk",
+        "-Xcc",
+        "-F",
+        "-Xcc",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks",
+        "-Xcc",
+        "-fPIC",
+        "-Xcc",
+        "-g",
+        "-package-name",
+        "mac_network_workbench"
+      ],
+      "outputFileMapPath" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/PersistenceKitTests.build/output-file-map.json",
+      "outputs" : [
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/PersistenceKitTests.build/PersistenceKitTests.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/Modules/PersistenceKitTests.swiftmodule"
+        }
+      ],
+      "prepareForIndexing" : false,
+      "sources" : [
+        "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Tests/PersistenceKitTests/PersistenceKitTests.swift"
+      ],
+      "tempsPath" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/PersistenceKitTests.build",
+      "wholeModuleOptimization" : false
+    },
+    "C.PingEngine-arm64-apple-macosx-debug.module" : {
+      "executable" : "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc",
+      "fileList" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/PingEngine.build/sources",
+      "importPath" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/Modules",
+      "inputs" : [
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Sources/PingEngine/LatencyStatistics.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Sources/PingEngine/Probers.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/swift-version--58304C5D6DBC2206.txt"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/Modules/NetworkCore.swiftmodule"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/PingEngine.build/sources"
+        }
+      ],
+      "isLibrary" : true,
+      "moduleName" : "PingEngine",
+      "moduleOutputPath" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/Modules/PingEngine.swiftmodule",
+      "objects" : [
+        "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/PingEngine.build/LatencyStatistics.swift.o",
+        "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/PingEngine.build/Probers.swift.o"
+      ],
+      "otherArguments" : [
+        "-target",
+        "arm64-apple-macosx15.0",
+        "-incremental",
+        "-enable-batch-mode",
+        "-serialize-diagnostics",
+        "-index-store-path",
+        "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/index/store",
+        "-Onone",
+        "-enable-testing",
+        "-j14",
+        "-DSWIFT_PACKAGE",
+        "-DDEBUG",
+        "-DSWIFT_MODULE_RESOURCE_BUNDLE_UNAVAILABLE",
+        "-module-cache-path",
+        "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/ModuleCache",
+        "-parseable-output",
+        "-parse-as-library",
+        "-emit-objc-header",
+        "-emit-objc-header-path",
+        "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/PingEngine.build/include/PingEngine-Swift.h",
+        "-swift-version",
+        "6",
+        "-plugin-path",
+        "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/host/plugins/testing",
+        "-sdk",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk",
+        "-F",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks",
+        "-I",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib",
+        "-L",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib",
+        "-g",
+        "-Xcc",
+        "-isysroot",
+        "-Xcc",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk",
+        "-Xcc",
+        "-F",
+        "-Xcc",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks",
+        "-Xcc",
+        "-fPIC",
+        "-Xcc",
+        "-g",
+        "-package-name",
+        "mac_network_workbench"
+      ],
+      "outputFileMapPath" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/PingEngine.build/output-file-map.json",
+      "outputs" : [
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/PingEngine.build/LatencyStatistics.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/PingEngine.build/Probers.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/Modules/PingEngine.swiftmodule"
+        }
+      ],
+      "prepareForIndexing" : false,
+      "sources" : [
+        "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Sources/PingEngine/LatencyStatistics.swift",
+        "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Sources/PingEngine/Probers.swift"
+      ],
+      "tempsPath" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/PingEngine.build",
+      "wholeModuleOptimization" : false
+    },
+    "C.PingEngineTests-arm64-apple-macosx-debug.module" : {
+      "executable" : "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc",
+      "fileList" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/PingEngineTests.build/sources",
+      "importPath" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/Modules",
+      "inputs" : [
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Tests/PingEngineTests/LatencyStatisticsTests.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/swift-version--58304C5D6DBC2206.txt"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/Modules/PingEngine.swiftmodule"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/Modules/NetworkCore.swiftmodule"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/PingEngineTests.build/sources"
+        }
+      ],
+      "isLibrary" : true,
+      "moduleName" : "PingEngineTests",
+      "moduleOutputPath" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/Modules/PingEngineTests.swiftmodule",
+      "objects" : [
+        "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/PingEngineTests.build/LatencyStatisticsTests.swift.o"
+      ],
+      "otherArguments" : [
+        "-target",
+        "arm64-apple-macosx15.0",
+        "-incremental",
+        "-enable-batch-mode",
+        "-serialize-diagnostics",
+        "-index-store-path",
+        "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/index/store",
+        "-Onone",
+        "-enable-testing",
+        "-Xfrontend",
+        "-enable-cross-import-overlays",
+        "-j14",
+        "-DSWIFT_PACKAGE",
+        "-DDEBUG",
+        "-DSWIFT_MODULE_RESOURCE_BUNDLE_UNAVAILABLE",
+        "-module-cache-path",
+        "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/ModuleCache",
+        "-parseable-output",
+        "-parse-as-library",
+        "-swift-version",
+        "6",
+        "-plugin-path",
+        "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/host/plugins/testing",
+        "-sdk",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk",
+        "-F",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks",
+        "-I",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib",
+        "-L",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib",
+        "-g",
+        "-Xcc",
+        "-isysroot",
+        "-Xcc",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk",
+        "-Xcc",
+        "-F",
+        "-Xcc",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks",
+        "-Xcc",
+        "-fPIC",
+        "-Xcc",
+        "-g",
+        "-package-name",
+        "mac_network_workbench"
+      ],
+      "outputFileMapPath" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/PingEngineTests.build/output-file-map.json",
+      "outputs" : [
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/PingEngineTests.build/LatencyStatisticsTests.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/Modules/PingEngineTests.swiftmodule"
+        }
+      ],
+      "prepareForIndexing" : false,
+      "sources" : [
+        "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Tests/PingEngineTests/LatencyStatisticsTests.swift"
+      ],
+      "tempsPath" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/PingEngineTests.build",
+      "wholeModuleOptimization" : false
+    },
+    "C.SecurityKit-arm64-apple-macosx-debug.module" : {
+      "executable" : "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc",
+      "fileList" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/SecurityKit.build/sources",
+      "importPath" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/Modules",
+      "inputs" : [
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Sources/SecurityKit/KeychainStorage.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Sources/SecurityKit/SensitiveDataRedactor.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/swift-version--58304C5D6DBC2206.txt"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/SecurityKit.build/sources"
+        }
+      ],
+      "isLibrary" : true,
+      "moduleName" : "SecurityKit",
+      "moduleOutputPath" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/Modules/SecurityKit.swiftmodule",
+      "objects" : [
+        "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/SecurityKit.build/KeychainStorage.swift.o",
+        "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/SecurityKit.build/SensitiveDataRedactor.swift.o"
+      ],
+      "otherArguments" : [
+        "-target",
+        "arm64-apple-macosx15.0",
+        "-incremental",
+        "-enable-batch-mode",
+        "-serialize-diagnostics",
+        "-index-store-path",
+        "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/index/store",
+        "-Onone",
+        "-enable-testing",
+        "-j14",
+        "-DSWIFT_PACKAGE",
+        "-DDEBUG",
+        "-DSWIFT_MODULE_RESOURCE_BUNDLE_UNAVAILABLE",
+        "-module-cache-path",
+        "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/ModuleCache",
+        "-parseable-output",
+        "-parse-as-library",
+        "-emit-objc-header",
+        "-emit-objc-header-path",
+        "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/SecurityKit.build/include/SecurityKit-Swift.h",
+        "-swift-version",
+        "6",
+        "-plugin-path",
+        "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/host/plugins/testing",
+        "-sdk",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk",
+        "-F",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks",
+        "-I",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib",
+        "-L",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib",
+        "-g",
+        "-Xcc",
+        "-isysroot",
+        "-Xcc",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk",
+        "-Xcc",
+        "-F",
+        "-Xcc",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks",
+        "-Xcc",
+        "-fPIC",
+        "-Xcc",
+        "-g",
+        "-package-name",
+        "mac_network_workbench"
+      ],
+      "outputFileMapPath" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/SecurityKit.build/output-file-map.json",
+      "outputs" : [
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/SecurityKit.build/KeychainStorage.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/SecurityKit.build/SensitiveDataRedactor.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/Modules/SecurityKit.swiftmodule"
+        }
+      ],
+      "prepareForIndexing" : false,
+      "sources" : [
+        "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Sources/SecurityKit/KeychainStorage.swift",
+        "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Sources/SecurityKit/SensitiveDataRedactor.swift"
+      ],
+      "tempsPath" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/SecurityKit.build",
+      "wholeModuleOptimization" : false
+    },
+    "C.TracerouteEngine-arm64-apple-macosx-debug.module" : {
+      "executable" : "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc",
+      "fileList" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/TracerouteEngine.build/sources",
+      "importPath" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/Modules",
+      "inputs" : [
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Sources/TracerouteEngine/HopRecord.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Sources/TracerouteEngine/TracerouteRunner.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/swift-version--58304C5D6DBC2206.txt"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/Modules/NetworkCore.swiftmodule"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/Modules/PingEngine.swiftmodule"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/TracerouteEngine.build/sources"
+        }
+      ],
+      "isLibrary" : true,
+      "moduleName" : "TracerouteEngine",
+      "moduleOutputPath" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/Modules/TracerouteEngine.swiftmodule",
+      "objects" : [
+        "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/TracerouteEngine.build/HopRecord.swift.o",
+        "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/TracerouteEngine.build/TracerouteRunner.swift.o"
+      ],
+      "otherArguments" : [
+        "-target",
+        "arm64-apple-macosx15.0",
+        "-incremental",
+        "-enable-batch-mode",
+        "-serialize-diagnostics",
+        "-index-store-path",
+        "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/index/store",
+        "-Onone",
+        "-enable-testing",
+        "-j14",
+        "-DSWIFT_PACKAGE",
+        "-DDEBUG",
+        "-DSWIFT_MODULE_RESOURCE_BUNDLE_UNAVAILABLE",
+        "-module-cache-path",
+        "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/ModuleCache",
+        "-parseable-output",
+        "-parse-as-library",
+        "-emit-objc-header",
+        "-emit-objc-header-path",
+        "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/TracerouteEngine.build/include/TracerouteEngine-Swift.h",
+        "-swift-version",
+        "6",
+        "-plugin-path",
+        "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/host/plugins/testing",
+        "-sdk",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk",
+        "-F",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks",
+        "-I",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib",
+        "-L",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib",
+        "-g",
+        "-Xcc",
+        "-isysroot",
+        "-Xcc",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk",
+        "-Xcc",
+        "-F",
+        "-Xcc",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks",
+        "-Xcc",
+        "-fPIC",
+        "-Xcc",
+        "-g",
+        "-package-name",
+        "mac_network_workbench"
+      ],
+      "outputFileMapPath" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/TracerouteEngine.build/output-file-map.json",
+      "outputs" : [
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/TracerouteEngine.build/HopRecord.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/TracerouteEngine.build/TracerouteRunner.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/Modules/TracerouteEngine.swiftmodule"
+        }
+      ],
+      "prepareForIndexing" : false,
+      "sources" : [
+        "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Sources/TracerouteEngine/HopRecord.swift",
+        "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Sources/TracerouteEngine/TracerouteRunner.swift"
+      ],
+      "tempsPath" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/TracerouteEngine.build",
+      "wholeModuleOptimization" : false
+    }
+  },
+  "swiftFrontendCommands" : {
+
+  },
+  "swiftTargetScanArgs" : {
+    "CommandLibrary" : [
+      "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc",
+      "-module-name",
+      "CommandLibrary",
+      "-package-name",
+      "mac_network_workbench",
+      "-c",
+      "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Sources/CommandLibrary/CommandModels.swift",
+      "-I",
+      "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/Modules",
+      "-target",
+      "arm64-apple-macosx15.0",
+      "-incremental",
+      "-enable-batch-mode",
+      "-serialize-diagnostics",
+      "-index-store-path",
+      "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/index/store",
+      "-Onone",
+      "-enable-testing",
+      "-j14",
+      "-DSWIFT_PACKAGE",
+      "-DDEBUG",
+      "-DSWIFT_MODULE_RESOURCE_BUNDLE_UNAVAILABLE",
+      "-module-cache-path",
+      "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/ModuleCache",
+      "-parseable-output",
+      "-parse-as-library",
+      "-emit-objc-header",
+      "-emit-objc-header-path",
+      "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/CommandLibrary.build/include/CommandLibrary-Swift.h",
+      "-swift-version",
+      "6",
+      "-plugin-path",
+      "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/host/plugins/testing",
+      "-sdk",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk",
+      "-F",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks",
+      "-I",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib",
+      "-L",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib",
+      "-g",
+      "-Xcc",
+      "-isysroot",
+      "-Xcc",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk",
+      "-Xcc",
+      "-F",
+      "-Xcc",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks",
+      "-Xcc",
+      "-fPIC",
+      "-Xcc",
+      "-g",
+      "-package-name",
+      "mac_network_workbench",
+      "-driver-use-frontend-path",
+      "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc"
+    ],
+    "DNSEngine" : [
+      "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc",
+      "-module-name",
+      "DNSEngine",
+      "-package-name",
+      "mac_network_workbench",
+      "-c",
+      "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Sources/DNSEngine/DNSModels.swift",
+      "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Sources/DNSEngine/DNSResolver.swift",
+      "-I",
+      "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/Modules",
+      "-target",
+      "arm64-apple-macosx15.0",
+      "-incremental",
+      "-enable-batch-mode",
+      "-serialize-diagnostics",
+      "-index-store-path",
+      "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/index/store",
+      "-Onone",
+      "-enable-testing",
+      "-j14",
+      "-DSWIFT_PACKAGE",
+      "-DDEBUG",
+      "-DSWIFT_MODULE_RESOURCE_BUNDLE_UNAVAILABLE",
+      "-module-cache-path",
+      "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/ModuleCache",
+      "-parseable-output",
+      "-parse-as-library",
+      "-emit-objc-header",
+      "-emit-objc-header-path",
+      "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/DNSEngine.build/include/DNSEngine-Swift.h",
+      "-swift-version",
+      "6",
+      "-plugin-path",
+      "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/host/plugins/testing",
+      "-sdk",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk",
+      "-F",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks",
+      "-I",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib",
+      "-L",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib",
+      "-g",
+      "-Xcc",
+      "-isysroot",
+      "-Xcc",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk",
+      "-Xcc",
+      "-F",
+      "-Xcc",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks",
+      "-Xcc",
+      "-fPIC",
+      "-Xcc",
+      "-g",
+      "-package-name",
+      "mac_network_workbench",
+      "-driver-use-frontend-path",
+      "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc"
+    ],
+    "DNSEngineTests" : [
+      "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc",
+      "-module-name",
+      "DNSEngineTests",
+      "-package-name",
+      "mac_network_workbench",
+      "-c",
+      "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Tests/DNSEngineTests/DNSEngineTests.swift",
+      "-I",
+      "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/Modules",
+      "-target",
+      "arm64-apple-macosx15.0",
+      "-incremental",
+      "-enable-batch-mode",
+      "-serialize-diagnostics",
+      "-index-store-path",
+      "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/index/store",
+      "-Onone",
+      "-enable-testing",
+      "-Xfrontend",
+      "-enable-cross-import-overlays",
+      "-j14",
+      "-DSWIFT_PACKAGE",
+      "-DDEBUG",
+      "-DSWIFT_MODULE_RESOURCE_BUNDLE_UNAVAILABLE",
+      "-module-cache-path",
+      "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/ModuleCache",
+      "-parseable-output",
+      "-parse-as-library",
+      "-swift-version",
+      "6",
+      "-plugin-path",
+      "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/host/plugins/testing",
+      "-sdk",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk",
+      "-F",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks",
+      "-I",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib",
+      "-L",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib",
+      "-g",
+      "-Xcc",
+      "-isysroot",
+      "-Xcc",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk",
+      "-Xcc",
+      "-F",
+      "-Xcc",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks",
+      "-Xcc",
+      "-fPIC",
+      "-Xcc",
+      "-g",
+      "-package-name",
+      "mac_network_workbench",
+      "-driver-use-frontend-path",
+      "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc"
+    ],
+    "DiagnosticsEngine" : [
+      "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc",
+      "-module-name",
+      "DiagnosticsEngine",
+      "-package-name",
+      "mac_network_workbench",
+      "-c",
+      "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Sources/DiagnosticsEngine/CorrelationEngine.swift",
+      "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Sources/DiagnosticsEngine/DiagnosticFinding.swift",
+      "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Sources/DiagnosticsEngine/DiagnosticPipeline.swift",
+      "-I",
+      "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/Modules",
+      "-target",
+      "arm64-apple-macosx15.0",
+      "-incremental",
+      "-enable-batch-mode",
+      "-serialize-diagnostics",
+      "-index-store-path",
+      "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/index/store",
+      "-Onone",
+      "-enable-testing",
+      "-j14",
+      "-DSWIFT_PACKAGE",
+      "-DDEBUG",
+      "-DSWIFT_MODULE_RESOURCE_BUNDLE_UNAVAILABLE",
+      "-module-cache-path",
+      "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/ModuleCache",
+      "-parseable-output",
+      "-parse-as-library",
+      "-emit-objc-header",
+      "-emit-objc-header-path",
+      "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/DiagnosticsEngine.build/include/DiagnosticsEngine-Swift.h",
+      "-swift-version",
+      "6",
+      "-plugin-path",
+      "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/host/plugins/testing",
+      "-sdk",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk",
+      "-F",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks",
+      "-I",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib",
+      "-L",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib",
+      "-g",
+      "-Xcc",
+      "-isysroot",
+      "-Xcc",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk",
+      "-Xcc",
+      "-F",
+      "-Xcc",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks",
+      "-Xcc",
+      "-fPIC",
+      "-Xcc",
+      "-g",
+      "-package-name",
+      "mac_network_workbench",
+      "-driver-use-frontend-path",
+      "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc"
+    ],
+    "DiagnosticsEngineTests" : [
+      "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc",
+      "-module-name",
+      "DiagnosticsEngineTests",
+      "-package-name",
+      "mac_network_workbench",
+      "-c",
+      "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Tests/DiagnosticsEngineTests/CorrelationEngineTests.swift",
+      "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Tests/DiagnosticsEngineTests/PipelineIntegrationTests.swift",
+      "-I",
+      "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/Modules",
+      "-target",
+      "arm64-apple-macosx15.0",
+      "-incremental",
+      "-enable-batch-mode",
+      "-serialize-diagnostics",
+      "-index-store-path",
+      "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/index/store",
+      "-Onone",
+      "-enable-testing",
+      "-Xfrontend",
+      "-enable-cross-import-overlays",
+      "-j14",
+      "-DSWIFT_PACKAGE",
+      "-DDEBUG",
+      "-DSWIFT_MODULE_RESOURCE_BUNDLE_UNAVAILABLE",
+      "-module-cache-path",
+      "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/ModuleCache",
+      "-parseable-output",
+      "-parse-as-library",
+      "-swift-version",
+      "6",
+      "-plugin-path",
+      "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/host/plugins/testing",
+      "-sdk",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk",
+      "-F",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks",
+      "-I",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib",
+      "-L",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib",
+      "-g",
+      "-Xcc",
+      "-isysroot",
+      "-Xcc",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk",
+      "-Xcc",
+      "-F",
+      "-Xcc",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks",
+      "-Xcc",
+      "-fPIC",
+      "-Xcc",
+      "-g",
+      "-package-name",
+      "mac_network_workbench",
+      "-driver-use-frontend-path",
+      "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc"
+    ],
+    "HTTPInspector" : [
+      "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc",
+      "-module-name",
+      "HTTPInspector",
+      "-package-name",
+      "mac_network_workbench",
+      "-c",
+      "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Sources/HTTPInspector/HTTPInspector.swift",
+      "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Sources/HTTPInspector/HTTPInspectorModels.swift",
+      "-I",
+      "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/Modules",
+      "-target",
+      "arm64-apple-macosx15.0",
+      "-incremental",
+      "-enable-batch-mode",
+      "-serialize-diagnostics",
+      "-index-store-path",
+      "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/index/store",
+      "-Onone",
+      "-enable-testing",
+      "-j14",
+      "-DSWIFT_PACKAGE",
+      "-DDEBUG",
+      "-DSWIFT_MODULE_RESOURCE_BUNDLE_UNAVAILABLE",
+      "-module-cache-path",
+      "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/ModuleCache",
+      "-parseable-output",
+      "-parse-as-library",
+      "-emit-objc-header",
+      "-emit-objc-header-path",
+      "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/HTTPInspector.build/include/HTTPInspector-Swift.h",
+      "-swift-version",
+      "6",
+      "-plugin-path",
+      "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/host/plugins/testing",
+      "-sdk",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk",
+      "-F",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks",
+      "-I",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib",
+      "-L",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib",
+      "-g",
+      "-Xcc",
+      "-isysroot",
+      "-Xcc",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk",
+      "-Xcc",
+      "-F",
+      "-Xcc",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks",
+      "-Xcc",
+      "-fPIC",
+      "-Xcc",
+      "-g",
+      "-package-name",
+      "mac_network_workbench",
+      "-driver-use-frontend-path",
+      "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc"
+    ],
+    "InvestigationKit" : [
+      "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc",
+      "-module-name",
+      "InvestigationKit",
+      "-package-name",
+      "mac_network_workbench",
+      "-c",
+      "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Sources/InvestigationKit/AuditReportExporter.swift",
+      "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Sources/InvestigationKit/Investigation.swift",
+      "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Sources/InvestigationKit/InvestigationManager.swift",
+      "-I",
+      "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/Modules",
+      "-target",
+      "arm64-apple-macosx15.0",
+      "-incremental",
+      "-enable-batch-mode",
+      "-serialize-diagnostics",
+      "-index-store-path",
+      "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/index/store",
+      "-Onone",
+      "-enable-testing",
+      "-j14",
+      "-DSWIFT_PACKAGE",
+      "-DDEBUG",
+      "-DSWIFT_MODULE_RESOURCE_BUNDLE_UNAVAILABLE",
+      "-module-cache-path",
+      "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/ModuleCache",
+      "-parseable-output",
+      "-parse-as-library",
+      "-emit-objc-header",
+      "-emit-objc-header-path",
+      "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/InvestigationKit.build/include/InvestigationKit-Swift.h",
+      "-swift-version",
+      "6",
+      "-plugin-path",
+      "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/host/plugins/testing",
+      "-sdk",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk",
+      "-F",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks",
+      "-I",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib",
+      "-L",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib",
+      "-g",
+      "-Xcc",
+      "-isysroot",
+      "-Xcc",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk",
+      "-Xcc",
+      "-F",
+      "-Xcc",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks",
+      "-Xcc",
+      "-fPIC",
+      "-Xcc",
+      "-g",
+      "-package-name",
+      "mac_network_workbench",
+      "-driver-use-frontend-path",
+      "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc"
+    ],
+    "MacNetworkWorkbenchPackageTests" : [
+      "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc",
+      "-module-name",
+      "MacNetworkWorkbenchPackageTests",
+      "-package-name",
+      "mac_network_workbench",
+      "-c",
+      "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/MacNetworkWorkbenchPackageTests.derived/runner.swift",
+      "-I",
+      "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/Modules",
+      "-target",
+      "arm64-apple-macosx15.0",
+      "-incremental",
+      "-enable-batch-mode",
+      "-serialize-diagnostics",
+      "-index-store-path",
+      "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/index/store",
+      "-Onone",
+      "-enable-testing",
+      "-Xfrontend",
+      "-enable-cross-import-overlays",
+      "-j14",
+      "-DSWIFT_PACKAGE",
+      "-DDEBUG",
+      "-DSWIFT_MODULE_RESOURCE_BUNDLE_UNAVAILABLE",
+      "-module-cache-path",
+      "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/ModuleCache",
+      "-parseable-output",
+      "-parse-as-library",
+      "-emit-objc-header",
+      "-emit-objc-header-path",
+      "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/MacNetworkWorkbenchPackageTests.build/include/MacNetworkWorkbenchPackageTests-Swift.h",
+      "-plugin-path",
+      "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/host/plugins/testing",
+      "-sdk",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk",
+      "-F",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks",
+      "-I",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib",
+      "-L",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib",
+      "-g",
+      "-Xcc",
+      "-isysroot",
+      "-Xcc",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk",
+      "-Xcc",
+      "-F",
+      "-Xcc",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks",
+      "-Xcc",
+      "-fPIC",
+      "-Xcc",
+      "-g",
+      "-package-name",
+      "mac_network_workbench",
+      "-driver-use-frontend-path",
+      "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc"
+    ],
+    "NetworkCore" : [
+      "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc",
+      "-module-name",
+      "NetworkCore",
+      "-package-name",
+      "mac_network_workbench",
+      "-c",
+      "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Sources/NetworkCore/IPAddress.swift",
+      "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Sources/NetworkCore/IPNetwork.swift",
+      "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Sources/NetworkCore/NetworkTarget.swift",
+      "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Sources/NetworkCore/Port.swift",
+      "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Sources/NetworkCore/TargetClassifier.swift",
+      "-I",
+      "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/Modules",
+      "-target",
+      "arm64-apple-macosx15.0",
+      "-incremental",
+      "-enable-batch-mode",
+      "-serialize-diagnostics",
+      "-index-store-path",
+      "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/index/store",
+      "-Onone",
+      "-enable-testing",
+      "-j14",
+      "-DSWIFT_PACKAGE",
+      "-DDEBUG",
+      "-DSWIFT_MODULE_RESOURCE_BUNDLE_UNAVAILABLE",
+      "-module-cache-path",
+      "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/ModuleCache",
+      "-parseable-output",
+      "-parse-as-library",
+      "-emit-objc-header",
+      "-emit-objc-header-path",
+      "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/NetworkCore.build/include/NetworkCore-Swift.h",
+      "-swift-version",
+      "6",
+      "-plugin-path",
+      "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/host/plugins/testing",
+      "-sdk",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk",
+      "-F",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks",
+      "-I",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib",
+      "-L",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib",
+      "-g",
+      "-Xcc",
+      "-isysroot",
+      "-Xcc",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk",
+      "-Xcc",
+      "-F",
+      "-Xcc",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks",
+      "-Xcc",
+      "-fPIC",
+      "-Xcc",
+      "-g",
+      "-package-name",
+      "mac_network_workbench",
+      "-driver-use-frontend-path",
+      "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc"
+    ],
+    "NetworkCoreTests" : [
+      "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc",
+      "-module-name",
+      "NetworkCoreTests",
+      "-package-name",
+      "mac_network_workbench",
+      "-c",
+      "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Tests/NetworkCoreTests/NetworkCoreTests.swift",
+      "-I",
+      "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/Modules",
+      "-target",
+      "arm64-apple-macosx15.0",
+      "-incremental",
+      "-enable-batch-mode",
+      "-serialize-diagnostics",
+      "-index-store-path",
+      "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/index/store",
+      "-Onone",
+      "-enable-testing",
+      "-Xfrontend",
+      "-enable-cross-import-overlays",
+      "-j14",
+      "-DSWIFT_PACKAGE",
+      "-DDEBUG",
+      "-DSWIFT_MODULE_RESOURCE_BUNDLE_UNAVAILABLE",
+      "-module-cache-path",
+      "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/ModuleCache",
+      "-parseable-output",
+      "-parse-as-library",
+      "-swift-version",
+      "6",
+      "-plugin-path",
+      "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/host/plugins/testing",
+      "-sdk",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk",
+      "-F",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks",
+      "-I",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib",
+      "-L",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib",
+      "-g",
+      "-Xcc",
+      "-isysroot",
+      "-Xcc",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk",
+      "-Xcc",
+      "-F",
+      "-Xcc",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks",
+      "-Xcc",
+      "-fPIC",
+      "-Xcc",
+      "-g",
+      "-package-name",
+      "mac_network_workbench",
+      "-driver-use-frontend-path",
+      "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc"
+    ],
+    "NexWaveApp" : [
+      "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc",
+      "-module-name",
+      "NexWaveApp",
+      "-package-name",
+      "mac_network_workbench",
+      "-c",
+      "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Sources/NexWaveApp/App.swift",
+      "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Sources/NexWaveApp/AppState.swift",
+      "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Sources/NexWaveApp/Views/CommandLibrary/CommandLibraryView.swift",
+      "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Sources/NexWaveApp/Views/CommandPalette/CommandPaletteView.swift",
+      "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Sources/NexWaveApp/Views/Diagnose/DiagnoseWorkspaceView.swift",
+      "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Sources/NexWaveApp/Views/History/HistoryWorkspaceView.swift",
+      "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Sources/NexWaveApp/Views/Home/HomeDashboardView.swift",
+      "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Sources/NexWaveApp/Views/Investigations/InvestigationsWorkspaceView.swift",
+      "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Sources/NexWaveApp/Views/Placeholders/ToolboxWorkspaces.swift",
+      "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Sources/NexWaveApp/Views/Sidebar/AppSidebar.swift",
+      "-I",
+      "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/Modules",
+      "-target",
+      "arm64-apple-macosx15.0",
+      "-incremental",
+      "-enable-batch-mode",
+      "-serialize-diagnostics",
+      "-index-store-path",
+      "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/index/store",
+      "-Onone",
+      "-enable-testing",
+      "-j14",
+      "-DSWIFT_PACKAGE",
+      "-DDEBUG",
+      "-DSWIFT_MODULE_RESOURCE_BUNDLE_UNAVAILABLE",
+      "-module-cache-path",
+      "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/ModuleCache",
+      "-parseable-output",
+      "-Xfrontend",
+      "-entry-point-function-name",
+      "-Xfrontend",
+      "NexWaveApp_main",
+      "-swift-version",
+      "6",
+      "-plugin-path",
+      "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/host/plugins/testing",
+      "-sdk",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk",
+      "-F",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks",
+      "-I",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib",
+      "-L",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib",
+      "-g",
+      "-Xcc",
+      "-isysroot",
+      "-Xcc",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk",
+      "-Xcc",
+      "-F",
+      "-Xcc",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks",
+      "-Xcc",
+      "-fPIC",
+      "-Xcc",
+      "-g",
+      "-package-name",
+      "mac_network_workbench",
+      "-driver-use-frontend-path",
+      "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc"
+    ],
+    "PersistenceKit" : [
+      "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc",
+      "-module-name",
+      "PersistenceKit",
+      "-package-name",
+      "mac_network_workbench",
+      "-c",
+      "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Sources/PersistenceKit/Models.swift",
+      "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Sources/PersistenceKit/Repositories.swift",
+      "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Sources/PersistenceKit/SQLiteDatabase.swift",
+      "-I",
+      "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/Modules",
+      "-target",
+      "arm64-apple-macosx15.0",
+      "-incremental",
+      "-enable-batch-mode",
+      "-serialize-diagnostics",
+      "-index-store-path",
+      "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/index/store",
+      "-Onone",
+      "-enable-testing",
+      "-j14",
+      "-DSWIFT_PACKAGE",
+      "-DDEBUG",
+      "-DSWIFT_MODULE_RESOURCE_BUNDLE_UNAVAILABLE",
+      "-module-cache-path",
+      "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/ModuleCache",
+      "-parseable-output",
+      "-parse-as-library",
+      "-emit-objc-header",
+      "-emit-objc-header-path",
+      "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/PersistenceKit.build/include/PersistenceKit-Swift.h",
+      "-swift-version",
+      "6",
+      "-plugin-path",
+      "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/host/plugins/testing",
+      "-sdk",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk",
+      "-F",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks",
+      "-I",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib",
+      "-L",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib",
+      "-g",
+      "-Xcc",
+      "-isysroot",
+      "-Xcc",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk",
+      "-Xcc",
+      "-F",
+      "-Xcc",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks",
+      "-Xcc",
+      "-fPIC",
+      "-Xcc",
+      "-g",
+      "-package-name",
+      "mac_network_workbench",
+      "-driver-use-frontend-path",
+      "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc"
+    ],
+    "PersistenceKitTests" : [
+      "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc",
+      "-module-name",
+      "PersistenceKitTests",
+      "-package-name",
+      "mac_network_workbench",
+      "-c",
+      "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Tests/PersistenceKitTests/PersistenceKitTests.swift",
+      "-I",
+      "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/Modules",
+      "-target",
+      "arm64-apple-macosx15.0",
+      "-incremental",
+      "-enable-batch-mode",
+      "-serialize-diagnostics",
+      "-index-store-path",
+      "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/index/store",
+      "-Onone",
+      "-enable-testing",
+      "-Xfrontend",
+      "-enable-cross-import-overlays",
+      "-j14",
+      "-DSWIFT_PACKAGE",
+      "-DDEBUG",
+      "-DSWIFT_MODULE_RESOURCE_BUNDLE_UNAVAILABLE",
+      "-module-cache-path",
+      "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/ModuleCache",
+      "-parseable-output",
+      "-parse-as-library",
+      "-swift-version",
+      "6",
+      "-plugin-path",
+      "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/host/plugins/testing",
+      "-sdk",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk",
+      "-F",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks",
+      "-I",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib",
+      "-L",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib",
+      "-g",
+      "-Xcc",
+      "-isysroot",
+      "-Xcc",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk",
+      "-Xcc",
+      "-F",
+      "-Xcc",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks",
+      "-Xcc",
+      "-fPIC",
+      "-Xcc",
+      "-g",
+      "-package-name",
+      "mac_network_workbench",
+      "-driver-use-frontend-path",
+      "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc"
+    ],
+    "PingEngine" : [
+      "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc",
+      "-module-name",
+      "PingEngine",
+      "-package-name",
+      "mac_network_workbench",
+      "-c",
+      "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Sources/PingEngine/LatencyStatistics.swift",
+      "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Sources/PingEngine/Probers.swift",
+      "-I",
+      "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/Modules",
+      "-target",
+      "arm64-apple-macosx15.0",
+      "-incremental",
+      "-enable-batch-mode",
+      "-serialize-diagnostics",
+      "-index-store-path",
+      "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/index/store",
+      "-Onone",
+      "-enable-testing",
+      "-j14",
+      "-DSWIFT_PACKAGE",
+      "-DDEBUG",
+      "-DSWIFT_MODULE_RESOURCE_BUNDLE_UNAVAILABLE",
+      "-module-cache-path",
+      "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/ModuleCache",
+      "-parseable-output",
+      "-parse-as-library",
+      "-emit-objc-header",
+      "-emit-objc-header-path",
+      "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/PingEngine.build/include/PingEngine-Swift.h",
+      "-swift-version",
+      "6",
+      "-plugin-path",
+      "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/host/plugins/testing",
+      "-sdk",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk",
+      "-F",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks",
+      "-I",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib",
+      "-L",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib",
+      "-g",
+      "-Xcc",
+      "-isysroot",
+      "-Xcc",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk",
+      "-Xcc",
+      "-F",
+      "-Xcc",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks",
+      "-Xcc",
+      "-fPIC",
+      "-Xcc",
+      "-g",
+      "-package-name",
+      "mac_network_workbench",
+      "-driver-use-frontend-path",
+      "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc"
+    ],
+    "PingEngineTests" : [
+      "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc",
+      "-module-name",
+      "PingEngineTests",
+      "-package-name",
+      "mac_network_workbench",
+      "-c",
+      "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Tests/PingEngineTests/LatencyStatisticsTests.swift",
+      "-I",
+      "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/Modules",
+      "-target",
+      "arm64-apple-macosx15.0",
+      "-incremental",
+      "-enable-batch-mode",
+      "-serialize-diagnostics",
+      "-index-store-path",
+      "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/index/store",
+      "-Onone",
+      "-enable-testing",
+      "-Xfrontend",
+      "-enable-cross-import-overlays",
+      "-j14",
+      "-DSWIFT_PACKAGE",
+      "-DDEBUG",
+      "-DSWIFT_MODULE_RESOURCE_BUNDLE_UNAVAILABLE",
+      "-module-cache-path",
+      "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/ModuleCache",
+      "-parseable-output",
+      "-parse-as-library",
+      "-swift-version",
+      "6",
+      "-plugin-path",
+      "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/host/plugins/testing",
+      "-sdk",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk",
+      "-F",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks",
+      "-I",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib",
+      "-L",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib",
+      "-g",
+      "-Xcc",
+      "-isysroot",
+      "-Xcc",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk",
+      "-Xcc",
+      "-F",
+      "-Xcc",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks",
+      "-Xcc",
+      "-fPIC",
+      "-Xcc",
+      "-g",
+      "-package-name",
+      "mac_network_workbench",
+      "-driver-use-frontend-path",
+      "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc"
+    ],
+    "SecurityKit" : [
+      "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc",
+      "-module-name",
+      "SecurityKit",
+      "-package-name",
+      "mac_network_workbench",
+      "-c",
+      "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Sources/SecurityKit/KeychainStorage.swift",
+      "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Sources/SecurityKit/SensitiveDataRedactor.swift",
+      "-I",
+      "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/Modules",
+      "-target",
+      "arm64-apple-macosx15.0",
+      "-incremental",
+      "-enable-batch-mode",
+      "-serialize-diagnostics",
+      "-index-store-path",
+      "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/index/store",
+      "-Onone",
+      "-enable-testing",
+      "-j14",
+      "-DSWIFT_PACKAGE",
+      "-DDEBUG",
+      "-DSWIFT_MODULE_RESOURCE_BUNDLE_UNAVAILABLE",
+      "-module-cache-path",
+      "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/ModuleCache",
+      "-parseable-output",
+      "-parse-as-library",
+      "-emit-objc-header",
+      "-emit-objc-header-path",
+      "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/SecurityKit.build/include/SecurityKit-Swift.h",
+      "-swift-version",
+      "6",
+      "-plugin-path",
+      "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/host/plugins/testing",
+      "-sdk",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk",
+      "-F",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks",
+      "-I",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib",
+      "-L",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib",
+      "-g",
+      "-Xcc",
+      "-isysroot",
+      "-Xcc",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk",
+      "-Xcc",
+      "-F",
+      "-Xcc",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks",
+      "-Xcc",
+      "-fPIC",
+      "-Xcc",
+      "-g",
+      "-package-name",
+      "mac_network_workbench",
+      "-driver-use-frontend-path",
+      "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc"
+    ],
+    "TracerouteEngine" : [
+      "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc",
+      "-module-name",
+      "TracerouteEngine",
+      "-package-name",
+      "mac_network_workbench",
+      "-c",
+      "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Sources/TracerouteEngine/HopRecord.swift",
+      "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Sources/TracerouteEngine/TracerouteRunner.swift",
+      "-I",
+      "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/Modules",
+      "-target",
+      "arm64-apple-macosx15.0",
+      "-incremental",
+      "-enable-batch-mode",
+      "-serialize-diagnostics",
+      "-index-store-path",
+      "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/index/store",
+      "-Onone",
+      "-enable-testing",
+      "-j14",
+      "-DSWIFT_PACKAGE",
+      "-DDEBUG",
+      "-DSWIFT_MODULE_RESOURCE_BUNDLE_UNAVAILABLE",
+      "-module-cache-path",
+      "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/ModuleCache",
+      "-parseable-output",
+      "-parse-as-library",
+      "-emit-objc-header",
+      "-emit-objc-header-path",
+      "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/TracerouteEngine.build/include/TracerouteEngine-Swift.h",
+      "-swift-version",
+      "6",
+      "-plugin-path",
+      "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/host/plugins/testing",
+      "-sdk",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk",
+      "-F",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks",
+      "-I",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib",
+      "-L",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib",
+      "-g",
+      "-Xcc",
+      "-isysroot",
+      "-Xcc",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk",
+      "-Xcc",
+      "-F",
+      "-Xcc",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks",
+      "-Xcc",
+      "-fPIC",
+      "-Xcc",
+      "-g",
+      "-package-name",
+      "mac_network_workbench",
+      "-driver-use-frontend-path",
+      "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc"
+    ]
+  },
+  "targetDependencyMap" : {
+    "CommandLibrary" : [
+      "NetworkCore"
+    ],
+    "DNSEngine" : [
+      "NetworkCore"
+    ],
+    "DNSEngineTests" : [
+      "DNSEngine",
+      "NetworkCore"
+    ],
+    "DiagnosticsEngine" : [
+      "HTTPInspector",
+      "TracerouteEngine",
+      "DNSEngine",
+      "PingEngine",
+      "NetworkCore"
+    ],
+    "DiagnosticsEngineTests" : [
+      "DiagnosticsEngine",
+      "HTTPInspector",
+      "TracerouteEngine",
+      "DNSEngine",
+      "PingEngine",
+      "NetworkCore"
+    ],
+    "HTTPInspector" : [
+      "NetworkCore"
+    ],
+    "InvestigationKit" : [
+      "PersistenceKit",
+      "DiagnosticsEngine",
+      "HTTPInspector",
+      "TracerouteEngine",
+      "DNSEngine",
+      "PingEngine",
+      "NetworkCore"
+    ],
+    "MacNetworkWorkbenchPackageTests" : [
+      "DNSEngineTests",
+      "DiagnosticsEngineTests",
+      "NetworkCoreTests",
+      "PersistenceKitTests",
+      "InvestigationKit",
+      "DiagnosticsEngine",
+      "HTTPInspector",
+      "TracerouteEngine",
+      "DNSEngine",
+      "PersistenceKit",
+      "PingEngineTests",
+      "PingEngine",
+      "NetworkCore"
+    ],
+    "NetworkCore" : [
+
+    ],
+    "NetworkCoreTests" : [
+      "NetworkCore"
+    ],
+    "NexWaveApp" : [
+      "CommandLibrary",
+      "SecurityKit",
+      "InvestigationKit",
+      "PersistenceKit",
+      "DiagnosticsEngine",
+      "HTTPInspector",
+      "TracerouteEngine",
+      "DNSEngine",
+      "PingEngine",
+      "NetworkCore"
+    ],
+    "PersistenceKit" : [
+      "NetworkCore"
+    ],
+    "PersistenceKitTests" : [
+      "InvestigationKit",
+      "DiagnosticsEngine",
+      "HTTPInspector",
+      "TracerouteEngine",
+      "DNSEngine",
+      "PingEngine",
+      "PersistenceKit",
+      "NetworkCore"
+    ],
+    "PingEngine" : [
+      "NetworkCore"
+    ],
+    "PingEngineTests" : [
+      "PingEngine",
+      "NetworkCore"
+    ],
+    "SecurityKit" : [
+
+    ],
+    "TracerouteEngine" : [
+      "PingEngine",
+      "NetworkCore"
+    ]
+  },
+  "testDiscoveryCommands" : {
+
+  },
+  "testEntryPointCommands" : {
+    "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/MacNetworkWorkbenchPackageTests.derived/runner.swift" : {
+      "inputs" : [
+
+      ],
+      "outputs" : [
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/MacNetworkWorkbenchPackageTests.derived/runner.swift"
+        }
+      ]
+    }
+  },
+  "traitConfiguration" : {
+    "default" : {
+
+    }
+  },
+  "writeCommands" : {
+    "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/CommandLibrary.build/sources" : {
+      "alwaysOutOfDate" : false,
+      "inputs" : [
+        {
+          "kind" : "virtual",
+          "name" : "<sources-file-list>"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Sources/CommandLibrary/CommandModels.swift"
+        }
+      ],
+      "outputFilePath" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/CommandLibrary.build/sources"
+    },
+    "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/DNSEngine.build/sources" : {
+      "alwaysOutOfDate" : false,
+      "inputs" : [
+        {
+          "kind" : "virtual",
+          "name" : "<sources-file-list>"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Sources/DNSEngine/DNSModels.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Sources/DNSEngine/DNSResolver.swift"
+        }
+      ],
+      "outputFilePath" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/DNSEngine.build/sources"
+    },
+    "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/DNSEngineTests.build/sources" : {
+      "alwaysOutOfDate" : false,
+      "inputs" : [
+        {
+          "kind" : "virtual",
+          "name" : "<sources-file-list>"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Tests/DNSEngineTests/DNSEngineTests.swift"
+        }
+      ],
+      "outputFilePath" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/DNSEngineTests.build/sources"
+    },
+    "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/DiagnosticsEngine.build/sources" : {
+      "alwaysOutOfDate" : false,
+      "inputs" : [
+        {
+          "kind" : "virtual",
+          "name" : "<sources-file-list>"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Sources/DiagnosticsEngine/CorrelationEngine.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Sources/DiagnosticsEngine/DiagnosticFinding.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Sources/DiagnosticsEngine/DiagnosticPipeline.swift"
+        }
+      ],
+      "outputFilePath" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/DiagnosticsEngine.build/sources"
+    },
+    "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/DiagnosticsEngineTests.build/sources" : {
+      "alwaysOutOfDate" : false,
+      "inputs" : [
+        {
+          "kind" : "virtual",
+          "name" : "<sources-file-list>"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Tests/DiagnosticsEngineTests/CorrelationEngineTests.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Tests/DiagnosticsEngineTests/PipelineIntegrationTests.swift"
+        }
+      ],
+      "outputFilePath" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/DiagnosticsEngineTests.build/sources"
+    },
+    "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/HTTPInspector.build/sources" : {
+      "alwaysOutOfDate" : false,
+      "inputs" : [
+        {
+          "kind" : "virtual",
+          "name" : "<sources-file-list>"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Sources/HTTPInspector/HTTPInspector.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Sources/HTTPInspector/HTTPInspectorModels.swift"
+        }
+      ],
+      "outputFilePath" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/HTTPInspector.build/sources"
+    },
+    "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/InvestigationKit.build/sources" : {
+      "alwaysOutOfDate" : false,
+      "inputs" : [
+        {
+          "kind" : "virtual",
+          "name" : "<sources-file-list>"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Sources/InvestigationKit/AuditReportExporter.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Sources/InvestigationKit/Investigation.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Sources/InvestigationKit/InvestigationManager.swift"
+        }
+      ],
+      "outputFilePath" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/InvestigationKit.build/sources"
+    },
+    "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/MacNetworkWorkbenchPackageTests.build/sources" : {
+      "alwaysOutOfDate" : false,
+      "inputs" : [
+        {
+          "kind" : "virtual",
+          "name" : "<sources-file-list>"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/MacNetworkWorkbenchPackageTests.derived/runner.swift"
+        }
+      ],
+      "outputFilePath" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/MacNetworkWorkbenchPackageTests.build/sources"
+    },
+    "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/MacNetworkWorkbenchPackageTests.product/Objects.LinkFileList" : {
+      "alwaysOutOfDate" : false,
+      "inputs" : [
+        {
+          "kind" : "virtual",
+          "name" : "<link-file-list>"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/DNSEngine.build/DNSModels.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/DNSEngine.build/DNSResolver.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/DNSEngineTests.build/DNSEngineTests.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/DiagnosticsEngine.build/CorrelationEngine.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/DiagnosticsEngine.build/DiagnosticFinding.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/DiagnosticsEngine.build/DiagnosticPipeline.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/DiagnosticsEngineTests.build/CorrelationEngineTests.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/DiagnosticsEngineTests.build/PipelineIntegrationTests.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/HTTPInspector.build/HTTPInspector.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/HTTPInspector.build/HTTPInspectorModels.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/InvestigationKit.build/AuditReportExporter.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/InvestigationKit.build/Investigation.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/InvestigationKit.build/InvestigationManager.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/MacNetworkWorkbenchPackageTests.build/runner.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/NetworkCore.build/IPAddress.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/NetworkCore.build/IPNetwork.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/NetworkCore.build/NetworkTarget.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/NetworkCore.build/Port.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/NetworkCore.build/TargetClassifier.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/NetworkCoreTests.build/NetworkCoreTests.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/PersistenceKit.build/Models.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/PersistenceKit.build/Repositories.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/PersistenceKit.build/SQLiteDatabase.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/PersistenceKitTests.build/PersistenceKitTests.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/PingEngine.build/LatencyStatistics.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/PingEngine.build/Probers.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/PingEngineTests.build/LatencyStatisticsTests.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/TracerouteEngine.build/HopRecord.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/TracerouteEngine.build/TracerouteRunner.swift.o"
+        }
+      ],
+      "outputFilePath" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/MacNetworkWorkbenchPackageTests.product/Objects.LinkFileList"
+    },
+    "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/NetworkCore.build/sources" : {
+      "alwaysOutOfDate" : false,
+      "inputs" : [
+        {
+          "kind" : "virtual",
+          "name" : "<sources-file-list>"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Sources/NetworkCore/IPAddress.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Sources/NetworkCore/IPNetwork.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Sources/NetworkCore/NetworkTarget.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Sources/NetworkCore/Port.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Sources/NetworkCore/TargetClassifier.swift"
+        }
+      ],
+      "outputFilePath" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/NetworkCore.build/sources"
+    },
+    "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/NetworkCoreTests.build/sources" : {
+      "alwaysOutOfDate" : false,
+      "inputs" : [
+        {
+          "kind" : "virtual",
+          "name" : "<sources-file-list>"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Tests/NetworkCoreTests/NetworkCoreTests.swift"
+        }
+      ],
+      "outputFilePath" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/NetworkCoreTests.build/sources"
+    },
+    "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/NexWaveApp-entitlement.plist" : {
+      "alwaysOutOfDate" : false,
+      "inputs" : [
+        {
+          "kind" : "virtual",
+          "name" : "<entitlement-plist>"
+        },
+        {
+          "kind" : "virtual",
+          "name" : "<com.apple.security.get-task-allow>"
+        }
+      ],
+      "outputFilePath" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/NexWaveApp-entitlement.plist"
+    },
+    "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/NexWaveApp.build/sources" : {
+      "alwaysOutOfDate" : false,
+      "inputs" : [
+        {
+          "kind" : "virtual",
+          "name" : "<sources-file-list>"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Sources/NexWaveApp/App.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Sources/NexWaveApp/AppState.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Sources/NexWaveApp/Views/CommandLibrary/CommandLibraryView.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Sources/NexWaveApp/Views/CommandPalette/CommandPaletteView.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Sources/NexWaveApp/Views/Diagnose/DiagnoseWorkspaceView.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Sources/NexWaveApp/Views/History/HistoryWorkspaceView.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Sources/NexWaveApp/Views/Home/HomeDashboardView.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Sources/NexWaveApp/Views/Investigations/InvestigationsWorkspaceView.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Sources/NexWaveApp/Views/Placeholders/ToolboxWorkspaces.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Sources/NexWaveApp/Views/Sidebar/AppSidebar.swift"
+        }
+      ],
+      "outputFilePath" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/NexWaveApp.build/sources"
+    },
+    "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/NexWaveApp.product/Objects.LinkFileList" : {
+      "alwaysOutOfDate" : false,
+      "inputs" : [
+        {
+          "kind" : "virtual",
+          "name" : "<link-file-list>"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/CommandLibrary.build/CommandModels.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/DNSEngine.build/DNSModels.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/DNSEngine.build/DNSResolver.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/DiagnosticsEngine.build/CorrelationEngine.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/DiagnosticsEngine.build/DiagnosticFinding.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/DiagnosticsEngine.build/DiagnosticPipeline.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/HTTPInspector.build/HTTPInspector.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/HTTPInspector.build/HTTPInspectorModels.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/InvestigationKit.build/AuditReportExporter.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/InvestigationKit.build/Investigation.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/InvestigationKit.build/InvestigationManager.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/NetworkCore.build/IPAddress.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/NetworkCore.build/IPNetwork.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/NetworkCore.build/NetworkTarget.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/NetworkCore.build/Port.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/NetworkCore.build/TargetClassifier.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/NexWaveApp.build/App.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/NexWaveApp.build/AppSidebar.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/NexWaveApp.build/AppState.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/NexWaveApp.build/CommandLibraryView.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/NexWaveApp.build/CommandPaletteView.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/NexWaveApp.build/DiagnoseWorkspaceView.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/NexWaveApp.build/HistoryWorkspaceView.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/NexWaveApp.build/HomeDashboardView.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/NexWaveApp.build/InvestigationsWorkspaceView.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/NexWaveApp.build/ToolboxWorkspaces.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/PersistenceKit.build/Models.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/PersistenceKit.build/Repositories.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/PersistenceKit.build/SQLiteDatabase.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/PingEngine.build/LatencyStatistics.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/PingEngine.build/Probers.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/SecurityKit.build/KeychainStorage.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/SecurityKit.build/SensitiveDataRedactor.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/TracerouteEngine.build/HopRecord.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/TracerouteEngine.build/TracerouteRunner.swift.o"
+        }
+      ],
+      "outputFilePath" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/NexWaveApp.product/Objects.LinkFileList"
+    },
+    "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/PersistenceKit.build/sources" : {
+      "alwaysOutOfDate" : false,
+      "inputs" : [
+        {
+          "kind" : "virtual",
+          "name" : "<sources-file-list>"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Sources/PersistenceKit/Models.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Sources/PersistenceKit/Repositories.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Sources/PersistenceKit/SQLiteDatabase.swift"
+        }
+      ],
+      "outputFilePath" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/PersistenceKit.build/sources"
+    },
+    "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/PersistenceKitTests.build/sources" : {
+      "alwaysOutOfDate" : false,
+      "inputs" : [
+        {
+          "kind" : "virtual",
+          "name" : "<sources-file-list>"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Tests/PersistenceKitTests/PersistenceKitTests.swift"
+        }
+      ],
+      "outputFilePath" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/PersistenceKitTests.build/sources"
+    },
+    "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/PingEngine.build/sources" : {
+      "alwaysOutOfDate" : false,
+      "inputs" : [
+        {
+          "kind" : "virtual",
+          "name" : "<sources-file-list>"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Sources/PingEngine/LatencyStatistics.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Sources/PingEngine/Probers.swift"
+        }
+      ],
+      "outputFilePath" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/PingEngine.build/sources"
+    },
+    "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/PingEngineTests.build/sources" : {
+      "alwaysOutOfDate" : false,
+      "inputs" : [
+        {
+          "kind" : "virtual",
+          "name" : "<sources-file-list>"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Tests/PingEngineTests/LatencyStatisticsTests.swift"
+        }
+      ],
+      "outputFilePath" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/PingEngineTests.build/sources"
+    },
+    "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/SecurityKit.build/sources" : {
+      "alwaysOutOfDate" : false,
+      "inputs" : [
+        {
+          "kind" : "virtual",
+          "name" : "<sources-file-list>"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Sources/SecurityKit/KeychainStorage.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Sources/SecurityKit/SensitiveDataRedactor.swift"
+        }
+      ],
+      "outputFilePath" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/SecurityKit.build/sources"
+    },
+    "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/TracerouteEngine.build/sources" : {
+      "alwaysOutOfDate" : false,
+      "inputs" : [
+        {
+          "kind" : "virtual",
+          "name" : "<sources-file-list>"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Sources/TracerouteEngine/HopRecord.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Sources/TracerouteEngine/TracerouteRunner.swift"
+        }
+      ],
+      "outputFilePath" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/TracerouteEngine.build/sources"
+    },
+    "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/swift-version--58304C5D6DBC2206.txt" : {
+      "alwaysOutOfDate" : true,
+      "inputs" : [
+        {
+          "kind" : "virtual",
+          "name" : "<swift-get-version>"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc"
+        }
+      ],
+      "outputFilePath" : "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/swift-version--58304C5D6DBC2206.txt"
+    }
+  }
+}

@@ -1,0 +1,40 @@
+{
+  "": {
+    "swift-dependencies": "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/NetworkCore.build/primary.swiftdeps"
+  },
+  "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Sources/NetworkCore/IPAddress.swift": {
+    "dependencies": "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/NetworkCore.build/IPAddress.d",
+    "object": "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/NetworkCore.build/IPAddress.swift.o",
+    "swiftmodule": "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/NetworkCore.build/IPAddress~partial.swiftmodule",
+    "swift-dependencies": "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/NetworkCore.build/IPAddress.swiftdeps",
+    "diagnostics": "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/NetworkCore.build/IPAddress.dia"
+  },
+  "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Sources/NetworkCore/IPNetwork.swift": {
+    "dependencies": "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/NetworkCore.build/IPNetwork.d",
+    "object": "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/NetworkCore.build/IPNetwork.swift.o",
+    "swiftmodule": "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/NetworkCore.build/IPNetwork~partial.swiftmodule",
+    "swift-dependencies": "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/NetworkCore.build/IPNetwork.swiftdeps",
+    "diagnostics": "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/NetworkCore.build/IPNetwork.dia"
+  },
+  "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Sources/NetworkCore/NetworkTarget.swift": {
+    "dependencies": "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/NetworkCore.build/NetworkTarget.d",
+    "object": "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/NetworkCore.build/NetworkTarget.swift.o",
+    "swiftmodule": "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/NetworkCore.build/NetworkTarget~partial.swiftmodule",
+    "swift-dependencies": "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/NetworkCore.build/NetworkTarget.swiftdeps",
+    "diagnostics": "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/NetworkCore.build/NetworkTarget.dia"
+  },
+  "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Sources/NetworkCore/Port.swift": {
+    "dependencies": "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/NetworkCore.build/Port.d",
+    "object": "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/NetworkCore.build/Port.swift.o",
+    "swiftmodule": "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/NetworkCore.build/Port~partial.swiftmodule",
+    "swift-dependencies": "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/NetworkCore.build/Port.swiftdeps",
+    "diagnostics": "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/NetworkCore.build/Port.dia"
+  },
+  "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Sources/NetworkCore/TargetClassifier.swift": {
+    "dependencies": "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/NetworkCore.build/TargetClassifier.d",
+    "object": "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/NetworkCore.build/TargetClassifier.swift.o",
+    "swiftmodule": "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/NetworkCore.build/TargetClassifier~partial.swiftmodule",
+    "swift-dependencies": "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/NetworkCore.build/TargetClassifier.swiftdeps",
+    "diagnostics": "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/NetworkCore.build/TargetClassifier.dia"
+  }
+}

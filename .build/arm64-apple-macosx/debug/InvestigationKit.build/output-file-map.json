@@ -1,0 +1,26 @@
+{
+  "": {
+    "swift-dependencies": "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/InvestigationKit.build/primary.swiftdeps"
+  },
+  "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Sources/InvestigationKit/AuditReportExporter.swift": {
+    "dependencies": "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/InvestigationKit.build/AuditReportExporter.d",
+    "object": "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/InvestigationKit.build/AuditReportExporter.swift.o",
+    "swiftmodule": "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/InvestigationKit.build/AuditReportExporter~partial.swiftmodule",
+    "swift-dependencies": "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/InvestigationKit.build/AuditReportExporter.swiftdeps",
+    "diagnostics": "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/InvestigationKit.build/AuditReportExporter.dia"
+  },
+  "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Sources/InvestigationKit/Investigation.swift": {
+    "dependencies": "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/InvestigationKit.build/Investigation.d",
+    "object": "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/InvestigationKit.build/Investigation.swift.o",
+    "swiftmodule": "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/InvestigationKit.build/Investigation~partial.swiftmodule",
+    "swift-dependencies": "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/InvestigationKit.build/Investigation.swiftdeps",
+    "diagnostics": "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/InvestigationKit.build/Investigation.dia"
+  },
+  "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Sources/InvestigationKit/InvestigationManager.swift": {
+    "dependencies": "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/InvestigationKit.build/InvestigationManager.d",
+    "object": "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/InvestigationKit.build/InvestigationManager.swift.o",
+    "swiftmodule": "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/InvestigationKit.build/InvestigationManager~partial.swiftmodule",
+    "swift-dependencies": "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/InvestigationKit.build/InvestigationManager.swiftdeps",
+    "diagnostics": "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/InvestigationKit.build/InvestigationManager.dia"
+  }
+}

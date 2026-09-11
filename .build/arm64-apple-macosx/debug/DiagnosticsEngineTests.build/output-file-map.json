@@ -1,0 +1,19 @@
+{
+  "": {
+    "swift-dependencies": "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/DiagnosticsEngineTests.build/primary.swiftdeps"
+  },
+  "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Tests/DiagnosticsEngineTests/CorrelationEngineTests.swift": {
+    "dependencies": "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/DiagnosticsEngineTests.build/CorrelationEngineTests.d",
+    "object": "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/DiagnosticsEngineTests.build/CorrelationEngineTests.swift.o",
+    "swiftmodule": "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/DiagnosticsEngineTests.build/CorrelationEngineTests~partial.swiftmodule",
+    "swift-dependencies": "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/DiagnosticsEngineTests.build/CorrelationEngineTests.swiftdeps",
+    "diagnostics": "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/DiagnosticsEngineTests.build/CorrelationEngineTests.dia"
+  },
+  "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/Tests/DiagnosticsEngineTests/PipelineIntegrationTests.swift": {
+    "dependencies": "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/DiagnosticsEngineTests.build/PipelineIntegrationTests.d",
+    "object": "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/DiagnosticsEngineTests.build/PipelineIntegrationTests.swift.o",
+    "swiftmodule": "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/DiagnosticsEngineTests.build/PipelineIntegrationTests~partial.swiftmodule",
+    "swift-dependencies": "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/DiagnosticsEngineTests.build/PipelineIntegrationTests.swiftdeps",
+    "diagnostics": "/Users/saeid/Desktop/NexWave Studio/Mac Network Workbench/.build/arm64-apple-macosx/debug/DiagnosticsEngineTests.build/PipelineIntegrationTests.dia"
+  }
+}
