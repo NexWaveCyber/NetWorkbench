@@ -48,7 +48,7 @@ public struct DiagnoseWorkspaceView: View {
                             }
                         }
                         .pickerStyle(.segmented)
-                        .frame(maxWidth: 480)
+                        .frame(maxWidth: 500)
 
                         switch selectedTab {
                         case .all:
@@ -97,9 +97,15 @@ public struct DiagnoseWorkspaceView: View {
     private var headerBar: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 12) {
-                Image(systemName: "stethoscope")
-                    .font(.system(size: 20))
-                    .foregroundStyle(Theme.cyanPulse)
+                ZStack {
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill(Theme.neonCyan.opacity(0.12))
+                        .frame(width: 32, height: 32)
+
+                    Image(systemName: "stethoscope")
+                        .font(.system(size: 16, weight: .bold))
+                        .foregroundStyle(Theme.neonCyan)
+                }
 
                 HStack(spacing: 8) {
                     TextField("Enter target host, IP, URL, or subnet...", text: $state.targetInput)
@@ -114,7 +120,7 @@ public struct DiagnoseWorkspaceView: View {
 
                     if let target = state.classifiedTarget {
                         Text(target.targetType.rawValue)
-                            .font(.system(size: 11, weight: .semibold))
+                            .font(Theme.monoText(10, weight: .bold))
                             .padding(.horizontal, 8)
                             .padding(.vertical, 3)
                             .background(Theme.azurePro.opacity(0.15))
@@ -126,7 +132,7 @@ public struct DiagnoseWorkspaceView: View {
                 .padding(.vertical, 8)
                 .background(Theme.cardBackground)
                 .clipShape(RoundedRectangle(cornerRadius: 8))
-                .overlay(RoundedRectangle(cornerRadius: 8).stroke(Theme.borderLight, lineWidth: 1))
+                .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Theme.borderLight, lineWidth: 1))
 
                 Button(action: triggerDiagnosis) {
                     HStack(spacing: 6) {
@@ -134,14 +140,18 @@ public struct DiagnoseWorkspaceView: View {
                             ProgressView().controlSize(.small)
                         } else {
                             Image(systemName: "play.fill")
+                                .font(.system(size: 11))
                         }
                         Text("Diagnose")
-                            .fontWeight(.medium)
+                            .fontWeight(.semibold)
                     }
                     .padding(.horizontal, 16)
                     .padding(.vertical, 8)
+                    .background(state.classifiedTarget == nil || state.isDiagnosing ? AnyShapeStyle(Color.gray.opacity(0.3)) : AnyShapeStyle(Theme.cyanGlowGradient))
+                    .foregroundStyle(state.classifiedTarget == nil || state.isDiagnosing ? Color.secondary : Color.black)
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
                 }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(.plain)
                 .disabled(state.classifiedTarget == nil || state.isDiagnosing)
             }
 
@@ -152,16 +162,19 @@ public struct DiagnoseWorkspaceView: View {
                     .foregroundStyle(.secondary)
 
                 ForEach(["google.com", "1.1.1.1", "api.github.com", "192.168.1.1"], id: \.self) { sample in
-                    Button(sample) {
+                    Button(action: {
                         state.updateTargetClassification(sample)
                         triggerDiagnosis()
+                    }) {
+                        Text(sample)
+                            .font(Theme.monoText(11))
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 3)
+                            .background(Color.primary.opacity(0.04))
+                            .clipShape(RoundedRectangle(cornerRadius: 4))
+                            .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(Theme.borderLight, lineWidth: 1))
                     }
                     .buttonStyle(.plain)
-                    .font(Theme.monoText(11))
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 3)
-                    .background(Color.primary.opacity(0.04))
-                    .clipShape(RoundedRectangle(cornerRadius: 4))
                 }
             }
         }
@@ -177,13 +190,23 @@ public struct DiagnoseWorkspaceView: View {
     // MARK: - Overall Status Banner
     private func overallStatusBanner(result: DiagnosticResult) -> some View {
         HStack(alignment: .top, spacing: 16) {
-            Circle()
-                .fill(statusColor(result.overallStatus))
-                .frame(width: 14, height: 14)
-                .padding(.top, 4)
+            ZStack {
+                Circle()
+                    .fill(statusColor(result.overallStatus).opacity(0.15))
+                    .frame(width: 44, height: 44)
+                    .overlay(
+                        Circle()
+                            .strokeBorder(statusColor(result.overallStatus), lineWidth: 2)
+                    )
+                    .shadow(color: statusColor(result.overallStatus).opacity(0.3), radius: 6)
 
-            VStack(alignment: .leading, spacing: 4) {
-                HStack {
+                Image(systemName: statusIcon(result.overallStatus))
+                    .font(.system(size: 18, weight: .bold))
+                    .foregroundStyle(statusColor(result.overallStatus))
+            }
+
+            VStack(alignment: .leading, spacing: 5) {
+                HStack(alignment: .center) {
                     Text(result.overallStatus.rawValue)
                         .font(.system(size: 18, weight: .bold))
                         .foregroundStyle(statusColor(result.overallStatus))
@@ -205,18 +228,37 @@ public struct DiagnoseWorkspaceView: View {
                             copiedReport = false
                         }
                     }) {
-                        Label(copiedReport ? "Copied!" : "Copy Report", systemImage: copiedReport ? "checkmark" : "doc.on.doc")
-                            .font(.system(size: 12))
+                        HStack(spacing: 5) {
+                            Image(systemName: copiedReport ? "checkmark" : "doc.on.doc")
+                                .font(.system(size: 11))
+                            Text(copiedReport ? "Report Copied!" : "Export Report")
+                                .font(.system(size: 11, weight: .medium))
+                        }
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 5)
+                        .background(Color.primary.opacity(0.05))
+                        .clipShape(RoundedRectangle(cornerRadius: 6))
+                        .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(Theme.borderLight, lineWidth: 1))
                     }
-                    .buttonStyle(.bordered)
+                    .buttonStyle(.plain)
 
                     Button(action: {
                         state.createInvestigationFromLatestResult()
                     }) {
-                        Label("Create Investigation", systemImage: "plus.circle.fill")
-                            .font(.system(size: 12))
+                        HStack(spacing: 5) {
+                            Image(systemName: "plus.circle.fill")
+                                .font(.system(size: 11))
+                            Text("Create Investigation")
+                                .font(.system(size: 11, weight: .semibold))
+                        }
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 5)
+                        .background(Theme.cyanGlowGradient)
+                        .foregroundStyle(.black)
+                        .clipShape(RoundedRectangle(cornerRadius: 6))
+                        .shadow(color: Theme.neonCyan.opacity(0.25), radius: 4)
                     }
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(.plain)
                 }
 
                 Text(result.overallSummary)
@@ -224,36 +266,50 @@ public struct DiagnoseWorkspaceView: View {
                     .foregroundStyle(.secondary)
             }
         }
-        .engineeringCard()
+        .engineeringCard(padding: 16)
     }
 
     // MARK: - Findings Section
     private func findingsSection(result: DiagnosticResult) -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("ANALYTICAL FINDINGS")
-                .font(.system(size: 10, weight: .bold, design: .monospaced))
-                .foregroundStyle(.secondary)
+            HStack {
+                Text("DETERMINISTIC ANALYTICAL FINDINGS")
+                    .font(.system(size: 10, weight: .bold, design: .monospaced))
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Text("\(result.findings.count) Findings Identified")
+                    .font(Theme.monoText(10, weight: .semibold))
+                    .foregroundStyle(.tertiary)
+            }
 
-            VStack(spacing: 8) {
+            VStack(spacing: 10) {
                 ForEach(result.findings) { finding in
-                    HStack(alignment: .top, spacing: 12) {
+                    HStack(alignment: .top, spacing: 14) {
                         Text(finding.classification.rawValue.uppercased())
                             .font(.system(size: 9, weight: .bold, design: .monospaced))
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 3)
-                            .background(classificationColor(finding.classification).opacity(0.15))
+                            .padding(.horizontal, 7)
+                            .padding(.vertical, 4)
+                            .background(classificationColor(finding.classification).opacity(0.14))
                             .foregroundStyle(classificationColor(finding.classification))
-                            .clipShape(RoundedRectangle(cornerRadius: 4))
+                            .clipShape(RoundedRectangle(cornerRadius: 5))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 5)
+                                    .strokeBorder(classificationColor(finding.classification).opacity(0.3), lineWidth: 0.75)
+                            )
 
                         VStack(alignment: .leading, spacing: 4) {
                             HStack {
                                 Text(finding.title)
-                                    .font(.system(size: 13, weight: .semibold))
+                                    .font(.system(size: 13, weight: .bold))
 
                                 Spacer()
 
                                 Text(finding.faultDomain)
-                                    .font(.system(size: 11))
+                                    .font(Theme.monoText(10, weight: .semibold))
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 2)
+                                    .background(Color.primary.opacity(0.04))
+                                    .clipShape(Capsule())
                                     .foregroundStyle(.secondary)
 
                                 Text("•").foregroundStyle(.secondary)
@@ -272,13 +328,13 @@ public struct DiagnoseWorkspaceView: View {
 
                             Text(finding.statement)
                                 .font(.system(size: 12))
-                                .foregroundStyle(Color.primary.opacity(0.9))
+                                .foregroundStyle(Color.primary.opacity(0.88))
                         }
                     }
                     .padding(12)
                     .background(Theme.cardBackground)
                     .clipShape(RoundedRectangle(cornerRadius: 8))
-                    .overlay(RoundedRectangle(cornerRadius: 8).stroke(Theme.borderLight, lineWidth: 1))
+                    .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Theme.borderLight, lineWidth: 1))
                 }
             }
         }
@@ -287,13 +343,13 @@ public struct DiagnoseWorkspaceView: View {
     // MARK: - Multi-Layer Grid
     private func multiLayerObservationsGrid(result: DiagnosticResult) -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("MULTI-LAYER OBSERVATIONS")
+            Text("MULTI-LAYER TELEMETRY OBSERVATIONS")
                 .font(.system(size: 10, weight: .bold, design: .monospaced))
                 .foregroundStyle(.secondary)
 
             LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 14) {
                 // Layer 1: DNS
-                observationCard(title: "DNS Resolution", icon: "arrow.triangle.branch") {
+                observationCard(title: "Layer 7: DNS Resolution", icon: "arrow.triangle.branch", tint: Theme.azurePro) {
                     if let dns = result.dns {
                         VStack(alignment: .leading, spacing: 6) {
                             metricRow(label: "Status", value: dns.isHealthy ? "Healthy" : "Failed", isSuccess: dns.isHealthy)
@@ -307,7 +363,7 @@ public struct DiagnoseWorkspaceView: View {
                 }
 
                 // Layer 2: Transport & Latency
-                observationCard(title: "Transport & Latency", icon: "waveform.path.ecg") {
+                observationCard(title: "Layer 4: Transport & Latency", icon: "waveform.path.ecg", tint: Theme.neonCyan) {
                     if let lat = result.latency {
                         VStack(alignment: .leading, spacing: 6) {
                             metricRow(label: "Median RTT", value: String(format: "%.1f ms", lat.medianMs))
@@ -321,7 +377,7 @@ public struct DiagnoseWorkspaceView: View {
                 }
 
                 // Layer 3: Path Traversal
-                observationCard(title: "Path Traversal", icon: "point.topleft.down.to.point.bottomright.curvepath") {
+                observationCard(title: "Layer 3: Path Routing", icon: "point.topleft.down.to.point.bottomright.curvepath", tint: Theme.solarAmber) {
                     if let path = result.path {
                         VStack(alignment: .leading, spacing: 6) {
                             metricRow(label: "Total Hops", value: "\(path.totalHops)")
@@ -338,7 +394,7 @@ public struct DiagnoseWorkspaceView: View {
                 }
 
                 // Layer 4: TLS & Application
-                observationCard(title: "Application & TLS", icon: "lock.shield") {
+                observationCard(title: "Layer 7: TLS & Application", icon: "lock.shield", tint: Theme.quantumViolet) {
                     if let http = result.http {
                         VStack(alignment: .leading, spacing: 6) {
                             metricRow(label: "HTTP Status", value: "\(http.statusCode)", isSuccess: (200...399).contains(http.statusCode))
@@ -355,13 +411,13 @@ public struct DiagnoseWorkspaceView: View {
         }
     }
 
-    private func observationCard<Content: View>(title: String, icon: String, @ViewBuilder content: () -> Content) -> some View {
+    private func observationCard<Content: View>(title: String, icon: String, tint: Color, @ViewBuilder content: () -> Content) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 8) {
                 Image(systemName: icon)
-                    .foregroundStyle(Theme.azurePro)
+                    .foregroundStyle(tint)
                 Text(title)
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.system(size: 13, weight: .bold))
             }
             Divider()
             content()
@@ -376,8 +432,8 @@ public struct DiagnoseWorkspaceView: View {
                 .foregroundStyle(.secondary)
             Spacer()
             Text(value)
-                .font(Theme.monoText(12, weight: .medium))
-                .foregroundStyle(isSuccess == nil ? Color.primary : (isSuccess! ? Theme.emeraldHealthy : Theme.crimsonCritical))
+                .font(Theme.monoText(12, weight: .semibold))
+                .foregroundStyle(isSuccess == nil ? Color.primary : (isSuccess! ? Theme.signalEmerald : Theme.pulseCrimson))
         }
     }
 
@@ -406,9 +462,9 @@ public struct DiagnoseWorkspaceView: View {
                     if let rtt = hop.rttMs {
                         Text(String(format: "%.1f ms", rtt))
                             .font(Theme.monoText(12))
-                            .foregroundStyle(hop.hopNumber == path.latencyJumpHop ? Theme.amberWarning : Theme.cyanPulse)
+                            .foregroundStyle(hop.hopNumber == path.latencyJumpHop ? Theme.solarAmber : Theme.neonCyan)
                     } else {
-                        Text("Timeout").font(.system(size: 11)).foregroundStyle(Theme.crimsonCritical)
+                        Text("Timeout").font(.system(size: 11)).foregroundStyle(Theme.pulseCrimson)
                     }
                 }
                 .width(120)
@@ -417,9 +473,9 @@ public struct DiagnoseWorkspaceView: View {
                     if hop.isTimeout {
                         Text("Filtered / No ICMP").font(.system(size: 11)).foregroundStyle(.secondary)
                     } else if hop.hopNumber == path.latencyJumpHop {
-                        Text("Latency Spike Detected").font(.system(size: 11, weight: .semibold)).foregroundStyle(Theme.amberWarning)
+                        Text("Latency Spike Detected").font(.system(size: 11, weight: .semibold)).foregroundStyle(Theme.solarAmber)
                     } else {
-                        Text("Responded").font(.system(size: 11)).foregroundStyle(Theme.emeraldHealthy)
+                        Text("Responded").font(.system(size: 11)).foregroundStyle(Theme.signalEmerald)
                     }
                 }
             }
@@ -447,7 +503,7 @@ public struct DiagnoseWorkspaceView: View {
                             .font(.system(size: 10, weight: .bold, design: .monospaced))
                             .padding(.horizontal, 6)
                             .padding(.vertical, 2)
-                            .background(Theme.azurePro.opacity(0.12))
+                            .background(Theme.azurePro.opacity(0.15))
                             .foregroundStyle(Theme.azurePro)
                             .clipShape(Capsule())
                     }
@@ -479,7 +535,7 @@ public struct DiagnoseWorkspaceView: View {
                     .foregroundStyle(.secondary)
 
                 LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
-                    paramCell(label: "HTTP Status", val: "\(http.statusCode)", color: (200...399).contains(http.statusCode) ? Theme.emeraldHealthy : Theme.crimsonCritical)
+                    paramCell(label: "HTTP Status", val: "\(http.statusCode)", color: (200...399).contains(http.statusCode) ? Theme.signalEmerald : Theme.pulseCrimson)
                     paramCell(label: "Protocol Version", val: http.httpVersion ?? "HTTP/1.1")
                     paramCell(label: "Total Duration", val: String(format: "%.1f ms", http.totalTimeMs))
                     paramCell(label: "DNS Stage", val: http.dnsTimeMs != nil ? String(format: "%.1f ms", http.dnsTimeMs!) : "Cached")
@@ -497,7 +553,7 @@ public struct DiagnoseWorkspaceView: View {
                             .font(Theme.monoText(12))
                         Text("Expires on: \(cert.expirationDate?.formatted() ?? "Unknown") (\(cert.daysUntilExpiry ?? 0) days remaining)")
                             .font(.system(size: 11))
-                            .foregroundStyle(cert.isExpired ? Theme.crimsonCritical : Theme.emeraldHealthy)
+                            .foregroundStyle(cert.isExpired ? Theme.pulseCrimson : Theme.signalEmerald)
                     }
                 }
             }
@@ -518,64 +574,97 @@ public struct DiagnoseWorkspaceView: View {
 
     // MARK: - Progress & Empty States
     private var progressView: some View {
-        VStack(spacing: 16) {
-            ProgressView(value: state.currentProgress?.percentage ?? 0.0)
-                .progressViewStyle(.linear)
-                .frame(width: 320)
+        VStack(spacing: 20) {
+            ZStack {
+                Circle()
+                    .fill(Theme.neonCyan.opacity(0.1))
+                    .frame(width: 80, height: 80)
+                    .overlay(
+                        Circle()
+                            .stroke(Theme.neonCyan.opacity(0.3), lineWidth: 2)
+                            .scaleEffect(1.3)
+                    )
 
-            VStack(spacing: 6) {
-                Text(state.currentProgress?.stage.rawValue ?? "Diagnosing...")
-                    .font(.system(size: 15, weight: .semibold))
+                Image(systemName: "radar")
+                    .font(.system(size: 32))
+                    .foregroundStyle(Theme.neonCyan)
+            }
 
-                Text(state.currentProgress?.message ?? "")
-                    .font(.system(size: 12))
+            VStack(spacing: 8) {
+                Text(state.currentProgress?.stage.rawValue ?? "Diagnosing Target...")
+                    .font(.system(size: 17, weight: .bold))
+
+                Text(state.currentProgress?.message ?? "Running multi-layer deterministic diagnostics...")
+                    .font(.system(size: 13))
                     .foregroundStyle(.secondary)
             }
+
+            ProgressView(value: state.currentProgress?.percentage ?? 0.0)
+                .progressViewStyle(.linear)
+                .tint(Theme.neonCyan)
+                .frame(width: 320)
         }
     }
 
     private var emptyStateView: some View {
-        VStack(spacing: 14) {
-            Image(systemName: "network.badge.shield.half.filled")
-                .font(.system(size: 48))
-                .foregroundStyle(Theme.cyanPulse)
+        VStack(spacing: 16) {
+            ZStack {
+                Circle()
+                    .fill(Theme.neonCyan.opacity(0.08))
+                    .frame(width: 88, height: 88)
 
-            Text("Global Diagnose Engine")
-                .font(.system(size: 18, weight: .bold))
+                Image(systemName: "network.badge.shield.half.filled")
+                    .font(.system(size: 42))
+                    .foregroundStyle(Theme.neonCyan)
+            }
 
-            Text("Enter a target hostname, IP address, URL, or subnet above to initiate a comprehensive multi-layer diagnosis.")
-                .font(.system(size: 13))
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-                .frame(maxWidth: 400)
+            VStack(spacing: 6) {
+                Text("Global Diagnostic Engine")
+                    .font(.system(size: 20, weight: .bold))
+
+                Text("Enter a target hostname, IP address, URL, or subnet above to initiate a comprehensive multi-layer diagnosis.")
+                    .font(.system(size: 13))
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: 420)
+            }
         }
     }
 
     private func statusColor(_ status: OverallHealthStatus) -> Color {
         switch status {
-        case .healthy: return Theme.emeraldHealthy
-        case .degraded: return Theme.amberWarning
-        case .critical: return Theme.crimsonCritical
-        case .unreachable: return Theme.crimsonCritical
+        case .healthy: return Theme.signalEmerald
+        case .degraded: return Theme.solarAmber
+        case .critical: return Theme.pulseCrimson
+        case .unreachable: return Theme.pulseCrimson
+        }
+    }
+
+    private func statusIcon(_ status: OverallHealthStatus) -> String {
+        switch status {
+        case .healthy: return "checkmark.shield.fill"
+        case .degraded: return "exclamationmark.shield.fill"
+        case .critical: return "xmark.shield.fill"
+        case .unreachable: return "slash.circle.fill"
         }
     }
 
     private func classificationColor(_ c: FindingClassification) -> Color {
         switch c {
-        case .observed: return Theme.azurePro
-        case .derived: return Theme.amberWarning
-        case .inferred: return Theme.purpleInferred
+        case .observed: return Theme.electricAzure
+        case .derived: return Theme.solarAmber
+        case .inferred: return Theme.quantumViolet
         }
     }
 
     private func confidenceDotColor(idx: Int, conf: ConfidenceLevel) -> Color {
         switch conf {
         case .high:
-            return Theme.emeraldHealthy
+            return Theme.signalEmerald
         case .medium:
-            return idx < 2 ? Theme.amberWarning : Color.primary.opacity(0.15)
+            return idx < 2 ? Theme.solarAmber : Color.primary.opacity(0.15)
         case .low:
-            return idx == 0 ? Theme.crimsonCritical : Color.primary.opacity(0.15)
+            return idx == 0 ? Theme.pulseCrimson : Color.primary.opacity(0.15)
         }
     }
 }

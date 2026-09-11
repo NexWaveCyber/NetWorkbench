@@ -38,23 +38,45 @@ struct NexWaveApp: App {
                 NetworkInspectorView(result: state.latestResult)
             }
             .toolbar {
+                ToolbarItem(placement: .navigation) {
+                    HStack(spacing: 6) {
+                        Circle()
+                            .fill(Theme.signalEmerald)
+                            .frame(width: 6, height: 6)
+                        Text("en0 • 192.168.1.142")
+                            .font(Theme.monoText(11, weight: .semibold))
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(Color.primary.opacity(0.04))
+                    .clipShape(Capsule())
+                    .help("Active Interface: en0 (Wi-Fi / Ethernet)")
+                }
+
                 ToolbarItemGroup(placement: .automatic) {
                     Button(action: { state.showCommandPalette = true }) {
-                        HStack(spacing: 5) {
+                        HStack(spacing: 6) {
                             Image(systemName: "magnifyingglass")
+                                .font(.system(size: 11))
                             Text("Command Palette")
+                                .font(.system(size: 12))
                             Text("⌘K")
-                                .font(.system(size: 10, weight: .bold, design: .monospaced))
-                                .padding(.horizontal, 4)
+                                .font(Theme.monoText(10, weight: .bold))
+                                .padding(.horizontal, 5)
                                 .padding(.vertical, 1)
                                 .background(Color.primary.opacity(0.08))
-                                .clipShape(RoundedRectangle(cornerRadius: 3))
+                                .clipShape(RoundedRectangle(cornerRadius: 4))
                         }
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
                     }
+                    .buttonStyle(.plain)
                     .help("Open Command Palette (Cmd+K)")
 
                     Button(action: { showInspector.toggle() }) {
-                        Image(systemName: "sidebar.right")
+                        Image(systemName: showInspector ? "sidebar.right" : "sidebar.right")
+                            .foregroundStyle(showInspector ? Theme.azurePro : Color.primary)
                     }
                     .help("Toggle Network Inspector (Cmd+I)")
                 }

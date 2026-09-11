@@ -15,15 +15,21 @@ public struct DNSStudioView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
                 // Header Query Card
-                VStack(alignment: .leading, spacing: 12) {
-                    Text("DNS STUDIO & RESOLVER MATRIX")
-                        .font(.system(size: 11, weight: .bold))
-                        .foregroundStyle(Theme.cyanPulse)
+                VStack(alignment: .leading, spacing: 14) {
+                    HStack {
+                        Text("DNS STUDIO & RESOLVER MATRIX")
+                            .font(.system(size: 11, weight: .bold, design: .monospaced))
+                            .foregroundStyle(Theme.neonCyan)
+                        Spacer()
+                        Text("RFC 1035 / Do53 / Anycast Benchmarking")
+                            .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                            .foregroundStyle(.tertiary)
+                    }
 
                     HStack(spacing: 12) {
                         Image(systemName: "arrow.triangle.branch")
                             .font(.system(size: 20))
-                            .foregroundStyle(Theme.azurePro)
+                            .foregroundStyle(Theme.neonCyan)
 
                         TextField("Enter domain name to resolve (e.g. apple.com, cloudflare.com)...", text: $queryHost)
                             .textFieldStyle(.plain)
@@ -37,28 +43,35 @@ public struct DNSStudioView: View {
                                 if isQuerying {
                                     ProgressView().controlSize(.small)
                                 } else {
-                                    Image(systemName: "magnifyingglass")
+                                    Image(systemName: "bolt.fill")
+                                        .font(.system(size: 11))
                                 }
                                 Text("Compare Resolvers")
-                                    .fontWeight(.medium)
+                                    .fontWeight(.semibold)
                             }
-                            .padding(.horizontal, 14)
-                            .padding(.vertical, 8)
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 9)
+                            .background(queryHost.trimmingCharacters(in: .whitespaces).isEmpty || isQuerying ? AnyShapeStyle(Color.gray.opacity(0.3)) : AnyShapeStyle(Theme.cyanGlowGradient))
+                            .foregroundStyle(queryHost.trimmingCharacters(in: .whitespaces).isEmpty || isQuerying ? Color.secondary : Color.black)
+                            .clipShape(RoundedRectangle(cornerRadius: 8))
                         }
-                        .buttonStyle(.borderedProminent)
+                        .buttonStyle(.plain)
                         .disabled(queryHost.trimmingCharacters(in: .whitespaces).isEmpty || isQuerying)
                     }
                     .padding(12)
                     .background(Theme.cardBackground)
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
-                    .overlay(RoundedRectangle(cornerRadius: 8).stroke(Theme.borderLight, lineWidth: 1))
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                    .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Theme.cyanPulse.opacity(0.3), lineWidth: 1))
                 }
-                .engineeringCard()
+                .engineeringCard(padding: 16)
 
                 // Resolver Comparison Grid
                 if !results.isEmpty {
+                    // Latency Race Visualizer
+                    latencyRaceCard
+
                     VStack(alignment: .leading, spacing: 12) {
-                        Text("MULTI-RESOLVER LATENCY & RECORD MATRIX")
+                        Text("DETAILED RESOLVER RECORD RESPONSES")
                             .font(.system(size: 10, weight: .bold, design: .monospaced))
                             .foregroundStyle(.secondary)
 
@@ -69,15 +82,25 @@ public struct DNSStudioView: View {
                         }
                     }
                 } else if !isQuerying {
-                    VStack(spacing: 10) {
-                        Image(systemName: "network")
-                            .font(.system(size: 32))
-                            .foregroundStyle(.secondary)
-                        Text("Click 'Compare Resolvers' to benchmark resolution latency across Cloudflare, Google, Quad9, and macOS System DNS.")
+                    VStack(spacing: 12) {
+                        ZStack {
+                            Circle()
+                                .fill(Theme.neonCyan.opacity(0.08))
+                                .frame(width: 64, height: 64)
+
+                            Image(systemName: "network")
+                                .font(.system(size: 28))
+                                .foregroundStyle(Theme.neonCyan)
+                        }
+
+                        Text("Resolver Latency & Record Matrix")
+                            .font(.system(size: 16, weight: .bold))
+
+                        Text("Benchmark resolution timing across Cloudflare (1.1.1.1), Google (8.8.8.8), Quad9 (9.9.9.9), and macOS System DNS.")
                             .font(.system(size: 12))
                             .foregroundStyle(.secondary)
                             .multilineTextAlignment(.center)
-                            .frame(maxWidth: 420)
+                            .frame(maxWidth: 440)
                     }
                     .frame(maxWidth: .infinity, minHeight: 180)
                     .engineeringCard()
@@ -92,6 +115,66 @@ public struct DNSStudioView: View {
                 runDNSMatrix()
             }
         }
+    }
+
+    private var latencyRaceCard: some View {
+        let sorted = results.sorted(by: { $0.queryTimeMs < $1.queryTimeMs })
+        let fastestTime = sorted.first?.queryTimeMs ?? 1.0
+        let maxTime = max(sorted.last?.queryTimeMs ?? 100.0, 1.0)
+
+        return VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("RESOLVER LATENCY BENCHMARK RACE")
+                    .font(.system(size: 10, weight: .bold, design: .monospaced))
+                    .foregroundStyle(.secondary)
+                Spacer()
+                if let fastest = sorted.first, fastest.isHealthy {
+                    HStack(spacing: 4) {
+                        Image(systemName: "crown.fill")
+                            .font(.system(size: 10))
+                        Text("Fastest: \(fastest.resolverName) (\(String(format: "%.1f ms", fastest.queryTimeMs)))")
+                            .font(Theme.monoText(10, weight: .bold))
+                    }
+                    .foregroundStyle(Theme.signalEmerald)
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 2)
+                    .background(Theme.signalEmerald.opacity(0.12))
+                    .clipShape(Capsule())
+                }
+            }
+
+            VStack(spacing: 8) {
+                ForEach(sorted, id: \.resolverName) { res in
+                    HStack(spacing: 12) {
+                        Text(res.resolverName)
+                            .font(Theme.monoText(12, weight: .bold))
+                            .frame(width: 130, alignment: .leading)
+
+                        GeometryReader { geo in
+                            let fraction = CGFloat(min(res.queryTimeMs / maxTime, 1.0))
+                            let isWinner = res.resolverName == sorted.first?.resolverName
+
+                            ZStack(alignment: .leading) {
+                                RoundedRectangle(cornerRadius: 3)
+                                    .fill(Color.primary.opacity(0.06))
+                                    .frame(width: geo.size.width)
+
+                                RoundedRectangle(cornerRadius: 3)
+                                    .fill(isWinner ? Theme.emeraldGlowGradient : (res.isHealthy ? Theme.cyanGlowGradient : Theme.crimsonGlowGradient))
+                                    .frame(width: max(8, geo.size.width * fraction))
+                            }
+                        }
+                        .frame(height: 12)
+
+                        Text(res.isHealthy ? String(format: "%.1f ms", res.queryTimeMs) : "Failed")
+                            .font(Theme.monoText(11, weight: .bold))
+                            .foregroundStyle(res.isHealthy ? (res.queryTimeMs == fastestTime ? Theme.signalEmerald : Color.primary) : Theme.pulseCrimson)
+                            .frame(width: 60, alignment: .trailing)
+                    }
+                }
+            }
+        }
+        .engineeringCard(padding: 14)
     }
 
     private func runDNSMatrix() {
@@ -122,7 +205,7 @@ public struct DNSStudioView: View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
                 Circle()
-                    .fill(res.isHealthy ? Theme.emeraldHealthy : Theme.crimsonCritical)
+                    .fill(res.isHealthy ? Theme.signalEmerald : Theme.pulseCrimson)
                     .frame(width: 8, height: 8)
 
                 Text(res.resolverName)
@@ -132,11 +215,11 @@ public struct DNSStudioView: View {
 
                 Text(String(format: "%.1f ms", res.queryTimeMs))
                     .font(Theme.monoText(12, weight: .bold))
-                    .foregroundStyle(res.queryTimeMs < 30 ? Theme.emeraldHealthy : (res.queryTimeMs < 80 ? Theme.cyanPulse : Theme.amberWarning))
-                    .padding(.horizontal, 6)
+                    .foregroundStyle(res.queryTimeMs < 30 ? Theme.signalEmerald : (res.queryTimeMs < 80 ? Theme.neonCyan : Theme.solarAmber))
+                    .padding(.horizontal, 7)
                     .padding(.vertical, 2)
                     .background(Color.primary.opacity(0.04))
-                    .clipShape(RoundedRectangle(cornerRadius: 4))
+                    .clipShape(RoundedRectangle(cornerRadius: 5))
             }
 
             Divider()
@@ -147,11 +230,11 @@ public struct DNSStudioView: View {
                         HStack {
                             Text(rec.type.rawValue)
                                 .font(.system(size: 10, weight: .bold, design: .monospaced))
-                                .padding(.horizontal, 5)
-                                .padding(.vertical, 1)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
                                 .background(Theme.azurePro.opacity(0.12))
                                 .foregroundStyle(Theme.azurePro)
-                                .clipShape(RoundedRectangle(cornerRadius: 3))
+                                .clipShape(RoundedRectangle(cornerRadius: 4))
 
                             Text(rec.value)
                                 .font(Theme.monoText(12))
@@ -160,7 +243,7 @@ public struct DNSStudioView: View {
                             Spacer()
 
                             Text("\(rec.ttl)s")
-                                .font(.system(size: 10))
+                                .font(Theme.monoText(10))
                                 .foregroundStyle(.secondary)
                         }
                     }
@@ -168,9 +251,9 @@ public struct DNSStudioView: View {
             } else {
                 Text(res.errorMessage ?? "Resolution failed")
                     .font(.system(size: 12))
-                    .foregroundStyle(Theme.crimsonCritical)
+                    .foregroundStyle(Theme.pulseCrimson)
             }
         }
-        .engineeringCard()
+        .engineeringCard(padding: 14)
     }
 }

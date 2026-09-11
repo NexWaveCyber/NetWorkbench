@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Sleek real-time latency sparkline chart with guide lines and gradient fill.
+/// Sleek real-time latency sparkline chart with guide lines, glowing stroke, and gradient fill.
 public struct LatencySparklineView: View {
     let samples: [Double]
     let minMs: Double
@@ -15,23 +15,29 @@ public struct LatencySparklineView: View {
     }
 
     public var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 10) {
             HStack {
-                HStack(spacing: 6) {
+                HStack(spacing: 7) {
                     Circle()
-                        .fill(Theme.cyanPulse)
+                        .fill(Theme.neonCyan)
                         .frame(width: 7, height: 7)
-                    Text("RTT LATENCY PROFILE")
+                        .overlay(
+                            Circle()
+                                .stroke(Theme.neonCyan.opacity(0.4), lineWidth: 2)
+                                .scaleEffect(1.6)
+                        )
+
+                    Text("ROUND-TRIP TIME (RTT) PROFILE")
                         .font(.system(size: 10, weight: .bold, design: .monospaced))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Theme.neonCyan)
                 }
 
                 Spacer()
 
-                HStack(spacing: 12) {
-                    metricBadge(label: "MIN", val: String(format: "%.1f ms", minMs), color: Theme.emeraldHealthy)
-                    metricBadge(label: "MED", val: String(format: "%.1f ms", medianMs), color: Theme.cyanPulse)
-                    metricBadge(label: "MAX", val: String(format: "%.1f ms", maxMs), color: Theme.amberWarning)
+                HStack(spacing: 10) {
+                    metricBadge(label: "MIN", val: String(format: "%.1f ms", minMs), color: Theme.signalEmerald)
+                    metricBadge(label: "MED", val: String(format: "%.1f ms", medianMs), color: Theme.neonCyan)
+                    metricBadge(label: "MAX", val: String(format: "%.1f ms", maxMs), color: Theme.solarAmber)
                 }
             }
 
@@ -44,19 +50,31 @@ public struct LatencySparklineView: View {
                     let points = samples.indices.map { i -> CGPoint in
                         let x = CGFloat(i) / CGFloat(samples.count - 1) * w
                         let norm = CGFloat(samples[i] / effectiveMax)
-                        let y = h - (norm * (h - 10)) - 5
+                        let y = h - (norm * (h - 14)) - 7
                         return CGPoint(x: x, y: y)
                     }
 
                     ZStack {
-                        // Median Guide line
-                        let medY = h - (CGFloat(medianMs / effectiveMax) * (h - 10)) - 5
+                        // Background Subtle Grid Lines
+                        Path { p in
+                            let step = h / 3
+                            for i in 1...2 {
+                                let y = step * CGFloat(i)
+                                p.move(to: CGPoint(x: 0, y: y))
+                                p.addLine(to: CGPoint(x: w, y: y))
+                            }
+                        }
+                        .stroke(style: StrokeStyle(lineWidth: 0.5, dash: [4, 6]))
+                        .foregroundStyle(Color.primary.opacity(0.06))
+
+                        // Median Reference Line
+                        let medY = h - (CGFloat(medianMs / effectiveMax) * (h - 14)) - 7
                         Path { p in
                             p.move(to: CGPoint(x: 0, y: medY))
                             p.addLine(to: CGPoint(x: w, y: medY))
                         }
-                        .stroke(style: StrokeStyle(lineWidth: 1, dash: [4, 4]))
-                        .foregroundStyle(Color.primary.opacity(0.15))
+                        .stroke(style: StrokeStyle(lineWidth: 1, dash: [3, 4]))
+                        .foregroundStyle(Theme.neonCyan.opacity(0.35))
 
                         // Gradient Area Fill
                         Path { p in
@@ -70,56 +88,102 @@ public struct LatencySparklineView: View {
                         }
                         .fill(
                             LinearGradient(
-                                colors: [Theme.cyanPulse.opacity(0.25), Theme.cyanPulse.opacity(0.01)],
+                                colors: [
+                                    Theme.neonCyan.opacity(0.28),
+                                    Theme.azurePro.opacity(0.08),
+                                    Color.clear
+                                ],
                                 startPoint: .top,
                                 endPoint: .bottom
                             )
                         )
 
-                        // Sparkline Stroke
+                        // Outer Glow Stroke
                         Path { p in
                             p.move(to: points[0])
                             for pt in points.dropFirst() {
                                 p.addLine(to: pt)
                             }
                         }
-                        .stroke(Theme.cyanPulse, style: StrokeStyle(lineWidth: 2, lineCap: .round, lineJoin: .round))
+                        .stroke(Theme.neonCyan.opacity(0.4), style: StrokeStyle(lineWidth: 5, lineCap: .round, lineJoin: .round))
+                        .blur(radius: 3)
 
-                        // Active Sample Points
+                        // Core Sharp Line
+                        Path { p in
+                            p.move(to: points[0])
+                            for pt in points.dropFirst() {
+                                p.addLine(to: pt)
+                            }
+                        }
+                        .stroke(
+                            LinearGradient(
+                                colors: [Theme.neonCyan, Theme.electricAzure],
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            ),
+                            style: StrokeStyle(lineWidth: 2.2, lineCap: .round, lineJoin: .round)
+                        )
+
+                        // Sample Points
                         ForEach(points.indices, id: \.self) { i in
-                            Circle()
-                                .fill(i == points.count - 1 ? Theme.cyanPulse : Theme.cardBackground)
-                                .overlay(Circle().stroke(Theme.cyanPulse, lineWidth: 1.5))
-                                .frame(width: i == points.count - 1 ? 8 : 5, height: i == points.count - 1 ? 8 : 5)
-                                .position(points[i])
+                            if i == points.count - 1 {
+                                // Pulsing Head Point
+                                Circle()
+                                    .fill(Theme.neonCyan)
+                                    .frame(width: 9, height: 9)
+                                    .overlay(
+                                        Circle()
+                                            .stroke(Theme.neonCyan.opacity(0.5), lineWidth: 2)
+                                            .scaleEffect(1.6)
+                                    )
+                                    .shadow(color: Theme.neonCyan, radius: 4)
+                                    .position(points[i])
+                            } else {
+                                Circle()
+                                    .fill(Theme.cardBackground)
+                                    .overlay(Circle().stroke(Theme.neonCyan.opacity(0.8), lineWidth: 1.5))
+                                    .frame(width: 5, height: 5)
+                                    .position(points[i])
+                            }
                         }
                     }
                 } else {
                     HStack {
                         Spacer()
-                        Text("Awaiting latency samples...")
-                            .font(.system(size: 11))
-                            .foregroundStyle(.secondary)
+                        VStack(spacing: 4) {
+                            Image(systemName: "waveform.path.ecg")
+                                .foregroundStyle(Theme.neonCyan.opacity(0.5))
+                            Text("Awaiting latency probe samples...")
+                                .font(.system(size: 11))
+                                .foregroundStyle(.secondary)
+                        }
                         Spacer()
                     }
                     .frame(height: h)
                 }
             }
-            .frame(height: 75)
+            .frame(height: 85)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 6)
             .background(Color.primary.opacity(0.02))
-            .clipShape(RoundedRectangle(cornerRadius: 6))
-            .overlay(RoundedRectangle(cornerRadius: 6).stroke(Theme.borderLight, lineWidth: 1))
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+            .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Theme.borderLight, lineWidth: 1))
         }
     }
 
     private func metricBadge(label: String, val: String, color: Color) -> some View {
-        HStack(spacing: 4) {
+        HStack(spacing: 5) {
             Text(label)
                 .font(.system(size: 9, weight: .bold, design: .monospaced))
                 .foregroundStyle(.secondary)
             Text(val)
-                .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                .font(Theme.monoText(11, weight: .bold))
                 .foregroundStyle(color)
         }
+        .padding(.horizontal, 7)
+        .padding(.vertical, 3)
+        .background(color.opacity(0.1))
+        .clipShape(RoundedRectangle(cornerRadius: 5))
+        .overlay(RoundedRectangle(cornerRadius: 5).strokeBorder(color.opacity(0.2), lineWidth: 0.75))
     }
 }

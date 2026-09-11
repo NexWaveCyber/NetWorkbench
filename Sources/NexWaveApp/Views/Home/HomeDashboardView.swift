@@ -5,6 +5,7 @@ import InvestigationKit
 
 public struct HomeDashboardView: View {
     @Bindable var state: AppState
+    @State private var hoveredStudio: String? = nil
 
     public init(state: AppState) {
         self.state = state
@@ -12,11 +13,11 @@ public struct HomeDashboardView: View {
 
     public var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
-                // Hero Diagnosis Card
+            VStack(alignment: .leading, spacing: 22) {
+                // Hero Command Center Deck
                 heroDiagnoseCard
 
-                // Local Network Interface KPI Bar
+                // Local Network Interface Telemetry Bar
                 networkInterfaceBar
 
                 // Two Column Layout: Investigations & Diagnostic Feed
@@ -34,68 +35,136 @@ public struct HomeDashboardView: View {
         .navigationTitle("Engineering Dashboard")
     }
 
-    // MARK: - Hero Diagnose Card
+    // MARK: - Hero Command Center Deck
     private var heroDiagnoseCard: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack(alignment: .center) {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("GLOBAL DIAGNOSE ENGINE")
-                        .font(.system(size: 10, weight: .bold, design: .monospaced))
-                        .foregroundStyle(Theme.cyanPulse)
+                    HStack(spacing: 8) {
+                        Circle()
+                            .fill(Theme.neonCyan)
+                            .frame(width: 7, height: 7)
+                            .overlay(
+                                Circle()
+                                    .stroke(Theme.neonCyan.opacity(0.4), lineWidth: 2)
+                                    .scaleEffect(1.6)
+                            )
 
-                    Text("Deterministic Multi-Layer Network Diagnosis")
-                        .font(.system(size: 20, weight: .bold))
+                        Text("GLOBAL TELEMETRY ENGINE")
+                            .font(.system(size: 10, weight: .bold, design: .monospaced))
+                            .foregroundStyle(Theme.neonCyan)
+
+                        Text("•")
+                            .foregroundStyle(.secondary)
+
+                        Text("MULTI-LAYER DETERMINISTIC DIAGNOSTICS")
+                            .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                            .foregroundStyle(.secondary)
+                    }
+
+                    Text("Network Diagnostic Command Center")
+                        .font(.system(size: 22, weight: .bold))
                 }
+
                 Spacer()
-                Image(systemName: "bolt.shield.fill")
-                    .font(.system(size: 28))
-                    .foregroundStyle(Theme.cyanPulse)
+
+                ZStack {
+                    Circle()
+                        .fill(Theme.neonCyan.opacity(0.1))
+                        .frame(width: 48, height: 48)
+
+                    Image(systemName: "point.3.filled.connected.trianglepath.dotted")
+                        .font(.system(size: 24))
+                        .foregroundStyle(Theme.neonCyan)
+                }
             }
 
-            HStack(spacing: 10) {
+            // Input Row
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(spacing: 10) {
+                    HStack(spacing: 10) {
+                        Image(systemName: "magnifyingglass")
+                            .font(.system(size: 15))
+                            .foregroundStyle(Theme.neonCyan)
+
+                        TextField("Enter target host, IP, URL, or CIDR (e.g. google.com, 1.1.1.1, 10.20.0.0/24)...", text: $state.targetInput)
+                            .textFieldStyle(.plain)
+                            .font(Theme.monoText(15))
+                            .onChange(of: state.targetInput) { _, newValue in
+                                state.updateTargetClassification(newValue)
+                            }
+                            .onSubmit {
+                                startDiagnosisFromHome()
+                            }
+
+                        if let target = state.classifiedTarget {
+                            Text(target.targetType.rawValue)
+                                .font(Theme.monoText(10, weight: .bold))
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 3)
+                                .background(Theme.azurePro.opacity(0.15))
+                                .foregroundStyle(Theme.azurePro)
+                                .clipShape(Capsule())
+                                .overlay(
+                                    Capsule()
+                                        .strokeBorder(Theme.azurePro.opacity(0.3), lineWidth: 1)
+                                )
+                        }
+                    }
+                    .padding(12)
+                    .background(Theme.cardBackground)
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 10)
+                            .strokeBorder(Theme.cyanPulse.opacity(0.35), lineWidth: 1)
+                    )
+
+                    Button(action: startDiagnosisFromHome) {
+                        HStack(spacing: 7) {
+                            Image(systemName: "bolt.fill")
+                                .font(.system(size: 12))
+                            Text("Diagnose Target")
+                                .fontWeight(.semibold)
+                        }
+                        .padding(.horizontal, 20)
+                        .padding(.vertical, 12)
+                        .background(state.classifiedTarget == nil ? AnyShapeStyle(Color.gray.opacity(0.3)) : AnyShapeStyle(Theme.cyanGlowGradient))
+                        .foregroundStyle(state.classifiedTarget == nil ? Color.secondary : Color.black)
+                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                        .shadow(color: state.classifiedTarget == nil ? .clear : Theme.neonCyan.opacity(0.3), radius: 6, x: 0, y: 2)
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(state.classifiedTarget == nil)
+                }
+
+                // Quick Target Presets
                 HStack(spacing: 8) {
-                    Image(systemName: "magnifyingglass")
+                    Text("Quick Targets:")
+                        .font(.system(size: 11, weight: .medium))
                         .foregroundStyle(.secondary)
 
-                    TextField("Enter hostname, IP address, URL, or subnet (e.g. google.com, 10.20.0.1)...", text: $state.targetInput)
-                        .textFieldStyle(.plain)
-                        .font(Theme.monoText(15))
-                        .onChange(of: state.targetInput) { _, newValue in
-                            state.updateTargetClassification(newValue)
-                        }
-                        .onSubmit {
+                    ForEach(["google.com", "1.1.1.1", "api.github.com", "192.168.1.1"], id: \.self) { sample in
+                        Button(action: {
+                            state.updateTargetClassification(sample)
                             startDiagnosisFromHome()
+                        }) {
+                            HStack(spacing: 4) {
+                                Circle().fill(Theme.neonCyan.opacity(0.8)).frame(width: 4, height: 4)
+                                Text(sample)
+                                    .font(Theme.monoText(11))
+                            }
+                            .padding(.horizontal, 9)
+                            .padding(.vertical, 4)
+                            .background(Color.primary.opacity(0.04))
+                            .clipShape(RoundedRectangle(cornerRadius: 6))
+                            .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(Theme.borderLight, lineWidth: 1))
                         }
-
-                    if let target = state.classifiedTarget {
-                        Text(target.targetType.rawValue)
-                            .font(.system(size: 11, weight: .semibold))
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 3)
-                            .background(Theme.azurePro.opacity(0.15))
-                            .foregroundStyle(Theme.azurePro)
-                            .clipShape(Capsule())
+                        .buttonStyle(.plain)
                     }
                 }
-                .padding(12)
-                .background(Theme.cardBackground)
-                .clipShape(RoundedRectangle(cornerRadius: 8))
-                .overlay(RoundedRectangle(cornerRadius: 8).stroke(Theme.borderLight, lineWidth: 1))
-
-                Button(action: startDiagnosisFromHome) {
-                    HStack(spacing: 6) {
-                        Image(systemName: "play.fill")
-                        Text("Diagnose")
-                            .fontWeight(.medium)
-                    }
-                    .padding(.horizontal, 18)
-                    .padding(.vertical, 12)
-                }
-                .buttonStyle(.borderedProminent)
-                .disabled(state.classifiedTarget == nil)
             }
         }
-        .engineeringCard(padding: 20)
+        .engineeringCard(padding: 20, hasHoverEffect: false, accentBorder: Theme.neonCyan.opacity(0.3))
     }
 
     private func startDiagnosisFromHome() {
@@ -109,60 +178,136 @@ public struct HomeDashboardView: View {
 
     // MARK: - Network Interface Bar
     private var networkInterfaceBar: some View {
-        HStack(spacing: 16) {
-            kpiPill(label: "PRIMARY LINK", val: "en0 (Wi-Fi 6 / GbE)", icon: "wifi")
-            kpiPill(label: "LOCAL IP", val: "192.168.1.142", icon: "laptopcomputer")
-            kpiPill(label: "DEFAULT GATEWAY", val: "192.168.1.1", icon: "network")
-            kpiPill(label: "SYSTEM RESOLVER", val: "System DNS", icon: "arrow.triangle.branch")
+        HStack(spacing: 14) {
+            kpiCard(
+                label: "PRIMARY LINK",
+                val: "en0 (Wi-Fi 6 / GbE)",
+                icon: "wifi",
+                badge: "Active",
+                badgeColor: Theme.signalEmerald
+            )
+            kpiCard(
+                label: "LOCAL IPV4",
+                val: "192.168.1.142",
+                icon: "laptopcomputer",
+                copyValue: "192.168.1.142"
+            )
+            kpiCard(
+                label: "DEFAULT GATEWAY",
+                val: "192.168.1.1",
+                icon: "network",
+                badge: "< 1ms",
+                badgeColor: Theme.neonCyan
+            )
+            kpiCard(
+                label: "SYSTEM RESOLVER",
+                val: "System DNS",
+                icon: "arrow.triangle.branch",
+                badge: "Healthy",
+                badgeColor: Theme.signalEmerald
+            )
         }
     }
 
-    private func kpiPill(label: String, val: String, icon: String) -> some View {
-        HStack(spacing: 8) {
-            Image(systemName: icon)
-                .font(.system(size: 14))
-                .foregroundStyle(Theme.azurePro)
-            VStack(alignment: .leading, spacing: 1) {
-                Text(label).font(.system(size: 9, weight: .bold, design: .monospaced)).foregroundStyle(.secondary)
-                Text(val).font(Theme.monoText(12, weight: .semibold)).lineLimit(1)
+    private func kpiCard(
+        label: String,
+        val: String,
+        icon: String,
+        badge: String? = nil,
+        badgeColor: Color? = nil,
+        copyValue: String? = nil
+    ) -> some View {
+        HStack(spacing: 10) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(Theme.azurePro.opacity(0.12))
+                    .frame(width: 32, height: 32)
+
+                Image(systemName: icon)
+                    .font(.system(size: 14))
+                    .foregroundStyle(Theme.azurePro)
             }
+
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 6) {
+                    Text(label)
+                        .font(.system(size: 9, weight: .bold, design: .monospaced))
+                        .foregroundStyle(.secondary)
+
+                    if let badge = badge, let badgeColor = badgeColor {
+                        Text(badge)
+                            .font(.system(size: 8, weight: .bold, design: .monospaced))
+                            .padding(.horizontal, 4)
+                            .padding(.vertical, 1)
+                            .background(badgeColor.opacity(0.15))
+                            .foregroundStyle(badgeColor)
+                            .clipShape(Capsule())
+                    }
+                }
+
+                Text(val)
+                    .font(Theme.monoText(12, weight: .semibold))
+                    .lineLimit(1)
+            }
+
             Spacer()
+
+            if let copyValue = copyValue {
+                Button(action: {
+                    NSPasteboard.general.clearContents()
+                    NSPasteboard.general.setString(copyValue, forType: .string)
+                    state.toastMessage = "Copied \(copyValue) to clipboard"
+                }) {
+                    Image(systemName: "doc.on.doc")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+                .help("Copy to clipboard")
+            }
         }
-        .padding(10)
+        .padding(12)
         .frame(maxWidth: .infinity)
-        .background(Theme.cardBackground)
-        .clipShape(RoundedRectangle(cornerRadius: 8))
-        .overlay(RoundedRectangle(cornerRadius: 8).stroke(Theme.borderLight, lineWidth: 1))
+        .engineeringCard(padding: 0, cornerRadius: 10, hasHoverEffect: true)
     }
 
     // MARK: - Active Investigations Card
     private var activeInvestigationsCard: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 14) {
             HStack {
-                Label("Active Investigations", systemImage: "briefcase.fill")
-                    .font(.system(size: 14, weight: .bold))
+                HStack(spacing: 7) {
+                    Image(systemName: "briefcase.fill")
+                        .foregroundStyle(Theme.azurePro)
+                    Text("Active Investigations")
+                        .font(.system(size: 14, weight: .bold))
+                }
+
                 Spacer()
-                Button("View All") {
+
+                Button("View All →") {
                     state.selectedWorkspace = .investigations
                 }
                 .buttonStyle(.plain)
-                .font(.system(size: 11, weight: .medium))
-                .foregroundStyle(Theme.azurePro)
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(Theme.neonCyan)
             }
 
             Divider()
 
             if state.investigations.isEmpty {
                 VStack(spacing: 8) {
+                    Image(systemName: "tray")
+                        .font(.system(size: 26))
+                        .foregroundStyle(.secondary.opacity(0.6))
                     Text("No active investigations")
-                        .font(.system(size: 12))
+                        .font(.system(size: 12, weight: .medium))
                         .foregroundStyle(.secondary)
-                    Text("Diagnose a target and click 'Create Investigation' to track network anomalies.")
+                    Text("Diagnose a target and click 'Create Investigation' to record timeline events & evidence.")
                         .font(.system(size: 11))
                         .foregroundStyle(.tertiary)
                         .multilineTextAlignment(.center)
                 }
-                .frame(maxWidth: .infinity, minHeight: 120)
+                .frame(maxWidth: .infinity, minHeight: 140)
             } else {
                 VStack(spacing: 8) {
                     ForEach(state.investigations.prefix(4)) { inv in
@@ -170,14 +315,14 @@ public struct HomeDashboardView: View {
                             state.selectedInvestigation = inv
                             state.selectedWorkspace = .investigations
                         }) {
-                            HStack(spacing: 10) {
-                                Circle()
+                            HStack(spacing: 12) {
+                                RoundedRectangle(cornerRadius: 2)
                                     .fill(severityColor(inv.severity))
-                                    .frame(width: 8, height: 8)
+                                    .frame(width: 3, height: 32)
 
-                                VStack(alignment: .leading, spacing: 2) {
+                                VStack(alignment: .leading, spacing: 3) {
                                     Text(inv.title)
-                                        .font(.system(size: 12, weight: .medium))
+                                        .font(.system(size: 12, weight: .semibold))
                                         .lineLimit(1)
                                     Text(inv.createdAt.formatted(date: .abbreviated, time: .shortened))
                                         .font(.system(size: 10))
@@ -187,15 +332,15 @@ public struct HomeDashboardView: View {
                                 Spacer()
 
                                 Text(inv.status.rawValue)
-                                    .font(.system(size: 10, weight: .semibold))
-                                    .padding(.horizontal, 6)
+                                    .font(Theme.monoText(10, weight: .bold))
+                                    .padding(.horizontal, 7)
                                     .padding(.vertical, 2)
                                     .background(Color.primary.opacity(0.06))
                                     .clipShape(Capsule())
                             }
-                            .padding(8)
+                            .padding(10)
                             .background(Color.primary.opacity(0.02))
-                            .clipShape(RoundedRectangle(cornerRadius: 6))
+                            .clipShape(RoundedRectangle(cornerRadius: 8))
                         }
                         .buttonStyle(.plain)
                     }
@@ -203,47 +348,57 @@ public struct HomeDashboardView: View {
             }
         }
         .frame(maxWidth: .infinity)
-        .engineeringCard()
+        .engineeringCard(hasHoverEffect: false)
     }
 
     // MARK: - Recent Diagnoses Card
     private var recentDiagnosesCard: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 14) {
             HStack {
-                Label("Recent Diagnostics", systemImage: "clock.arrow.circlepath")
-                    .font(.system(size: 14, weight: .bold))
+                HStack(spacing: 7) {
+                    Image(systemName: "clock.arrow.circlepath")
+                        .foregroundStyle(Theme.neonCyan)
+                    Text("Recent Diagnostics")
+                        .font(.system(size: 14, weight: .bold))
+                }
+
                 Spacer()
-                Button("History") {
+
+                Button("Full History →") {
                     state.selectedWorkspace = .history
                 }
                 .buttonStyle(.plain)
-                .font(.system(size: 11, weight: .medium))
-                .foregroundStyle(Theme.azurePro)
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(Theme.neonCyan)
             }
 
             Divider()
 
             if state.recentHistory.isEmpty {
                 VStack(spacing: 8) {
-                    Text("No recent tests")
-                        .font(.system(size: 12))
+                    Image(systemName: "gauge.with.needle")
+                        .font(.system(size: 26))
+                        .foregroundStyle(.secondary.opacity(0.6))
+                    Text("No diagnostic runs recorded")
+                        .font(.system(size: 12, weight: .medium))
                         .foregroundStyle(.secondary)
-                    Text("Diagnostic runs will appear here automatically.")
+                    Text("Execute a target diagnostic above to automatically stream telemetry.")
                         .font(.system(size: 11))
                         .foregroundStyle(.tertiary)
+                        .multilineTextAlignment(.center)
                 }
-                .frame(maxWidth: .infinity, minHeight: 120)
+                .frame(maxWidth: .infinity, minHeight: 140)
             } else {
                 VStack(spacing: 8) {
                     ForEach(state.recentHistory.prefix(4)) { item in
-                        HStack(spacing: 10) {
+                        HStack(spacing: 12) {
                             Circle()
-                                .fill(item.tcpHealthy ? Theme.emeraldHealthy : Theme.crimsonCritical)
+                                .fill(item.tcpHealthy ? Theme.signalEmerald : Theme.pulseCrimson)
                                 .frame(width: 8, height: 8)
 
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(item.target)
-                                    .font(Theme.monoText(12, weight: .semibold))
+                                    .font(Theme.monoText(12, weight: .bold))
                                 Text(Date(timeIntervalSince1970: item.timestamp).formatted(date: .abbreviated, time: .shortened))
                                     .font(.system(size: 10))
                                     .foregroundStyle(.secondary)
@@ -252,71 +407,131 @@ public struct HomeDashboardView: View {
                             Spacer()
 
                             if let lat = item.pingLatency {
-                                Text("\(String(format: "%.1f", lat)) ms")
-                                    .font(Theme.monoText(11, weight: .medium))
-                                    .foregroundStyle(Theme.cyanPulse)
+                                HStack(spacing: 4) {
+                                    Text("\(String(format: "%.1f", lat))")
+                                        .font(Theme.monoText(12, weight: .bold))
+                                    Text("ms")
+                                        .font(.system(size: 9))
+                                        .foregroundStyle(.secondary)
+                                }
+                                .padding(.horizontal, 7)
+                                .padding(.vertical, 3)
+                                .background(Theme.neonCyan.opacity(0.1))
+                                .foregroundStyle(Theme.neonCyan)
+                                .clipShape(RoundedRectangle(cornerRadius: 4))
                             }
                         }
-                        .padding(8)
+                        .padding(10)
                         .background(Color.primary.opacity(0.02))
-                        .clipShape(RoundedRectangle(cornerRadius: 6))
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
                     }
                 }
             }
         }
         .frame(maxWidth: .infinity)
-        .engineeringCard()
+        .engineeringCard(hasHoverEffect: false)
     }
 
-    // MARK: - Interactive Studios
+    // MARK: - Interactive Studios Grid
     private var toolboxStudiosGrid: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("INTERACTIVE ENGINEERING STUDIOS")
-                .font(.system(size: 10, weight: .bold, design: .monospaced))
-                .foregroundStyle(.secondary)
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("INTERACTIVE ENGINEERING STUDIOS")
+                    .font(.system(size: 10, weight: .bold, design: .monospaced))
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Text("Zero-Root Unprivileged Tools")
+                    .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                    .foregroundStyle(.tertiary)
+            }
 
-            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
-                studioCard(title: "Subnet Calculator", desc: "CIDR / VLSM / Binary", icon: "number.square.fill", workspace: .toolbox)
-                studioCard(title: "Command Library", desc: "Multi-vendor CLI DB", icon: "terminal.fill", workspace: .commandLibrary)
-                studioCard(title: "SNMP Studio", desc: "v1/v2c/v3 MIB Browser", icon: "chart.bar.xaxis", workspace: .snmp)
-                studioCard(title: "Config Workbench", desc: "Syntax & Diff Engine", icon: "doc.text.magnifyingglass", workspace: .config)
+            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible())], spacing: 14) {
+                studioCard(
+                    id: "subnet",
+                    title: "Subnet Calculator",
+                    desc: "CIDR / VLSM / Binary Matrix",
+                    icon: "number.square.fill",
+                    tint: Theme.neonCyan,
+                    workspace: .toolbox
+                )
+                studioCard(
+                    id: "cmd",
+                    title: "Command Library",
+                    desc: "Multi-Vendor CLI Reference",
+                    icon: "terminal.fill",
+                    tint: Theme.electricAzure,
+                    workspace: .commandLibrary
+                )
+                studioCard(
+                    id: "snmp",
+                    title: "SNMP Studio",
+                    desc: "v1/v2c/v3 MIB Tree Browser",
+                    icon: "chart.bar.xaxis",
+                    tint: Theme.solarAmber,
+                    workspace: .snmp
+                )
+                studioCard(
+                    id: "config",
+                    title: "Config Workbench",
+                    desc: "Syntax Parser & Semantic Diff",
+                    icon: "doc.text.magnifyingglass",
+                    tint: Theme.quantumViolet,
+                    workspace: .config
+                )
             }
         }
     }
 
-    private func studioCard(title: String, desc: String, icon: String, workspace: WorkspaceItem) -> some View {
+    private func studioCard(
+        id: String,
+        title: String,
+        desc: String,
+        icon: String,
+        tint: Color,
+        workspace: WorkspaceItem
+    ) -> some View {
         Button(action: {
             state.selectedWorkspace = workspace
         }) {
-            HStack(spacing: 12) {
-                Image(systemName: icon)
-                    .font(.system(size: 20))
-                    .foregroundStyle(Theme.cyanPulse)
-                    .frame(width: 32)
+            VStack(alignment: .leading, spacing: 12) {
+                HStack {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 8)
+                            .fill(tint.opacity(0.15))
+                            .frame(width: 36, height: 36)
 
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(title)
-                        .font(.system(size: 12, weight: .semibold))
-                    Text(desc)
-                        .font(.system(size: 10))
+                        Image(systemName: icon)
+                            .font(.system(size: 18))
+                            .foregroundStyle(tint)
+                    }
+
+                    Spacer()
+
+                    Image(systemName: "arrow.up.right")
+                        .font(.system(size: 11, weight: .semibold))
                         .foregroundStyle(.secondary)
                 }
-                Spacer()
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(title)
+                        .font(.system(size: 13, weight: .bold))
+                    Text(desc)
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                }
             }
-            .padding(12)
-            .background(Theme.cardBackground)
-            .clipShape(RoundedRectangle(cornerRadius: 8))
-            .overlay(RoundedRectangle(cornerRadius: 8).stroke(Theme.borderLight, lineWidth: 1))
+            .padding(14)
+            .engineeringCard(padding: 0, cornerRadius: 10, hasHoverEffect: true)
         }
         .buttonStyle(.plain)
     }
 
     private func severityColor(_ s: InvestigationSeverity) -> Color {
         switch s {
-        case .low: return Theme.azurePro
-        case .medium: return Theme.amberWarning
-        case .high: return Theme.crimsonCritical
-        case .critical: return Theme.purpleInferred
+        case .low: return Theme.electricAzure
+        case .medium: return Theme.solarAmber
+        case .high: return Theme.pulseCrimson
+        case .critical: return Theme.quantumViolet
         }
     }
 }
