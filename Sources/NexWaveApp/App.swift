@@ -1,7 +1,30 @@
 import SwiftUI
+import AppKit
+
+final class AppDelegate: NSObject, NSApplicationDelegate {
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        NSApp.setActivationPolicy(.regular)
+        NSApp.activate(ignoringOtherApps: true)
+
+        // Set dock icon image dynamically
+        if let iconURL = Bundle.main.url(forResource: "AppIcon", withExtension: "icns") ??
+                         Bundle.main.url(forResource: "AppIcon", withExtension: "png"),
+           let img = NSImage(contentsOf: iconURL) {
+            NSApp.applicationIconImage = img
+        } else {
+            // Check adjacent Resources folder if unbundled
+            let execDir = Bundle.main.bundleURL.deletingLastPathComponent()
+            let fallbackURL = execDir.appendingPathComponent("../Resources/AppIcon.icns")
+            if let img = NSImage(contentsOf: fallbackURL) {
+                NSApp.applicationIconImage = img
+            }
+        }
+    }
+}
 
 @main
 struct NexWaveApp: App {
+    @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
     @State private var state = AppState()
 
     var body: some Scene {
