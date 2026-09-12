@@ -24,7 +24,10 @@ let package = Package(
         .library(name: "ConfigKit", targets: ["ConfigKit"]),
         .library(name: "ParserKit", targets: ["ParserKit"]),
         .library(name: "PacketKit", targets: ["PacketKit"]),
-        .library(name: "ReportingKit", targets: ["ReportingKit"])
+        .library(name: "ReportingKit", targets: ["ReportingKit"]),
+        .library(name: "WiFiKit", targets: ["WiFiKit"]),
+        .library(name: "TimeSeriesKit", targets: ["TimeSeriesKit"]),
+        .library(name: "TerminalKit", targets: ["TerminalKit"])
     ],
     dependencies: [],
     targets: [
@@ -142,9 +145,27 @@ let package = Package(
                 "ConfigKit",
                 "ParserKit",
                 "PacketKit",
-                "ReportingKit"
+                "ReportingKit",
+                "WiFiKit",
+                "TimeSeriesKit",
+                "TerminalKit"
             ],
             path: "Sources/NexWaveApp"
+        ),
+        .target(
+            name: "TerminalKit",
+            dependencies: ["NetworkCore", "DeviceKit", "CommandLibrary"],
+            path: "Sources/TerminalKit"
+        ),
+        .target(
+            name: "WiFiKit",
+            dependencies: ["NetworkCore"],
+            path: "Sources/WiFiKit"
+        ),
+        .target(
+            name: "TimeSeriesKit",
+            dependencies: ["NetworkCore", "PersistenceKit", "PingEngine"],
+            path: "Sources/TimeSeriesKit"
         ),
         .target(
             name: "PacketKit",
@@ -225,6 +246,21 @@ let package = Package(
             name: "ReportingKitTests",
             dependencies: ["ReportingKit", "NetworkCore", "InvestigationKit", "SecurityKit"],
             path: "Tests/ReportingKitTests"
+        ),
+        .testTarget(
+            name: "WiFiKitTests",
+            dependencies: ["WiFiKit", "NetworkCore"],
+            path: "Tests/WiFiKitTests"
+        ),
+        .testTarget(
+            name: "TimeSeriesKitTests",
+            dependencies: ["TimeSeriesKit", "PersistenceKit", "NetworkCore"],
+            path: "Tests/TimeSeriesKitTests"
+        ),
+        .testTarget(
+            name: "TerminalKitTests",
+            dependencies: ["TerminalKit", "NetworkCore"],
+            path: "Tests/TerminalKitTests"
         )
     ]
 )

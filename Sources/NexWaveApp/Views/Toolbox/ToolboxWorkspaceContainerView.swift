@@ -1,6 +1,8 @@
 import SwiftUI
 
 public enum ToolboxTool: String, CaseIterable, Identifiable {
+    case wifi = "Wi-Fi Studio"
+    case timeline = "Timeline Monitor"
     case subnet = "IP Studio & VLSM"
     case dns = "DNS & DoH Studio"
     case ports = "Port Diagnostics"
@@ -12,6 +14,8 @@ public enum ToolboxTool: String, CaseIterable, Identifiable {
 
     public var icon: String {
         switch self {
+        case .wifi: return "wifi"
+        case .timeline: return "chart.xyaxis.line"
         case .subnet: return "number.square.fill"
         case .dns: return "arrow.triangle.branch"
         case .ports: return "point.3.filled.connected.trianglepath.dotted"
@@ -24,7 +28,7 @@ public enum ToolboxTool: String, CaseIterable, Identifiable {
 
 /// Unified container for interactive toolbox utilities.
 public struct ToolboxWorkspaceContainerView: View {
-    @State private var selectedTool: ToolboxTool = .subnet
+    @State private var selectedTool: ToolboxTool = .wifi
 
     public init() {}
 
@@ -38,7 +42,7 @@ public struct ToolboxWorkspaceContainerView: View {
                     }
                 }
                 .pickerStyle(.segmented)
-                .frame(maxWidth: 860)
+                .frame(maxWidth: 1040)
 
                 Spacer()
             }
@@ -50,6 +54,10 @@ public struct ToolboxWorkspaceContainerView: View {
 
             // Active Tool View
             switch selectedTool {
+            case .wifi:
+                WiFiStudioView()
+            case .timeline:
+                TimeSeriesStudioView()
             case .subnet:
                 SubnetCalculatorView()
             case .dns:

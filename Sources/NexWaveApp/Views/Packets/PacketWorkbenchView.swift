@@ -14,6 +14,14 @@ public struct PacketWorkbenchView: View {
     @State private var rawCaptureData: Data? = nil
     @State private var currentFileName: String = "sample_traffic.pcap"
 
+    // Live Capture Session State
+    @State private var liveSession = LiveCaptureSession()
+    @State private var availableInterfaces: [CaptureInterface] = []
+    @State private var selectedInterfaceName: String = "en0"
+    @State private var bpfFilterInput: String = ""
+    @State private var autoScrollToBottom: Bool = true
+    @State private var bpfStatus: BPFAccessStatus = .accessible
+
     // Wireshark & Export sheets
     @State private var isExportSheetPresented: Bool = false
     @State private var exportFormat: ReportFormat = .markdown
@@ -57,6 +65,9 @@ public struct PacketWorkbenchView: View {
             headerBar
             Divider().overlay(Theme.borderLight)
 
+            liveCaptureControlDrawer
+            Divider().overlay(Theme.borderLight)
+
             if let capture = summary {
                 kpiBar(summary: capture)
                 Divider().overlay(Theme.borderLight)
@@ -89,8 +100,21 @@ public struct PacketWorkbenchView: View {
             Text("Wireshark is not detected at /Applications/Wireshark.app. You can download the official macOS installer from Wireshark.org to enable deep binary protocol disassembly.")
         }
         .onAppear {
+            availableInterfaces = LiveCaptureEngine.discoverInterfaces()
+            if let first = availableInterfaces.first?.name {
+                selectedInterfaceName = first
+            }
+            bpfStatus = LiveCaptureEngine.checkBPFAccess()
             if summary == nil {
                 loadSyntheticCapture()
+            }
+        }
+        .onChange(of: liveSession.summary?.totalPackets) { _, _ in
+            if let cap = liveSession.summary {
+                self.summary = cap
+                if selectedPacket == nil {
+                    self.selectedPacket = cap.packets.first
+                }
             }
         }
     }
@@ -167,6 +191,247 @@ public struct PacketWorkbenchView: View {
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
         .background(Theme.cardBackground.opacity(0.7))
+    }
+
+    // MARK: - Live Capture Control Drawer
+    private var liveCaptureControlDrawer: some View {
+        VStack(spacing: 8) {
+            // Row 1: Interface Picker + BPF Filter + Quick Presets
+            HStack(spacing: 10) {
+                // Interface selector
+                HStack(spacing: 6) {
+                    Image(systemName: "network")
+                        .font(.system(size: 11))
+                        .foregroundStyle(Theme.cyanPulse)
+                    Picker("Interface", selection: $selectedInterfaceName) {
+                        ForEach(availableInterfaces) { iface in
+                            Text(iface.displayName).tag(iface.name)
+                        }
+                    }
+                    .pickerStyle(.menu)
+                    .frame(minWidth: 160, maxWidth: 220)
+                }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(Theme.surfaceBackground)
+                .clipShape(RoundedRectangle(cornerRadius: 6))
+                .overlay(RoundedRectangle(cornerRadius: 6).stroke(Theme.borderLight, lineWidth: 1))
+
+                // BPF Filter Input
+                HStack(spacing: 6) {
+                    Image(systemName: "line.3.horizontal.decrease.circle")
+                        .font(.system(size: 11))
+                        .foregroundStyle(Theme.electricAzure)
+                    TextField("BPF Capture Filter (e.g. port 53 or icmp, host 1.1.1.1)", text: $bpfFilterInput)
+                        .font(Theme.monoText(11))
+                        .textFieldStyle(.plain)
+                    if !bpfFilterInput.isEmpty {
+                        Button(action: { bpfFilterInput = "" }) {
+                            Image(systemName: "xmark.circle.fill")
+                                .font(.system(size: 11))
+                                .foregroundStyle(.secondary)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(Theme.surfaceBackground)
+                .clipShape(RoundedRectangle(cornerRadius: 6))
+                .overlay(RoundedRectangle(cornerRadius: 6).stroke(Theme.borderLight, lineWidth: 1))
+
+                // Quick Presets
+                HStack(spacing: 4) {
+                    bpfPresetChip(title: "All", filter: "")
+                    bpfPresetChip(title: "DNS", filter: "port 53")
+                    bpfPresetChip(title: "Web", filter: "port 80 or port 443")
+                    bpfPresetChip(title: "ICMP", filter: "icmp")
+                    bpfPresetChip(title: "ARP", filter: "arp")
+                }
+            }
+
+            // Row 2: Action Buttons + Live Telemetry Badge + Auto-scroll
+            HStack(spacing: 10) {
+                // Primary Start/Stop Capture button
+                if liveSession.status == .capturing {
+                    Button(action: { liveSession.stop() }) {
+                        HStack(spacing: 6) {
+                            Circle()
+                                .fill(Theme.crimsonCritical)
+                                .frame(width: 8, height: 8)
+                            Text("Stop Capture")
+                                .font(.system(size: 12, weight: .bold))
+                        }
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(Theme.crimsonCritical)
+
+                    Button(action: { liveSession.pause() }) {
+                        Label("Pause", systemImage: "pause.fill")
+                            .font(.system(size: 12))
+                    }
+                    .buttonStyle(.bordered)
+                    .tint(Theme.amberWarning)
+                } else if liveSession.status == .paused {
+                    Button(action: { liveSession.resume() }) {
+                        Label("Resume", systemImage: "play.fill")
+                            .font(.system(size: 12, weight: .bold))
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(Theme.signalEmerald)
+
+                    Button(action: { liveSession.stop() }) {
+                        Label("Stop", systemImage: "stop.fill")
+                            .font(.system(size: 12))
+                    }
+                    .buttonStyle(.bordered)
+                    .tint(Theme.crimsonCritical)
+                } else {
+                    Button(action: {
+                        startLiveCapture()
+                    }) {
+                        HStack(spacing: 6) {
+                            Image(systemName: "record.circle")
+                                .font(.system(size: 12, weight: .bold))
+                            Text("Start Live Capture")
+                                .font(.system(size: 12, weight: .bold))
+                        }
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(Theme.cyanPulse)
+                }
+
+                // Simulate Live Stream button
+                Button(action: {
+                    startSimulationStream()
+                }) {
+                    Label(liveSession.status == .capturing && liveSession.selectedInterface.contains("Simulated") ? "Streaming..." : "Simulate Stream", systemImage: "sparkles")
+                        .font(.system(size: 12, weight: .medium))
+                }
+                .buttonStyle(.bordered)
+                .tint(Theme.quantumViolet)
+                .disabled(liveSession.status == .capturing && !liveSession.selectedInterface.contains("Simulated"))
+
+                // Clear buffer button
+                Button(action: {
+                    liveSession.clear()
+                    selectedPacket = nil
+                }) {
+                    Label("Clear", systemImage: "trash")
+                        .font(.system(size: 11))
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.secondary)
+                .disabled(liveSession.packets.isEmpty && summary == nil)
+
+                Divider().frame(height: 18)
+
+                // Telemetry Strip
+                if liveSession.status == .capturing || liveSession.status == .paused {
+                    HStack(spacing: 8) {
+                        HStack(spacing: 5) {
+                            Circle()
+                                .fill(liveSession.status == .capturing ? Theme.signalEmerald : Theme.amberWarning)
+                                .frame(width: 6, height: 6)
+                            Text(liveSession.status == .capturing ? "LIVE" : "PAUSED")
+                                .font(Theme.monoText(10, weight: .bold))
+                                .foregroundStyle(liveSession.status == .capturing ? Theme.signalEmerald : Theme.amberWarning)
+                        }
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background((liveSession.status == .capturing ? Theme.signalEmerald : Theme.amberWarning).opacity(0.12))
+                        .clipShape(Capsule())
+
+                        Text("\(Int(liveSession.packetRate)) pkts/s")
+                            .font(Theme.monoText(11, weight: .semibold))
+                            .foregroundStyle(Theme.cyanPulse)
+
+                        Text("•")
+                            .foregroundStyle(.secondary)
+
+                        Text(String(format: "%.2f Mbps", liveSession.bitrateMbps))
+                            .font(Theme.monoText(11, weight: .semibold))
+                            .foregroundStyle(Color.white)
+
+                        Text("•")
+                            .foregroundStyle(.secondary)
+
+                        Text("Buffer: \(liveSession.packets.count)/\(liveSession.maxBufferSize)")
+                            .font(Theme.monoText(11))
+                            .foregroundStyle(.secondary)
+
+                        if liveSession.anomalyCount > 0 {
+                            Text("•")
+                                .foregroundStyle(.secondary)
+                            HStack(spacing: 3) {
+                                Image(systemName: "exclamationmark.triangle.fill")
+                                    .font(.system(size: 10))
+                                Text("\(liveSession.anomalyCount) Anomalies")
+                                    .font(Theme.monoText(10, weight: .bold))
+                            }
+                            .foregroundStyle(Theme.crimsonCritical)
+                        }
+                    }
+                } else if case .error(let msg) = liveSession.status {
+                    HStack(spacing: 6) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .font(.system(size: 11))
+                            .foregroundStyle(Theme.crimsonCritical)
+                        Text(msg)
+                            .font(.system(size: 11))
+                            .foregroundStyle(Theme.crimsonCritical)
+                            .lineLimit(1)
+                        Button("Use Simulation") {
+                            startSimulationStream()
+                        }
+                        .font(.system(size: 11, weight: .bold))
+                        .buttonStyle(.borderless)
+                        .foregroundStyle(Theme.cyanPulse)
+                    }
+                }
+
+                Spacer()
+
+                // Auto scroll checkbox
+                Toggle(isOn: $autoScrollToBottom) {
+                    Text("Auto-scroll")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                }
+                .toggleStyle(.checkbox)
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 8)
+        .background(Theme.surfaceBackground.opacity(0.85))
+    }
+
+    private func bpfPresetChip(title: String, filter: String) -> some View {
+        Button(action: {
+            bpfFilterInput = filter
+            if liveSession.status == .capturing {
+                startLiveCapture()
+            }
+        }) {
+            Text(title)
+                .font(Theme.monoText(10, weight: bpfFilterInput == filter ? .bold : .medium))
+                .padding(.horizontal, 6)
+                .padding(.vertical, 3)
+                .background(bpfFilterInput == filter ? Theme.cyanPulse.opacity(0.2) : Theme.cardBackground)
+                .foregroundStyle(bpfFilterInput == filter ? Theme.cyanPulse : .secondary)
+                .clipShape(RoundedRectangle(cornerRadius: 4))
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func startLiveCapture() {
+        currentFileName = "live_\(selectedInterfaceName).pcap"
+        liveSession.startLiveCapture(interface: selectedInterfaceName, filter: bpfFilterInput)
+    }
+
+    private func startSimulationStream() {
+        currentFileName = "simulated_stream.pcap"
+        liveSession.startSimulation()
     }
 
     // MARK: - KPI Bar
@@ -356,6 +621,13 @@ public struct PacketWorkbenchView: View {
                                     selectedPacket = packet
                                 }
                             Divider().overlay(Theme.borderLight.opacity(0.5))
+                        }
+                    }
+                }
+                .onChange(of: packets.last?.number) { _, lastNum in
+                    if autoScrollToBottom, let num = lastNum {
+                        withAnimation(.easeOut(duration: 0.1)) {
+                            proxy.scrollTo(num, anchor: .bottom)
                         }
                     }
                 }
@@ -911,17 +1183,29 @@ public struct PacketWorkbenchView: View {
     }
 
     private func handleOpenWireshark() {
-        guard let data = rawCaptureData else { return }
+        let data: Data?
+        if liveSession.status == .capturing || liveSession.status == .paused || !liveSession.packets.isEmpty {
+            data = liveSession.exportCurrentBufferAsPCAP()
+        } else {
+            data = rawCaptureData
+        }
+        guard let validData = data else { return }
         if WiresharkBridge.isWiresharkInstalled {
-            _ = try? WiresharkBridge.openDataInWireshark(data: data, suggestedFileName: currentFileName)
+            _ = try? WiresharkBridge.openDataInWireshark(data: validData, suggestedFileName: currentFileName)
         } else {
             showWiresharkAlert = true
         }
     }
 
     private func openExportSheet() {
-        guard let cap = summary else { return }
-        self.exportedReport = ReportEngine.generatePacketReport(summary: cap, format: exportFormat)
+        let cap: PacketCaptureSummary?
+        if liveSession.status == .capturing || liveSession.status == .paused || !liveSession.packets.isEmpty {
+            cap = liveSession.summary ?? summary
+        } else {
+            cap = summary
+        }
+        guard let validCap = cap else { return }
+        self.exportedReport = ReportEngine.generatePacketReport(summary: validCap, format: exportFormat)
         self.isExportSheetPresented = true
     }
 

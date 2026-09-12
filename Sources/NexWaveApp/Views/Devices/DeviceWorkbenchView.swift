@@ -1,6 +1,7 @@
 import SwiftUI
 import DeviceKit
 import NetworkCore
+import TerminalKit
 
 public struct DeviceWorkbenchView: View {
     @Bindable var state: AppState
@@ -14,6 +15,7 @@ public struct DeviceWorkbenchView: View {
     public enum DeviceTab: String, CaseIterable, Identifiable {
         case managed = "Managed Fleet"
         case discovered = "Discovered LAN Neighbors"
+        case topology = "Topology Canvas"
         public var id: String { rawValue }
     }
 
@@ -61,9 +63,10 @@ public struct DeviceWorkbenchView: View {
                     Picker("", selection: $selectedTab) {
                         Text("Managed Fleet (\(state.managedDevices.count))").tag(DeviceTab.managed)
                         Text("Discovered LAN (\(state.discoveredNeighbors.count))").tag(DeviceTab.discovered)
+                        Text("Topology Canvas").tag(DeviceTab.topology)
                     }
                     .pickerStyle(.segmented)
-                    .frame(maxWidth: 360)
+                    .frame(maxWidth: 520)
 
                     Spacer()
 
@@ -104,10 +107,14 @@ public struct DeviceWorkbenchView: View {
                 }
 
                 // Main Content
-                if selectedTab == .managed {
+                switch selectedTab {
+                case .managed:
                     managedFleetSection
-                } else {
+                case .discovered:
                     discoveredNeighborsSection
+                case .topology:
+                    TopologyCanvasView(state: state)
+                        .frame(minHeight: 700)
                 }
             }
             .padding(24)
@@ -521,6 +528,25 @@ public struct DeviceWorkbenchView: View {
                     .clipShape(RoundedRectangle(cornerRadius: 6))
                 }
                 .buttonStyle(.plain)
+
+                Button(action: {
+                    state.terminalManager.openSSHSession(host: device.ipAddress)
+                    state.selectedWorkspace = .terminal
+                }) {
+                    HStack(spacing: 5) {
+                        Image(systemName: "terminal.fill")
+                            .font(.system(size: 11))
+                        Text("Terminal")
+                            .font(.system(size: 11, weight: .semibold))
+                    }
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 5)
+                    .background(Theme.quantumViolet.opacity(0.12))
+                    .foregroundStyle(Theme.quantumViolet)
+                    .clipShape(RoundedRectangle(cornerRadius: 6))
+                }
+                .buttonStyle(.plain)
+                .help("Open Direct SSH Terminal Session")
 
                 Spacer()
 

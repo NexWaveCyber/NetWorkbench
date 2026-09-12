@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import TerminalKit
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -25,11 +26,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 struct NexWaveApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
     @State private var state = AppState()
+    @State private var menuBarMonitor = MenuBarMonitorEngine.shared
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
     @State private var showInspector = false
 
     var body: some Scene {
-        WindowGroup {
+        WindowGroup(id: "main-window") {
             NavigationSplitView(columnVisibility: $columnVisibility) {
                 AppSidebar(state: state)
                     .navigationSplitViewColumnWidth(min: 220, ideal: 250, max: 320)
@@ -152,8 +154,12 @@ struct NexWaveApp: App {
                 Button("Toolbox") { state.selectedWorkspace = .toolbox }
                     .keyboardShortcut("3", modifiers: [.command])
                 Divider()
+                Button("Wi-Fi Studio") { state.selectedWorkspace = .wifi }
+                Button("Timeline Monitor") { state.selectedWorkspace = .timeline }
                 Button("Devices") { state.selectedWorkspace = .devices }
                     .keyboardShortcut("4", modifiers: [.command])
+                Button("Terminal & Console") { state.selectedWorkspace = .terminal }
+                    .keyboardShortcut("t", modifiers: [.command])
                 Button("SNMP Studio") { state.selectedWorkspace = .snmp }
                     .keyboardShortcut("5", modifiers: [.command])
                 Button("Config Workbench") { state.selectedWorkspace = .config }
@@ -171,6 +177,19 @@ struct NexWaveApp: App {
                     .keyboardShortcut(",", modifiers: [.command])
             }
         }
+
+        MenuBarExtra {
+            MenuBarQuickGlanceView(monitor: menuBarMonitor, state: state)
+        } label: {
+            HStack(spacing: 4) {
+                Image(systemName: "waveform.path.ecg")
+                if let ms = menuBarMonitor.gatewayLatencyMs {
+                    Text(String(format: "%.0fms", ms))
+                        .font(Theme.monoText(10, weight: .bold))
+                }
+            }
+        }
+        .menuBarExtraStyle(.window)
     }
 
     @ViewBuilder
@@ -182,14 +201,20 @@ struct NexWaveApp: App {
             DiagnoseWorkspaceView(state: state)
         case .toolbox:
             ToolboxWorkspaceContainerView()
+        case .wifi:
+            WiFiStudioView()
+        case .timeline:
+            TimeSeriesStudioView()
         case .investigations:
             InvestigationsWorkspaceView(state: state)
         case .commandLibrary:
-            CommandLibraryView()
+            CommandLibraryView(state: state)
         case .history:
             HistoryWorkspaceView(state: state)
         case .devices:
             DeviceWorkbenchView(state: state)
+        case .terminal:
+            TerminalWorkbenchView(state: state)
         case .snmp:
             SNMPStudioView(state: state)
         case .config:

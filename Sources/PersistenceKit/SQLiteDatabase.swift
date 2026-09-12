@@ -21,7 +21,7 @@ public enum DatabaseError: Error, LocalizedError {
 /// Thread-safe SQLite database manager with WAL mode enabled.
 public final class SQLiteDatabase: @unchecked Sendable {
     private var db: OpaquePointer?
-    private let lock = NSLock()
+    private let lock = NSRecursiveLock()
 
     public init(path: String? = nil) throws {
         let dbPath: String
@@ -155,6 +155,29 @@ public final class SQLiteDatabase: @unchecked Sendable {
             snmp_sys_descr TEXT,
             notes TEXT,
             FOREIGN KEY (device_id) REFERENCES devices(id) ON DELETE CASCADE
+        );
+
+        CREATE TABLE IF NOT EXISTS target_monitor_series (
+            id TEXT PRIMARY KEY,
+            target TEXT NOT NULL,
+            timestamp REAL NOT NULL,
+            latency_ms REAL,
+            is_timeout INTEGER NOT NULL DEFAULT 0,
+            jitter_ms REAL
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_monitor_target_time ON target_monitor_series(target, timestamp);
+
+        CREATE TABLE IF NOT EXISTS monitor_sla_alerts (
+            id TEXT PRIMARY KEY,
+            target TEXT NOT NULL,
+            target_name TEXT NOT NULL,
+            timestamp REAL NOT NULL,
+            alert_type TEXT NOT NULL,
+            measured_value REAL NOT NULL,
+            threshold_value REAL NOT NULL,
+            message TEXT NOT NULL,
+            is_acknowledged INTEGER NOT NULL DEFAULT 0
         );
         """
         try execute(sql: schema)

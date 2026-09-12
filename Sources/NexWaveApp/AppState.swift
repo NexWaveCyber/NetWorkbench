@@ -6,12 +6,16 @@ import PersistenceKit
 import CommandLibrary
 import DeviceKit
 import SNMPEngine
+import TerminalKit
 
 public enum WorkspaceItem: String, CaseIterable, Identifiable, Sendable {
     case home = "Home / Dashboard"
     case diagnose = "Diagnose"
     case toolbox = "Toolbox"
+    case wifi = "Wi-Fi Studio"
+    case timeline = "Timeline Monitor"
     case devices = "Devices"
+    case terminal = "Terminal & Console"
     case snmp = "SNMP Studio"
     case config = "Config Workbench"
     case packet = "Packet Workbench"
@@ -28,13 +32,16 @@ public enum WorkspaceItem: String, CaseIterable, Identifiable, Sendable {
         case .home: return "house.fill"
         case .diagnose: return "stethoscope"
         case .toolbox: return "wrench.and.screwdriver"
+        case .wifi: return "wifi"
+        case .timeline: return "chart.xyaxis.line"
         case .devices: return "server.rack"
+        case .terminal: return "terminal.fill"
         case .snmp: return "chart.bar.xaxis"
         case .config: return "doc.text.magnifyingglass"
         case .packet: return "waveform.path.ecg"
         case .investigations: return "briefcase.fill"
         case .environments: return "network"
-        case .commandLibrary: return "terminal.fill"
+        case .commandLibrary: return "books.vertical.fill"
         case .history: return "clock.arrow.circlepath"
         case .settings: return "gearshape.fill"
         }
@@ -69,6 +76,9 @@ public final class AppState: @unchecked Sendable {
     public var discoveredNeighbors: [DiscoveredNeighbor] = []
     public var isDiscoveringNeighbors: Bool = false
     public var lastNeighborDiscoveryTime: Date? = nil
+
+    // Phase 6: Terminal & Console Sessions
+    public let terminalManager: TerminalManager = TerminalManager()
 
     // Alerts and feedback
     public var toastMessage: String? = nil

@@ -8,7 +8,11 @@ public struct CommandLibraryView: View {
 
     private let db = CommandDatabase.shared
 
-    public init() {}
+    var state: AppState? = nil
+
+    public init(state: AppState? = nil) {
+        self.state = state
+    }
 
     public var filteredCommands: [VendorCommand] {
         var list = db.search(query: searchQuery)
@@ -89,6 +93,19 @@ public struct CommandLibraryView: View {
                                         .font(.system(size: 12))
                                 }
                                 .buttonStyle(.bordered)
+                                .help("Copy command syntax")
+
+                                if let s = state {
+                                    Button(action: {
+                                        s.terminalManager.activeSession?.sendCommand(cmd.syntax)
+                                        s.selectedWorkspace = .terminal
+                                    }) {
+                                        Label("Run in Terminal", systemImage: "terminal.fill")
+                                            .font(.system(size: 11))
+                                    }
+                                    .buttonStyle(.bordered)
+                                    .tint(Theme.cyanPulse)
+                                }
                             }
 
                             if !cmd.description.isEmpty {

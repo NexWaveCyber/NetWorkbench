@@ -21,7 +21,7 @@ public struct AppSidebar: View {
             }
 
             Section {
-                ForEach([WorkspaceItem.devices, .snmp, .config, .packet], id: \.self) { item in
+                ForEach([WorkspaceItem.wifi, .timeline, .devices, .terminal, .snmp, .config, .packet], id: \.self) { item in
                     sidebarRow(item: item, tint: Theme.electricAzure)
                         .tag(item)
                 }
