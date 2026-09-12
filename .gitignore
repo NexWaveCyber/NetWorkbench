@@ -3,3 +3,6 @@
 .DS_Store
 DerivedData/
 *.xcuserstate
+*.app/
+*.dmg
+dmg_staging/

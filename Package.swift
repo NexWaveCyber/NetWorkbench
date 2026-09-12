@@ -17,7 +17,14 @@ let package = Package(
         .library(name: "InvestigationKit", targets: ["InvestigationKit"]),
         .library(name: "PersistenceKit", targets: ["PersistenceKit"]),
         .library(name: "SecurityKit", targets: ["SecurityKit"]),
-        .library(name: "CommandLibrary", targets: ["CommandLibrary"])
+        .library(name: "CommandLibrary", targets: ["CommandLibrary"]),
+        .library(name: "InternetIntel", targets: ["InternetIntel"]),
+        .library(name: "DeviceKit", targets: ["DeviceKit"]),
+        .library(name: "SNMPEngine", targets: ["SNMPEngine"]),
+        .library(name: "ConfigKit", targets: ["ConfigKit"]),
+        .library(name: "ParserKit", targets: ["ParserKit"]),
+        .library(name: "PacketKit", targets: ["PacketKit"]),
+        .library(name: "ReportingKit", targets: ["ReportingKit"])
     ],
     dependencies: [],
     targets: [
@@ -37,6 +44,11 @@ let package = Package(
             dependencies: ["NetworkCore"],
             path: "Sources/PersistenceKit",
             linkerSettings: [.linkedLibrary("sqlite3")]
+        ),
+        .target(
+            name: "DeviceKit",
+            dependencies: ["NetworkCore", "PersistenceKit", "SecurityKit"],
+            path: "Sources/DeviceKit"
         ),
 
         // Core Tooling Layer
@@ -64,6 +76,26 @@ let package = Package(
             name: "CommandLibrary",
             dependencies: ["NetworkCore"],
             path: "Sources/CommandLibrary"
+        ),
+        .target(
+            name: "InternetIntel",
+            dependencies: ["NetworkCore"],
+            path: "Sources/InternetIntel"
+        ),
+        .target(
+            name: "SNMPEngine",
+            dependencies: ["NetworkCore"],
+            path: "Sources/SNMPEngine"
+        ),
+        .target(
+            name: "ConfigKit",
+            dependencies: ["NetworkCore", "SecurityKit"],
+            path: "Sources/ConfigKit"
+        ),
+        .target(
+            name: "ParserKit",
+            dependencies: ["NetworkCore", "DeviceKit"],
+            path: "Sources/ParserKit"
         ),
 
         // Diagnostics & Correlation Layer
@@ -103,9 +135,34 @@ let package = Package(
                 "InvestigationKit",
                 "PersistenceKit",
                 "SecurityKit",
-                "CommandLibrary"
+                "CommandLibrary",
+                "InternetIntel",
+                "DeviceKit",
+                "SNMPEngine",
+                "ConfigKit",
+                "ParserKit",
+                "PacketKit",
+                "ReportingKit"
             ],
             path: "Sources/NexWaveApp"
+        ),
+        .target(
+            name: "PacketKit",
+            dependencies: ["NetworkCore"],
+            path: "Sources/PacketKit"
+        ),
+        .target(
+            name: "ReportingKit",
+            dependencies: [
+                "NetworkCore",
+                "DiagnosticsEngine",
+                "InvestigationKit",
+                "DeviceKit",
+                "ConfigKit",
+                "SecurityKit",
+                "PacketKit"
+            ],
+            path: "Sources/ReportingKit"
         ),
 
         // Test Suites
@@ -133,6 +190,41 @@ let package = Package(
             name: "PersistenceKitTests",
             dependencies: ["PersistenceKit", "NetworkCore", "InvestigationKit"],
             path: "Tests/PersistenceKitTests"
+        ),
+        .testTarget(
+            name: "InternetIntelTests",
+            dependencies: ["InternetIntel", "NetworkCore"],
+            path: "Tests/InternetIntelTests"
+        ),
+        .testTarget(
+            name: "DeviceKitTests",
+            dependencies: ["DeviceKit", "NetworkCore", "PersistenceKit", "SecurityKit"],
+            path: "Tests/DeviceKitTests"
+        ),
+        .testTarget(
+            name: "SNMPEngineTests",
+            dependencies: ["SNMPEngine", "NetworkCore"],
+            path: "Tests/SNMPEngineTests"
+        ),
+        .testTarget(
+            name: "ConfigKitTests",
+            dependencies: ["ConfigKit", "NetworkCore"],
+            path: "Tests/ConfigKitTests"
+        ),
+        .testTarget(
+            name: "ParserKitTests",
+            dependencies: ["ParserKit", "NetworkCore"],
+            path: "Tests/ParserKitTests"
+        ),
+        .testTarget(
+            name: "PacketKitTests",
+            dependencies: ["PacketKit", "NetworkCore"],
+            path: "Tests/PacketKitTests"
+        ),
+        .testTarget(
+            name: "ReportingKitTests",
+            dependencies: ["ReportingKit", "NetworkCore", "InvestigationKit", "SecurityKit"],
+            path: "Tests/ReportingKitTests"
         )
     ]
 )

@@ -4,6 +4,8 @@ import DiagnosticsEngine
 import InvestigationKit
 import PersistenceKit
 import CommandLibrary
+import DeviceKit
+import SNMPEngine
 
 public enum WorkspaceItem: String, CaseIterable, Identifiable, Sendable {
     case home = "Home / Dashboard"
@@ -60,6 +62,14 @@ public final class AppState: @unchecked Sendable {
     public var recentHistory: [DiagnosticHistoryRecord] = []
     public var selectedInvestigation: Investigation? = nil
 
+    // Phase 3: Device Management & Discovery
+    public let deviceManager: DeviceManager
+    public var managedDevices: [NetworkDevice] = []
+    public var selectedDevice: NetworkDevice? = nil
+    public var discoveredNeighbors: [DiscoveredNeighbor] = []
+    public var isDiscoveringNeighbors: Bool = false
+    public var lastNeighborDiscoveryTime: Date? = nil
+
     // Alerts and feedback
     public var toastMessage: String? = nil
 
@@ -68,8 +78,51 @@ public final class AppState: @unchecked Sendable {
             let db = try SQLiteDatabase()
             self.database = db
             self.investigationManager = InvestigationManager(database: db)
+            self.deviceManager = DeviceManager(database: db)
             self.investigations = (try? investigationManager.listInvestigations()) ?? []
             self.recentHistory = (try? investigationManager.fetchRecentHistory(limit: 20)) ?? []
+            self.managedDevices = (try? deviceManager.listDevices()) ?? []
+            if self.managedDevices.isEmpty {
+                let seed1 = NetworkDevice(
+                    name: "core-sw01.sfo",
+                    hostname: "core-sw01.sfo.nexwave.net",
+                    ipAddress: "192.168.1.1",
+                    macAddress: "00:1C:58:29:41:A0",
+                    vendor: .cisco,
+                    role: .switchRole,
+                    status: .online,
+                    location: "SFO Data Center - Rack 14B",
+                    tags: ["core", "distribution", "snmp-v2c"],
+                    snmpConfig: SNMPDeviceConfig(community: "public", port: 161, version: "v2c")
+                )
+                let seed2 = NetworkDevice(
+                    name: "edge-gw01",
+                    hostname: "gw01.nexwave.internal",
+                    ipAddress: "192.168.1.254",
+                    macAddress: "00:0C:29:84:11:BC",
+                    vendor: .fortinet,
+                    role: .firewall,
+                    status: .online,
+                    location: "SFO Perimeter",
+                    tags: ["firewall", "bgp-peer", "perimeter"],
+                    snmpConfig: SNMPDeviceConfig(community: "public", port: 161, version: "v2c")
+                )
+                let seed3 = NetworkDevice(
+                    name: "ap-floor3-east",
+                    hostname: "ap3e.internal",
+                    ipAddress: "192.168.1.50",
+                    macAddress: "F0:9F:C2:11:22:33",
+                    vendor: .ubiquiti,
+                    role: .accessPoint,
+                    status: .online,
+                    location: "Building A, 3rd Floor",
+                    tags: ["wifi", "poe", "access"]
+                )
+                try? deviceManager.createDevice(seed1)
+                try? deviceManager.createDevice(seed2)
+                try? deviceManager.createDevice(seed3)
+                self.managedDevices = [seed1, seed2, seed3]
+            }
         } catch {
             fatalError("Failed to initialize SQLite persistence: \(error)")
         }
@@ -127,6 +180,67 @@ public final class AppState: @unchecked Sendable {
             self.selectedInvestigation = inv
             self.selectedWorkspace = .investigations
             self.toastMessage = "Investigation created successfully."
+        }
+    }
+
+    // MARK: - Phase 3: Device & Discovery Actions
+
+    public func refreshManagedDevices() {
+        if let list = try? deviceManager.listDevices() {
+            self.managedDevices = list
+        }
+    }
+
+    @MainActor
+    public func runLocalDiscovery() async {
+        self.isDiscoveringNeighbors = true
+        let engine = LocalDiscoveryEngine()
+        let neighbors = await engine.discoverNeighbors()
+        self.discoveredNeighbors = neighbors
+        self.lastNeighborDiscoveryTime = Date()
+        self.isDiscoveringNeighbors = false
+    }
+
+    public func addDiscoveredNeighborToInventory(_ neighbor: DiscoveredNeighbor, role: DeviceRole, name: String) {
+        let device = NetworkDevice(
+            name: name.isEmpty ? (neighbor.hostname ?? neighbor.ip) : name,
+            hostname: neighbor.hostname,
+            ipAddress: neighbor.ip,
+            macAddress: neighbor.mac,
+            vendor: neighbor.vendor,
+            role: role,
+            status: .online,
+            tags: ["discovered", neighbor.source.rawValue]
+        )
+        do {
+            try deviceManager.saveDevice(device)
+            refreshManagedDevices()
+            self.toastMessage = "Enrolled \(device.name) into Managed Inventory"
+        } catch {
+            self.toastMessage = "Failed to save device: \(error.localizedDescription)"
+        }
+    }
+
+    public func addManualDevice(_ device: NetworkDevice) {
+        do {
+            try deviceManager.saveDevice(device)
+            refreshManagedDevices()
+            self.toastMessage = "Saved device \(device.name)"
+        } catch {
+            self.toastMessage = "Failed to save device: \(error.localizedDescription)"
+        }
+    }
+
+    public func deleteDevice(id: UUID) {
+        do {
+            try deviceManager.deleteDevice(id: id)
+            if selectedDevice?.id == id {
+                selectedDevice = nil
+            }
+            refreshManagedDevices()
+            self.toastMessage = "Device removed from inventory"
+        } catch {
+            self.toastMessage = "Failed to delete device: \(error.localizedDescription)"
         }
     }
 }

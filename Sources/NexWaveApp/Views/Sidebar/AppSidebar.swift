@@ -8,69 +8,64 @@ public struct AppSidebar: View {
     }
 
     public var body: some View {
-        VStack(spacing: 0) {
-            List(selection: $state.selectedWorkspace) {
-                Section {
-                    ForEach([WorkspaceItem.home, .diagnose, .toolbox], id: \.self) { item in
-                        NavigationLink(value: item) {
-                            sidebarRow(item: item, tint: Theme.cyanPulse)
-                        }
-                    }
-                } header: {
-                    Text("WORKSPACES")
-                        .font(.system(size: 10, weight: .bold, design: .monospaced))
-                        .foregroundStyle(.secondary.opacity(0.8))
+        List(selection: $state.selectedWorkspace) {
+            Section {
+                ForEach([WorkspaceItem.home, .diagnose, .toolbox], id: \.self) { item in
+                    sidebarRow(item: item, tint: Theme.cyanPulse)
+                        .tag(item)
                 }
-
-                Section {
-                    ForEach([WorkspaceItem.devices, .snmp, .config, .packet], id: \.self) { item in
-                        NavigationLink(value: item) {
-                            sidebarRow(item: item, tint: Theme.electricAzure)
-                        }
-                    }
-                } header: {
-                    Text("INFRASTRUCTURE & PROTOCOLS")
-                        .font(.system(size: 10, weight: .bold, design: .monospaced))
-                        .foregroundStyle(.secondary.opacity(0.8))
-                }
-
-                Section {
-                    NavigationLink(value: WorkspaceItem.investigations) {
-                        HStack(spacing: 9) {
-                            iconBadge(name: WorkspaceItem.investigations.iconName, tint: Theme.signalEmerald)
-                            Text(WorkspaceItem.investigations.rawValue)
-                                .font(.system(size: 13, weight: .medium))
-                            Spacer()
-                            if !state.investigations.isEmpty {
-                                Text("\(state.investigations.count)")
-                                    .font(Theme.monoText(10, weight: .bold))
-                                    .padding(.horizontal, 6)
-                                    .padding(.vertical, 2)
-                                    .background(Theme.signalEmerald.opacity(0.18))
-                                    .foregroundStyle(Theme.signalEmerald)
-                                    .clipShape(Capsule())
-                            }
-                        }
-                        .padding(.vertical, 2)
-                    }
-
-                    ForEach([WorkspaceItem.environments, .commandLibrary, .history, .settings], id: \.self) { item in
-                        NavigationLink(value: item) {
-                            sidebarRow(item: item, tint: Theme.quantumViolet)
-                        }
-                    }
-                } header: {
-                    Text("OPERATIONS & EVIDENCE")
-                        .font(.system(size: 10, weight: .bold, design: .monospaced))
-                        .foregroundStyle(.secondary.opacity(0.8))
-                }
+            } header: {
+                Text("WORKSPACES")
+                    .font(.system(size: 10, weight: .bold, design: .monospaced))
+                    .foregroundStyle(.secondary.opacity(0.8))
             }
-            .listStyle(.sidebar)
 
-            Divider()
+            Section {
+                ForEach([WorkspaceItem.devices, .snmp, .config, .packet], id: \.self) { item in
+                    sidebarRow(item: item, tint: Theme.electricAzure)
+                        .tag(item)
+                }
+            } header: {
+                Text("INFRASTRUCTURE & PROTOCOLS")
+                    .font(.system(size: 10, weight: .bold, design: .monospaced))
+                    .foregroundStyle(.secondary.opacity(0.8))
+            }
 
-            // MARK: - Workstation Status Footer
-            sidebarFooter
+            Section {
+                HStack(spacing: 9) {
+                    iconBadge(name: WorkspaceItem.investigations.iconName, tint: Theme.signalEmerald)
+                    Text(WorkspaceItem.investigations.rawValue)
+                        .font(.system(size: 13, weight: .medium))
+                    Spacer()
+                    if !state.investigations.isEmpty {
+                        Text("\(state.investigations.count)")
+                            .font(Theme.monoText(10, weight: .bold))
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(Theme.signalEmerald.opacity(0.18))
+                            .foregroundStyle(Theme.signalEmerald)
+                            .clipShape(Capsule())
+                    }
+                }
+                .padding(.vertical, 2)
+                .tag(WorkspaceItem.investigations)
+
+                ForEach([WorkspaceItem.environments, .commandLibrary, .history, .settings], id: \.self) { item in
+                    sidebarRow(item: item, tint: Theme.quantumViolet)
+                        .tag(item)
+                }
+            } header: {
+                Text("OPERATIONS & EVIDENCE")
+                    .font(.system(size: 10, weight: .bold, design: .monospaced))
+                    .foregroundStyle(.secondary.opacity(0.8))
+            }
+        }
+        .listStyle(.sidebar)
+        .safeAreaInset(edge: .bottom) {
+            VStack(spacing: 0) {
+                Divider()
+                sidebarFooter
+            }
         }
         .navigationTitle("NexWave")
     }
@@ -81,6 +76,15 @@ public struct AppSidebar: View {
             Text(item.rawValue)
                 .font(.system(size: 13, weight: .medium))
             Spacer()
+            if item == .devices && !state.managedDevices.isEmpty {
+                Text("\(state.managedDevices.count)")
+                    .font(Theme.monoText(10, weight: .bold))
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(Theme.electricAzure.opacity(0.18))
+                    .foregroundStyle(Theme.electricAzure)
+                    .clipShape(Capsule())
+            }
         }
         .padding(.vertical, 2)
     }

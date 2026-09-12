@@ -46,6 +46,21 @@ public struct IPNetwork: Hashable, Sendable, CustomStringConvertible {
         return IPAddress.IPv4(rawValue: ~mask.rawValue)
     }
 
+    public var ipv4Address: IPAddress.IPv4? {
+        guard case .v4(let v) = address else { return nil }
+        return v
+    }
+
+    public var ipv4NetworkAddress: IPAddress.IPv4? {
+        guard case .v4(let v) = networkAddress else { return nil }
+        return v
+    }
+
+    public var ipv4BroadcastAddress: IPAddress.IPv4? {
+        guard let bcast = broadcastAddress, case .v4(let v) = bcast else { return nil }
+        return v
+    }
+
     public var networkAddress: IPAddress {
         switch address {
         case .v4(let v4):

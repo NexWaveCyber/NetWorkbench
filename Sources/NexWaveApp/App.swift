@@ -25,19 +25,41 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 struct NexWaveApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
     @State private var state = AppState()
-    @State private var showInspector = true
+    @State private var columnVisibility: NavigationSplitViewVisibility = .all
+    @State private var showInspector = false
 
     var body: some Scene {
         WindowGroup {
-            NavigationSplitView {
+            NavigationSplitView(columnVisibility: $columnVisibility) {
                 AppSidebar(state: state)
+                    .navigationSplitViewColumnWidth(min: 220, ideal: 250, max: 320)
             } detail: {
                 detailViewForWorkspace(state.selectedWorkspace)
+                    .frame(minWidth: 500, maxWidth: .infinity, minHeight: 600, maxHeight: .infinity)
             }
+            .navigationSplitViewStyle(.automatic)
             .inspector(isPresented: $showInspector) {
                 NetworkInspectorView(result: state.latestResult)
+                    .inspectorColumnWidth(min: 260, ideal: 290, max: 350)
             }
+            .preferredColorScheme(.dark)
             .toolbar {
+                ToolbarItem(placement: .navigation) {
+                    Button(action: {
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                            if columnVisibility == .detailOnly {
+                                columnVisibility = .all
+                            } else {
+                                columnVisibility = .detailOnly
+                            }
+                        }
+                    }) {
+                        Image(systemName: "sidebar.left")
+                            .font(.system(size: 13))
+                    }
+                    .help("Toggle Sidebar (⌃⌘S)")
+                }
+
                 ToolbarItem(placement: .navigation) {
                     HStack(spacing: 6) {
                         Circle()
@@ -74,14 +96,18 @@ struct NexWaveApp: App {
                     .buttonStyle(.plain)
                     .help("Open Command Palette (Cmd+K)")
 
-                    Button(action: { showInspector.toggle() }) {
-                        Image(systemName: showInspector ? "sidebar.right" : "sidebar.right")
-                            .foregroundStyle(showInspector ? Theme.azurePro : Color.primary)
+                    Button(action: {
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                            showInspector.toggle()
+                        }
+                    }) {
+                        Image(systemName: "sidebar.right")
+                            .foregroundStyle(showInspector ? Theme.neonCyan : Color.secondary)
                     }
-                    .help("Toggle Network Inspector (Cmd+I)")
+                    .help("Toggle Network Inspector (⌥⌘I)")
                 }
             }
-            .frame(minWidth: 1100, minHeight: 700)
+            .frame(minWidth: 1100, idealWidth: 1320, minHeight: 700, idealHeight: 880)
             .sheet(isPresented: $state.showCommandPalette) {
                 CommandPaletteView(state: state)
             }
@@ -104,18 +130,18 @@ struct NexWaveApp: App {
             }
         }
         .windowStyle(.titleBar)
-        .windowToolbarStyle(.unified)
+        .windowToolbarStyle(.unified(showsTitle: true))
+        .defaultSize(width: 1320, height: 880)
         .commands {
+            SidebarCommands()
+            InspectorCommands()
+
             CommandGroup(after: .appInfo) {
+                Divider()
                 Button("Command Palette...") {
                     state.showCommandPalette = true
                 }
                 .keyboardShortcut("k", modifiers: [.command])
-
-                Button("Toggle Inspector") {
-                    showInspector.toggle()
-                }
-                .keyboardShortcut("i", modifiers: [.command])
             }
 
             CommandMenu("Workspaces") {
@@ -125,18 +151,24 @@ struct NexWaveApp: App {
                     .keyboardShortcut("2", modifiers: [.command])
                 Button("Toolbox") { state.selectedWorkspace = .toolbox }
                     .keyboardShortcut("3", modifiers: [.command])
+                Divider()
                 Button("Devices") { state.selectedWorkspace = .devices }
                     .keyboardShortcut("4", modifiers: [.command])
                 Button("SNMP Studio") { state.selectedWorkspace = .snmp }
                     .keyboardShortcut("5", modifiers: [.command])
                 Button("Config Workbench") { state.selectedWorkspace = .config }
                     .keyboardShortcut("6", modifiers: [.command])
-                Button("Investigations") { state.selectedWorkspace = .investigations }
+                Button("Packet Workbench") { state.selectedWorkspace = .packet }
                     .keyboardShortcut("7", modifiers: [.command])
-                Button("Command Library") { state.selectedWorkspace = .commandLibrary }
+                Divider()
+                Button("Investigations") { state.selectedWorkspace = .investigations }
                     .keyboardShortcut("8", modifiers: [.command])
+                Button("Environments") { state.selectedWorkspace = .environments }
+                Button("Command Library") { state.selectedWorkspace = .commandLibrary }
                 Button("History") { state.selectedWorkspace = .history }
                     .keyboardShortcut("9", modifiers: [.command])
+                Button("Settings") { state.selectedWorkspace = .settings }
+                    .keyboardShortcut(",", modifiers: [.command])
             }
         }
     }
@@ -157,61 +189,13 @@ struct NexWaveApp: App {
         case .history:
             HistoryWorkspaceView(state: state)
         case .devices:
-            SecondaryWorkspaceView(
-                title: "Device Workbench",
-                icon: "server.rack",
-                subtitle: "Saved switch, router, and firewall profiles",
-                capabilities: [
-                    "Inventory Management with Tags",
-                    "Keychain Credential Storage (Zero Plaintext)",
-                    "Interface Error Rate Polling",
-                    "Local Network Discovery (ARP/NDP & Bonjour)",
-                    "Terminal Quick Connect",
-                    "Diagnostic Baseline Comparison"
-                ]
-            )
+            DeviceWorkbenchView(state: state)
         case .snmp:
-            SecondaryWorkspaceView(
-                title: "SNMP Studio",
-                icon: "chart.bar.xaxis",
-                subtitle: "Pure Swift SNMP v1, v2c, and v3 Protocol Workbench",
-                capabilities: [
-                    "SNMP v1/v2c Community Queries",
-                    "SNMP v3 USM (AuthPriv with SHA-256 & AES-256)",
-                    "Interactive MIB Trie Browser (RFC 1213, IF-MIB)",
-                    "Interface Error & Discard Counter Deltas",
-                    "Bandwidth Utilization Rate Calculations",
-                    "Table & Bulk Walk Engine"
-                ]
-            )
+            SNMPStudioView(state: state)
         case .config:
-            SecondaryWorkspaceView(
-                title: "Config Workbench",
-                icon: "doc.text.magnifyingglass",
-                subtitle: "Network Configuration Intelligence & Structural Diff",
-                capabilities: [
-                    "Cisco IOS, IOS-XE, NX-OS Lexical Parser",
-                    "Semantic Structural Diff (Interfaces, VLANs, ACLs)",
-                    "Deterministic ACL Packet Flow Simulator",
-                    "Sensitive Password & Community Redactor",
-                    "Hierarchical Section Folding & Search",
-                    "Pre-Commit Assurance Checks"
-                ]
-            )
+            ConfigWorkbenchView(state: state)
         case .packet:
-            SecondaryWorkspaceView(
-                title: "Packet Workbench",
-                icon: "waveform.path.ecg",
-                subtitle: "High-Speed Streaming PCAP / PCAPNG Summaries",
-                capabilities: [
-                    "Zero-GPL Native Streaming Capture Reader",
-                    "Top Talkers & Protocol Distribution",
-                    "Conversational Flow Analysis",
-                    "TCP Retransmission & Anomaly Detection",
-                    "DNS Latency & Failure Rate Tracking",
-                    "Seamless 'Open in Wireshark' Integration"
-                ]
-            )
+            PacketWorkbenchView(state: state)
         case .environments:
             SecondaryWorkspaceView(
                 title: "Environments",

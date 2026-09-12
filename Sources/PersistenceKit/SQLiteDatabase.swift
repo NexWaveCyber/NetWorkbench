@@ -131,15 +131,46 @@ public final class SQLiteDatabase: @unchecked Sendable {
             hostname TEXT NOT NULL,
             management_ip TEXT NOT NULL,
             vendor TEXT NOT NULL,
+            role TEXT NOT NULL DEFAULT 'switch',
             platform TEXT,
             model TEXT,
             site TEXT,
             environment_id TEXT,
             tags TEXT,
-            credential_ref TEXT
+            status TEXT NOT NULL DEFAULT 'unknown',
+            credential_ref TEXT,
+            snmp_community TEXT,
+            snmp_port INTEGER DEFAULT 161,
+            snmp_version TEXT DEFAULT 'v2c',
+            last_seen REAL
+        );
+
+        CREATE TABLE IF NOT EXISTS device_baselines (
+            id TEXT PRIMARY KEY,
+            device_id TEXT NOT NULL,
+            created_at REAL NOT NULL,
+            avg_latency_ms REAL,
+            packet_loss_pct REAL,
+            open_ports TEXT,
+            snmp_sys_descr TEXT,
+            notes TEXT,
+            FOREIGN KEY (device_id) REFERENCES devices(id) ON DELETE CASCADE
         );
         """
         try execute(sql: schema)
+
+        // Safe column additions for schema upgrades
+        let alterStatements = [
+            "ALTER TABLE devices ADD COLUMN role TEXT NOT NULL DEFAULT 'switch';",
+            "ALTER TABLE devices ADD COLUMN status TEXT NOT NULL DEFAULT 'unknown';",
+            "ALTER TABLE devices ADD COLUMN snmp_community TEXT;",
+            "ALTER TABLE devices ADD COLUMN snmp_port INTEGER DEFAULT 161;",
+            "ALTER TABLE devices ADD COLUMN snmp_version TEXT DEFAULT 'v2c';",
+            "ALTER TABLE devices ADD COLUMN last_seen REAL;"
+        ]
+        for alter in alterStatements {
+            _ = try? execute(sql: alter)
+        }
     }
 
     public var rawHandle: OpaquePointer? {

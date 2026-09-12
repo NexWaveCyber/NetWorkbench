@@ -1,9 +1,12 @@
 import SwiftUI
 
 public enum ToolboxTool: String, CaseIterable, Identifiable {
-    case subnet = "Subnet & VLSM"
-    case dns = "DNS Studio"
+    case subnet = "IP Studio & VLSM"
+    case dns = "DNS & DoH Studio"
     case ports = "Port Diagnostics"
+    case mtr = "Continuous MTR"
+    case internetIntel = "Internet Intel & ASN"
+    case sockets = "Listening Sockets"
 
     public var id: String { rawValue }
 
@@ -12,6 +15,9 @@ public enum ToolboxTool: String, CaseIterable, Identifiable {
         case .subnet: return "number.square.fill"
         case .dns: return "arrow.triangle.branch"
         case .ports: return "point.3.filled.connected.trianglepath.dotted"
+        case .mtr: return "waveform.path.ecg"
+        case .internetIntel: return "globe.americas.fill"
+        case .sockets: return "antenna.radiowaves.left.and.right"
         }
     }
 }
@@ -32,7 +38,7 @@ public struct ToolboxWorkspaceContainerView: View {
                     }
                 }
                 .pickerStyle(.segmented)
-                .frame(maxWidth: 420)
+                .frame(maxWidth: 860)
 
                 Spacer()
             }
@@ -50,6 +56,12 @@ public struct ToolboxWorkspaceContainerView: View {
                 DNSStudioView()
             case .ports:
                 PortDiagnosticsView()
+            case .mtr:
+                MTRStudioView()
+            case .internetIntel:
+                InternetIntelView()
+            case .sockets:
+                ListeningSocketsView()
             }
         }
     }
