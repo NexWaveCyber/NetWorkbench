@@ -222,30 +222,9 @@ struct NexWaveApp: App {
         case .packet:
             PacketWorkbenchView(state: state)
         case .environments:
-            SecondaryWorkspaceView(
-                title: "Environments",
-                icon: "network",
-                subtitle: "Logical Network Engineering Scopes",
-                capabilities: [
-                    "Scoped Subnets & Gateways",
-                    "Custom DNS Resolver Associations",
-                    "Site Notes & Engineering Runbooks",
-                    "Scoped Device Credentials"
-                ]
-            )
+            EnvironmentsWorkspaceView(state: state)
         case .settings:
-            SecondaryWorkspaceView(
-                title: "Settings & Privacy",
-                icon: "gearshape.fill",
-                subtitle: "Local Data Management & Security Configuration",
-                capabilities: [
-                    "100% Local-First Storage (SQLite WAL Mode)",
-                    "Hardware Keychain Services Status",
-                    "Local Test History Retention Policies",
-                    "Zero Secret Telemetry Guarantee",
-                    "Export Sanitized Diagnostics Bundle"
-                ]
-            )
+            SettingsWorkspaceView(state: state)
         }
     }
 }

@@ -205,4 +205,8 @@ public final class SQLiteDatabase: @unchecked Sendable {
         defer { lock.unlock() }
         return try block()
     }
+
+    public func clearDiagnosticHistory() throws {
+        try execute(sql: "DELETE FROM diagnostic_history;")
+    }
 }

@@ -27,27 +27,28 @@ NexWave eliminates the friction of juggling Terminal tabs, online subnet calcula
 
 ---
 
-## Primary Workspaces
+## Primary Workspaces & Studios
 
-1. **Home / Dashboard**: Target classification hero bar, active investigations, favorite devices, pinned tools, and recent diagnostic feeds.
-2. **Diagnose**: 20-step automated multi-layer diagnostic pipeline with deterministic correlation and findings.
-3. **Toolbox**:
-   * *Connectivity*: Continuous Ping, Multi-Ping, TCP Ping, jitter and percentile latency analysis.
-   * *Path Analysis*: Traceroute, MTR-style continuous hop sampling, route drift detection.
-   * *IP Studio*: IPv4/IPv6 subnetting, VLSM planner, CIDR aggregator, wildcard mask calculator.
-   * *DNS Studio*: Multi-resolver comparison, Do53, DoH, DoT, DNSSEC validation, query timing.
-   * *TCP / Ports*: Safe port probe, connect timing, local socket inspection.
-   * *HTTP / TLS Studio*: Timing stages (DNS, Connect, TLS, TTFB, Transfer), ALPN, certificate chain inspection.
-   * *Internet Intelligence*: ASN, RDAP, BGP origin, RPKI state validation.
-4. **Devices**: Saved router, switch, and firewall profiles with Keychain credentials, interface inventories, and diagnostics.
-5. **SNMP Studio**: Pure Swift SNMP v1/v2c/v3 engine, OID trie browser, MIB dictionaries, interface error rate monitoring.
-6. **Config Workbench**: Syntax-aware viewer, semantic structural diff (recognizing interface, VLAN, ACL, and routing changes), and sensitive credential redactor.
-7. **ACL Analyzer**: Deterministic rule simulator for Cisco-style ACLs with rule-shadowing detection.
-8. **Packet Workbench**: High-speed PCAP/PCAPNG streaming summary (flow summaries, top talkers, TCP anomalies) and "Open in Wireshark" integration.
-9. **Investigations**: Persistent troubleshooting tickets with auto-updating chronological timelines and audit export.
-10. **Environments**: Logical scopes (e.g., `HomeLab`, `DC01-Production`, `Customer-East`).
-11. **Command Library**: Verified multi-vendor CLI command reference (Cisco IOS-XE, NX-OS, Arista EOS, Juniper Junos).
-12. **History & Settings**: Local audit log with configurable retention and entitlement preferences.
+1. **Home / Dashboard**: Target classification hero bar, active investigations, favorite devices, pinned tools, and live diagnostic feed.
+2. **Diagnose**: 20-step automated multi-layer diagnostic pipeline with deterministic root-cause correlation and findings.
+3. **Wi-Fi Studio**: Native `CoreWLAN` integration, RF health gauges (RSSI, SNR, Noise), 802.11ax/be PHY metrics, BSSID roaming delta log, and 2.4/5/6 GHz co-channel congestion visualizer.
+4. **macOS Menu Bar Quick Glance Companion**: Native status bar extra with live gateway RTT badge, floating popover, dual Gateway/Internet probers, and 1-click DNS cache flusher.
+5. **Timeline Monitor**: Long-term continuous time-series SLA recording, SQLite WAL downsampling (10m to 7d), PingPlotter-style GPU Canvas chart with min-max jitter envelopes, and automated SLA breach engine.
+6. **Devices & Inventory**: Saved router, switch, and firewall fleet profiles with Keychain credentials, LAN neighbor discovery (ARP/NDP), and device baselines.
+7. **Topology Canvas**: Interactive GPU vector diagram canvas with draggable nodes, quadratic bezier links with port labels (`Gi0/1 <--> Eth1/1`), Hierarchical 3-Tier and Radial auto-layouts, and slide-over device inspector.
+8. **Terminal & Console Bridge**: Zero-dependency native POSIX PTY allocation via Darwin `openpty()`, hardware USB serial console discovery (`/dev/cu.*`, FTDI, CP210x, Cisco rollover), Cisco/Arista CLI simulator, and 1-click command macro bar.
+9. **SNMP Studio**: Pure Swift SNMP v1/v2c engine, OID trie browser, MIB dictionaries, and live interface error rate polling.
+10. **Config Workbench**: Syntax-aware viewer, semantic structural diff (recognizing interface, VLAN, ACL, and routing changes), and sensitive credential redactor.
+11. **Packet Workbench**: Live in-app streaming PCAP chunk decoder from `/usr/sbin/tcpdump`, 2,000-packet ring buffer, BPF filter chips, TCP anomaly detector, and Wireshark bridge.
+12. **Engineering Toolbox**:
+    * *IP Studio*: IPv4/IPv6 subnetting, VLSM planner, CIDR aggregator, wildcard mask calculator.
+    * *DNS Studio*: Multi-resolver comparison, Do53, DoH (RFC 8484), DoT, DNSSEC validation, query timing.
+    * *TCP / Ports*: Safe port probe, connect timing, local socket inspection.
+    * *HTTP / TLS Studio*: Timing stages (DNS, Connect, TLS, TTFB, Transfer), ALPN, certificate chain inspection.
+    * *Internet Intelligence*: ASN, RDAP, BGP origin, RPKI state validation.
+13. **Investigations**: Persistent troubleshooting tickets with auto-updating chronological timelines and audit export.
+14. **Environments & Runbooks**: Scoped site profiles (e.g., `SFO Production DC`, `HQ Campus`, `Branch Lab`, `Cloud VPC`) with runbook notes and gateway switching.
+15. **Command Library & Settings**: Verified multi-vendor CLI command reference and full local privacy / parameter tuning.
 
 ---
 
