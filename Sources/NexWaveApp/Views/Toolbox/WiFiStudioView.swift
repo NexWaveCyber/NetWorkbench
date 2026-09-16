@@ -19,6 +19,8 @@ public struct WiFiStudioView: View {
     @State private var toastMessage: String? = nil
     @State private var timerTask: Task<Void, Never>? = nil
 
+    @ObservedObject private var locationAuthorizer = WiFiLocationAuthorizer.shared
+
     public init() {}
 
     public var body: some View {
@@ -26,6 +28,10 @@ public struct WiFiStudioView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
                     headerBar
+
+                    if !locationAuthorizer.isAuthorized {
+                        locationPermissionBanner
+                    }
 
                     if let link = currentLink {
                         rfHealthHeroCard(link: link)
@@ -77,11 +83,97 @@ public struct WiFiStudioView: View {
         }
         .background(Theme.surfaceBackground)
         .onAppear {
+            if locationAuthorizer.isNotDetermined {
+                locationAuthorizer.requestAuthorization()
+            }
             startLiveMonitor()
         }
         .onDisappear {
             stopLiveMonitor()
         }
+        .onChange(of: locationAuthorizer.authorizationStatus) { _, status in
+            if locationAuthorizer.isAuthorized {
+                Task {
+                    await pollTelemetry()
+                    await performFullScan()
+                }
+            }
+        }
+    }
+
+    // MARK: - Location Permission Banner
+
+    private var locationPermissionBanner: some View {
+        HStack(spacing: 14) {
+            Image(systemName: locationAuthorizer.isDenied ? "location.slash.fill" : "location.circle.fill")
+                .font(.title2)
+                .foregroundStyle(locationAuthorizer.isDenied ? Theme.solarAmber : Theme.azurePro)
+
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(spacing: 6) {
+                    Text(locationAuthorizer.isDenied ? "Location Permission Required for Wi-Fi Names" : "Enable Location to View Wi-Fi (SSID) Names")
+                        .font(.subheadline.bold())
+                    Text("macOS Security")
+                        .font(.system(size: 9, weight: .heavy))
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 1)
+                        .background(Color.primary.opacity(0.1))
+                        .cornerRadius(3)
+                }
+
+                Text(locationAuthorizer.isDenied
+                    ? "macOS redacts Wi-Fi network names (SSIDs) until Location Services is enabled for NexWave Network Workbench in System Settings."
+                    : "macOS considers Wi-Fi names geolocation data. Granting permission unlocks real over-the-air network names for all surrounding APs."
+                )
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            }
+
+            Spacer()
+
+            if locationAuthorizer.isDenied {
+                Button(action: {
+                    if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_LocationServices") {
+                        NSWorkspace.shared.open(url)
+                    }
+                }) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "gearshape")
+                        Text("Open Settings")
+                            .font(.caption.bold())
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 7)
+                    .background(Theme.solarAmber.opacity(0.2))
+                    .foregroundStyle(Theme.solarAmber)
+                    .cornerRadius(7)
+                }
+                .buttonStyle(.plain)
+            } else {
+                Button(action: {
+                    locationAuthorizer.requestAuthorization()
+                }) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "hand.tap.fill")
+                        Text("Grant Permission")
+                            .font(.caption.bold())
+                    }
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 7)
+                    .background(Theme.azurePro)
+                    .foregroundStyle(.white)
+                    .cornerRadius(7)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(14)
+        .background(locationAuthorizer.isDenied ? Theme.solarAmber.opacity(0.08) : Theme.azurePro.opacity(0.1))
+        .cornerRadius(12)
+        .overlay(
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(locationAuthorizer.isDenied ? Theme.solarAmber.opacity(0.3) : Theme.azurePro.opacity(0.3), lineWidth: 1)
+        )
     }
 
     // MARK: - Header Bar

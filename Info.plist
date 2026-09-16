@@ -24,5 +24,11 @@
     <true/>
     <key>NSPrincipalClass</key>
     <string>NSApplication</string>
+    <key>NSLocationWhenInUseUsageDescription</key>
+    <string>NexWave Network Workbench requires Location access to discover and display surrounding Wi-Fi network names (SSIDs) in Wi-Fi Studio.</string>
+    <key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+    <string>NexWave Network Workbench requires Location access to discover and display surrounding Wi-Fi network names (SSIDs) in Wi-Fi Studio.</string>
+    <key>NSLocationUsageDescription</key>
+    <string>NexWave Network Workbench requires Location access to discover and display surrounding Wi-Fi network names (SSIDs) in Wi-Fi Studio.</string>
 </dict>
 </plist>

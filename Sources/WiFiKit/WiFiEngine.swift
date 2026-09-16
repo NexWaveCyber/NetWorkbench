@@ -71,10 +71,12 @@ public actor WiFiEngine {
 
         let countryCode = wlan.countryCode() ?? "US"
 
-        // Enrich with system ipconfig summary for exact SSID, BSSID, and DHCP details
+        // Enrich with CoreWLAN directly and fallback to ipconfig summary
         let systemSummary = await fetchIPConfigSummary(interface: ifName)
-        let ssid = systemSummary.ssid.isEmpty ? (wlan.ssid() ?? "Wi-Fi Network") : systemSummary.ssid
-        let bssid = systemSummary.bssid.isEmpty ? (wlan.bssid() ?? "00:00:00:00:00:00") : systemSummary.bssid
+        let wlanSSID = wlan.ssid()?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let ssid = !wlanSSID.isEmpty ? wlanSSID : (!systemSummary.ssid.isEmpty ? systemSummary.ssid : "Wi-Fi Network")
+        let wlanBSSID = wlan.bssid()?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let bssid = !wlanBSSID.isEmpty ? wlanBSSID : (!systemSummary.bssid.isEmpty ? systemSummary.bssid : "00:00:00:00:00:00")
         let security = systemSummary.security.isEmpty ? "WPA2/WPA3 Personal" : systemSummary.security
         let dhcpServer = systemSummary.dhcpServer
         let vendor = OUIResolver.resolve(mac: bssid)
@@ -147,65 +149,122 @@ public actor WiFiEngine {
         var networks: [NearbyAP] = []
         let currentBSSID = previousBSSID ?? ""
 
-        // 1. CoreWLAN hardware scan for channels and live RSSI
+        // 1. CoreWLAN hardware scan for channels, live RSSI, and real SSIDs
         let client = CWWiFiClient.shared()
         let wlan = interfaceName != nil ? client.interface(withName: interfaceName) : client.interface()
         var scannedChannels: [Int: (rssi: Int, band: WiFiBand, width: WiFiChannelWidth)] = [:]
 
         if let iface = wlan, let cwNets = try? iface.scanForNetworks(withSSID: nil) {
             for net in cwNets {
-                if let ch = net.wlanChannel {
-                    let band: WiFiBand
-                    switch ch.channelBand {
-                    case .band2GHz: band = .ghz2_4
-                    case .band5GHz: band = .ghz5
-                    case .band6GHz: band = .ghz6
-                    default: band = ch.channelNumber <= 14 ? .ghz2_4 : .ghz5
-                    }
+                guard let ch = net.wlanChannel else { continue }
+                let channelNum = ch.channelNumber
+                guard channelNum > 0 else { continue }
 
-                    let width: WiFiChannelWidth
-                    switch ch.channelWidth {
-                    case .width20MHz: width = .mhz20
-                    case .width40MHz: width = .mhz40
-                    case .width80MHz: width = .mhz80
-                    case .width160MHz: width = .mhz160
-                    default: width = .mhz20
-                    }
+                let band: WiFiBand
+                switch ch.channelBand {
+                case .band2GHz: band = .ghz2_4
+                case .band5GHz: band = .ghz5
+                case .band6GHz: band = .ghz6
+                default: band = channelNum <= 14 ? .ghz2_4 : .ghz5
+                }
 
-                    scannedChannels[ch.channelNumber] = (rssi: net.rssiValue, band: band, width: width)
+                let width: WiFiChannelWidth
+                switch ch.channelWidth {
+                case .width20MHz: width = .mhz20
+                case .width40MHz: width = .mhz40
+                case .width80MHz: width = .mhz80
+                case .width160MHz: width = .mhz160
+                default: width = .mhz20
+                }
+
+                scannedChannels[channelNum] = (rssi: net.rssiValue, band: band, width: width)
+
+                let rawBSSID = net.bssid ?? ""
+                let effectiveBSSID = rawBSSID.isEmpty ? String(format: "02:00:00:00:%02X:%02X", channelNum, abs(net.rssiValue)) : rawBSSID
+                let isAssoc = !currentBSSID.isEmpty && (effectiveBSSID.lowercased() == currentBSSID.lowercased())
+
+                let rawSSID = net.ssid?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                let ssidName: String
+                if !rawSSID.isEmpty {
+                    ssidName = rawSSID
+                } else if isAssoc && iface.ssid() != nil && !iface.ssid()!.isEmpty {
+                    ssidName = iface.ssid()!
+                } else if rawBSSID.isEmpty {
+                    ssidName = "Local AP (Ch \(channelNum))"
+                } else {
+                    ssidName = "Wi-Fi Network (Ch \(channelNum))"
+                }
+
+                let vendor = OUIResolver.resolve(mac: effectiveBSSID)
+
+                let ap = NearbyAP(
+                    ssid: ssidName,
+                    bssid: effectiveBSSID,
+                    vendorName: vendor,
+                    channel: channelNum,
+                    band: band,
+                    channelWidth: width,
+                    rssi: net.rssiValue,
+                    noise: net.noiseMeasurement,
+                    security: "WPA2/WPA3",
+                    phyMode: band == .ghz6 ? "802.11ax (6GHz)" : (band == .ghz5 ? "802.11ax" : "802.11n"),
+                    isCurrentAssociation: isAssoc
+                )
+                networks.append(ap)
+            }
+        }
+
+        // 2. Enrich or fallback to system_profiler
+        let profilerNets = await fetchSystemProfilerNetworks()
+        if networks.isEmpty {
+            for pNet in profilerNets {
+                let chInfo = scannedChannels[pNet.channel]
+                let effectiveRSSI = pNet.rssi ?? chInfo?.rssi ?? -65
+                let effectiveBand = chInfo?.band ?? pNet.band
+                let effectiveWidth = chInfo?.width ?? pNet.channelWidth
+
+                let isAssoc = !currentBSSID.isEmpty && (pNet.bssid.lowercased() == currentBSSID.lowercased() || pNet.isCurrentAssociation)
+                let effectiveBSSID = isAssoc && !currentBSSID.isEmpty ? currentBSSID : pNet.bssid
+                let vendor = OUIResolver.resolve(mac: effectiveBSSID)
+
+                let ap = NearbyAP(
+                    ssid: pNet.ssid,
+                    bssid: effectiveBSSID,
+                    vendorName: vendor,
+                    channel: pNet.channel,
+                    band: effectiveBand,
+                    channelWidth: effectiveWidth,
+                    rssi: effectiveRSSI,
+                    noise: pNet.noise ?? -85,
+                    security: pNet.security,
+                    phyMode: pNet.phyMode,
+                    isCurrentAssociation: isAssoc
+                )
+                networks.append(ap)
+            }
+        } else if !profilerNets.isEmpty {
+            for i in 0..<networks.count {
+                if let match = profilerNets.first(where: { $0.channel == networks[i].channel || $0.bssid.lowercased() == networks[i].bssid.lowercased() }) {
+                    if networks[i].ssid.starts(with: "Wi-Fi Network") && !match.ssid.isEmpty {
+                        networks[i] = NearbyAP(
+                            ssid: match.ssid,
+                            bssid: networks[i].bssid,
+                            vendorName: networks[i].vendorName,
+                            channel: networks[i].channel,
+                            band: networks[i].band,
+                            channelWidth: networks[i].channelWidth,
+                            rssi: networks[i].rssi,
+                            noise: networks[i].noise,
+                            security: match.security,
+                            phyMode: match.phyMode,
+                            isCurrentAssociation: networks[i].isCurrentAssociation
+                        )
+                    }
                 }
             }
         }
 
-        // 2. Parse system_profiler for rich names, PHY modes, and security
-        let profilerNets = await fetchSystemProfilerNetworks()
-        for pNet in profilerNets {
-            let chInfo = scannedChannels[pNet.channel]
-            let effectiveRSSI = pNet.rssi ?? chInfo?.rssi ?? -65
-            let effectiveBand = chInfo?.band ?? pNet.band
-            let effectiveWidth = chInfo?.width ?? pNet.channelWidth
-
-            let isAssoc = !currentBSSID.isEmpty && (pNet.bssid.lowercased() == currentBSSID.lowercased() || pNet.isCurrentAssociation)
-            let effectiveBSSID = isAssoc && !currentBSSID.isEmpty ? currentBSSID : pNet.bssid
-            let vendor = OUIResolver.resolve(mac: effectiveBSSID)
-
-            let ap = NearbyAP(
-                ssid: pNet.ssid,
-                bssid: effectiveBSSID,
-                vendorName: vendor,
-                channel: pNet.channel,
-                band: effectiveBand,
-                channelWidth: effectiveWidth,
-                rssi: effectiveRSSI,
-                noise: pNet.noise ?? -85,
-                security: pNet.security,
-                phyMode: pNet.phyMode,
-                isCurrentAssociation: isAssoc
-            )
-            networks.append(ap)
-        }
-
-        // Fallback: If system_profiler returned empty, generate synthetic entries from CoreWLAN scanned channels
+        // 3. Fallback: If both returned empty, generate synthetic entries from CoreWLAN scanned channels
         if networks.isEmpty && !scannedChannels.isEmpty {
             for (ch, data) in scannedChannels {
                 let genBSSID = String(format: "02:00:00:00:%02X:%02X", ch, abs(data.rssi))
