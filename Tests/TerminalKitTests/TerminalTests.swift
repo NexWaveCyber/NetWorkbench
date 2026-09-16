@@ -105,4 +105,30 @@ struct TerminalTests {
         manager.closeSession(id: sim.id)
         #expect(!manager.sessions.contains(where: { $0.id == sim.id }))
     }
+
+    @Test("SSH Profile configuration and session log export")
+    func testSSHProfileAndSessionExport() {
+        let profile = SSHProfile(
+            name: "Core Gateway SFO",
+            host: "10.10.10.1",
+            port: 2222,
+            username: "cisco",
+            authMethod: .password("Cisco123!"),
+            terminalType: "xterm-color",
+            logSession: true
+        )
+        #expect(profile.name == "Core Gateway SFO")
+        #expect(profile.port == 2222)
+
+        let session = TerminalSession(
+            title: profile.name,
+            connectionType: .ssh(host: profile.host, port: profile.port, username: profile.username, password: "Cisco123!")
+        )
+        session.sendCommand("show ip route")
+        let exportLog = session.exportSessionLog()
+        #expect(exportLog.contains("# NexWave Terminal Session Log"))
+        #expect(exportLog.contains(profile.name))
+        #expect(exportLog.contains("show ip route"))
+    }
 }
+

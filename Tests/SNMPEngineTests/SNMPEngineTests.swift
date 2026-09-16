@@ -142,4 +142,111 @@ struct SNMPEngineTests {
         #expect(delta.outErrorsPerSec == 0.0)
         #expect(delta.inUtilizationPct > 1.5 && delta.inUtilizationPct < 1.7)
     }
+
+    @Test("SNMPv3 Password-to-Key Localization (RFC 3414)")
+    func testSNMPv3KeyLocalization() {
+        let password = "map-password-123"
+        let engineID = Data([0x80, 0x00, 0x00, 0x09, 0x03, 0x00, 0x00, 0x11, 0x22, 0x33, 0x44])
+
+        let md5Key = SNMPv3Crypto.passwordToKey(password: password, engineID: engineID, protocol: .md5)
+        #expect(md5Key.count == 16)
+
+        let sha1Key = SNMPv3Crypto.passwordToKey(password: password, engineID: engineID, protocol: .sha1)
+        #expect(sha1Key.count == 20)
+
+        let sha256Key = SNMPv3Crypto.passwordToKey(password: password, engineID: engineID, protocol: .sha256)
+        #expect(sha256Key.count == 32)
+    }
+
+    @Test("SNMPv3 HMAC Authentication Signatures")
+    func testSNMPv3HMAC() {
+        let sampleData = "Sample SNMPv3 Message Data Payload".data(using: .utf8)!
+        let sampleKey = Data(repeating: 0x42, count: 32)
+
+        let md5HMAC = SNMPv3Crypto.computeAuthHMAC(data: sampleData, authKey: sampleKey, protocol: .md5)
+        #expect(md5HMAC.count == 12)
+
+        let sha1HMAC = SNMPv3Crypto.computeAuthHMAC(data: sampleData, authKey: sampleKey, protocol: .sha1)
+        #expect(sha1HMAC.count == 12)
+
+        let sha256HMAC = SNMPv3Crypto.computeAuthHMAC(data: sampleData, authKey: sampleKey, protocol: .sha256)
+        #expect(sha256HMAC.count == 16)
+    }
+
+    @Test("SNMPv3 AES-128 CFB Encryption and Decryption Roundtrip")
+    func testSNMPv3AES128Roundtrip() throws {
+        let plaintext = "TopSecretNetworkScopedPDUConfigurationPayload".data(using: .utf8)!
+        let privKey = Data(repeating: 0x5A, count: 16) // 16 bytes for AES-128
+        let boots: Int32 = 12
+        let time: Int32 = 4500
+
+        let encrypted = try SNMPv3Crypto.encryptAES128(
+            payload: plaintext,
+            privKey: privKey,
+            engineBoots: boots,
+            engineTime: time,
+            salt: 0x0102030405060708
+        )
+
+        #expect(encrypted.privParams.count == 8)
+        #expect(encrypted.ciphertext != plaintext)
+
+        let decrypted = try SNMPv3Crypto.decryptAES128(
+            ciphertext: encrypted.ciphertext,
+            privKey: privKey,
+            engineBoots: boots,
+            engineTime: time,
+            privParams: encrypted.privParams
+        )
+
+        #expect(decrypted == plaintext)
+    }
+
+    @Test("SNMPv3 ScopedPDU & Message Serialization Roundtrip")
+    func testSNMPv3MessageRoundtrip() throws {
+        let varBinds = [
+            SNMPVarBind(oid: "1.3.6.1.2.1.1.1.0", value: .null),
+            SNMPVarBind(oid: "1.3.6.1.2.1.1.5.0", value: .octetString("core-router"))
+        ]
+        let pdu = SNMPPDU(tag: ASN1Tag.getRequest, requestId: 9988, varBinds: varBinds)
+        let scoped = ScopedPDU(
+            contextEngineID: Data([0x80, 0x00, 0x00, 0x01]),
+            contextName: "vrf-mgmt",
+            pdu: pdu
+        )
+        let rawScoped = try scoped.serialize()
+
+        let deserializedScoped = try ScopedPDU.deserialize(data: rawScoped)
+        #expect(deserializedScoped.contextName == "vrf-mgmt")
+        #expect(deserializedScoped.pdu.requestId == 9988)
+        #expect(deserializedScoped.pdu.varBinds.count == 2)
+        #expect(deserializedScoped.pdu.varBinds[1].value == .octetString("core-router"))
+
+        let secParams = UsmSecurityParameters(
+            engineID: Data([0x80, 0x00, 0x00, 0x01]),
+            engineBoots: 3,
+            engineTime: 1200,
+            userName: "netadmin",
+            authParameters: Data(),
+            privParameters: Data()
+        )
+
+        let v3Msg = SNMPv3Message(
+            msgID: 554433,
+            msgFlags: 0x05, // reportable + auth
+            securityParameters: secParams,
+            scopedPDUData: rawScoped,
+            isEncrypted: false
+        )
+
+        let authKey = Data(repeating: 0x99, count: 32)
+        let wireData = try v3Msg.serialize(authKey: authKey, authProtocol: .sha256)
+
+        let decodedMsg = try SNMPv3Message.deserialize(data: wireData)
+        #expect(decodedMsg.msgID == 554433)
+        #expect(decodedMsg.securityParameters.userName == "netadmin")
+        #expect(decodedMsg.securityParameters.engineBoots == 3)
+        #expect(decodedMsg.securityParameters.authParameters.count == 16) // SHA256 truncated HMAC
+    }
 }
+

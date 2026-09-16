@@ -91,4 +91,41 @@ public final class InvestigationManager: Sendable {
     public func fetchRecentHistory(limit: Int = 20) throws -> [DiagnosticHistoryRecord] {
         try historyRepo.fetchRecent(limit: limit)
     }
+
+    // MARK: - .nwi Collaboration Bundle Export & Import
+
+    /// Exports an investigation and all attached timeline events, diagnostics, and configurations to a `.nwi` file URL
+    public func exportInvestigationBundle(
+        id: String,
+        to url: URL,
+        notes: String = "",
+        configFiles: [AttachedConfigFile] = [],
+        pcapData: Data? = nil
+    ) throws {
+        guard let invRecord = try repo.fetchAll().first(where: { $0.id == id }) else {
+            throw NSError(domain: "InvestigationManager", code: 404, userInfo: [NSLocalizedDescriptionKey: "Investigation not found"])
+        }
+        let timeline = try repo.fetchEvents(forInvestigationId: id)
+        let history = (try? historyRepo.fetchRecent(limit: 50)) ?? []
+        try InvestigationBundleManager.exportBundleToFile(
+            investigation: invRecord,
+            timelineEvents: timeline,
+            diagnostics: history,
+            configFiles: configFiles,
+            pcapData: pcapData,
+            notes: notes,
+            to: url
+        )
+    }
+
+    /// Ingests a `.nwi` bundle file and commits it into SQLite persistence
+    public func importInvestigationBundle(from url: URL) throws -> Investigation {
+        let bundle = try InvestigationBundleManager.loadBundle(from: url)
+        try InvestigationBundleManager.importIntoDatabase(
+            bundle: bundle,
+            investigationRepo: repo,
+            historyRepo: historyRepo
+        )
+        return Investigation(record: bundle.investigation)
+    }
 }

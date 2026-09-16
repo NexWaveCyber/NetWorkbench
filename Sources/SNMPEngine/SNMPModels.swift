@@ -131,23 +131,9 @@ public struct SNMPPDU: Sendable {
         self.errorIndex = errorIndex
         self.varBinds = varBinds
     }
-}
-
-public struct SNMPMessage: Sendable {
-    public let version: SNMPVersion
-    public let community: String
-    public let pdu: SNMPPDU
-
-    public init(version: SNMPVersion = .v2c, community: String = "public", pdu: SNMPPDU) {
-        self.version = version
-        self.community = community
-        self.pdu = pdu
-    }
-
     public func serialize() throws -> Data {
-        // 1. Serialize variable bindings: SEQUENCE of VarBind (each VarBind is SEQUENCE { OID, Value })
         var varBindsData = Data()
-        for vb in pdu.varBinds {
+        for vb in varBinds {
             let oidData = try ASN1Encoder.encodeOID(vb.oid)
             let valData: Data
             switch vb.value {
@@ -184,30 +170,16 @@ public struct SNMPMessage: Sendable {
         }
         let varBindsSeq = ASN1Encoder.encodeSequence(varBindsData)
 
-        // 2. Serialize PDU body: RequestID (int), ErrorStatus (int), ErrorIndex (int), VarBinds (seq)
-        let reqIdData = ASN1Encoder.encodeInteger(Int64(pdu.requestId))
-        let errStatusData = ASN1Encoder.encodeInteger(Int64(pdu.errorStatus.rawValue))
-        let errIdxData = ASN1Encoder.encodeInteger(Int64(pdu.errorIndex))
+        let reqIdData = ASN1Encoder.encodeInteger(Int64(requestId))
+        let errStatusData = ASN1Encoder.encodeInteger(Int64(errorStatus.rawValue))
+        let errIdxData = ASN1Encoder.encodeInteger(Int64(errorIndex))
 
         let pduContent = reqIdData + errStatusData + errIdxData + varBindsSeq
-        let pduData = ASN1Encoder.encodePDU(tag: pdu.tag, content: pduContent)
-
-        // 3. Serialize outer SNMP message: SEQUENCE { Version (int), Community (string), PDU }
-        let verData = ASN1Encoder.encodeInteger(Int64(version.rawValue))
-        let commData = ASN1Encoder.encodeOctetString(community)
-
-        return ASN1Encoder.encodeSequence(verData + commData + pduData)
+        return ASN1Encoder.encodePDU(tag: tag, content: pduContent)
     }
 
-    public static func deserialize(data: Data) throws -> SNMPMessage {
-        var outerDecoder = ASN1Decoder(data: data)
-        var msgSeq = try outerDecoder.enterSequence()
-
-        let verInt = try msgSeq.readInteger()
-        let version = SNMPVersion(rawValue: Int32(verInt)) ?? .v2c
-        let community = try msgSeq.readOctetString()
-
-        let (pduTag, mutPduDecoder) = try msgSeq.enterPDU()
+    public static func deserialize(decoder: inout ASN1Decoder) throws -> SNMPPDU {
+        let (pduTag, mutPduDecoder) = try decoder.enterPDU()
         var pduDecoder = mutPduDecoder
 
         let reqId = try pduDecoder.readInteger()
@@ -274,14 +246,231 @@ public struct SNMPMessage: Sendable {
             varBinds.append(SNMPVarBind(oid: oid, value: val))
         }
 
-        let pdu = SNMPPDU(
+        return SNMPPDU(
             tag: pduTag,
             requestId: Int32(reqId),
             errorStatus: errStatus,
             errorIndex: Int32(errIdx),
             varBinds: varBinds
         )
+    }
+}
+
+public struct SNMPMessage: Sendable {
+    public let version: SNMPVersion
+    public let community: String
+    public let pdu: SNMPPDU
+
+    public init(version: SNMPVersion = .v2c, community: String = "public", pdu: SNMPPDU) {
+        self.version = version
+        self.community = community
+        self.pdu = pdu
+    }
+
+    public func serialize() throws -> Data {
+        let pduData = try pdu.serialize()
+        let verData = ASN1Encoder.encodeInteger(Int64(version.rawValue))
+        let commData = ASN1Encoder.encodeOctetString(community)
+        return ASN1Encoder.encodeSequence(verData + commData + pduData)
+    }
+
+    public static func deserialize(data: Data) throws -> SNMPMessage {
+        var outerDecoder = ASN1Decoder(data: data)
+        var msgSeq = try outerDecoder.enterSequence()
+
+        let verInt = try msgSeq.readInteger()
+        let version = SNMPVersion(rawValue: Int32(verInt)) ?? .v2c
+        let community = try msgSeq.readOctetString()
+        let pdu = try SNMPPDU.deserialize(decoder: &msgSeq)
 
         return SNMPMessage(version: version, community: community, pdu: pdu)
     }
 }
+
+/// ScopedPDU for SNMPv3 (RFC 3412 Section 6.2)
+public struct ScopedPDU: Sendable {
+    public let contextEngineID: Data
+    public let contextName: String
+    public let pdu: SNMPPDU
+
+    public init(contextEngineID: Data = Data(), contextName: String = "", pdu: SNMPPDU) {
+        self.contextEngineID = contextEngineID
+        self.contextName = contextName
+        self.pdu = pdu
+    }
+
+    public func serialize() throws -> Data {
+        let ctxEngData = ASN1Encoder.encodeOctetBytes(contextEngineID)
+        let ctxNameData = ASN1Encoder.encodeOctetString(contextName)
+        let pduData = try pdu.serialize()
+        return ASN1Encoder.encodeSequence(ctxEngData + ctxNameData + pduData)
+    }
+
+    public static func deserialize(data: Data) throws -> ScopedPDU {
+        var decoder = ASN1Decoder(data: data)
+        var seq = try decoder.enterSequence()
+        let ctxEngId = try seq.readOctetBytes()
+        let ctxName = try seq.readOctetString()
+        let pdu = try SNMPPDU.deserialize(decoder: &seq)
+        return ScopedPDU(contextEngineID: ctxEngId, contextName: ctxName, pdu: pdu)
+    }
+}
+
+/// USM Security Parameters (RFC 3414 Section 2.4)
+public struct UsmSecurityParameters: Sendable {
+    public var engineID: Data
+    public var engineBoots: Int32
+    public var engineTime: Int32
+    public var userName: String
+    public var authParameters: Data
+    public var privParameters: Data
+
+    public init(
+        engineID: Data = Data(),
+        engineBoots: Int32 = 0,
+        engineTime: Int32 = 0,
+        userName: String = "",
+        authParameters: Data = Data(),
+        privParameters: Data = Data()
+    ) {
+        self.engineID = engineID
+        self.engineBoots = engineBoots
+        self.engineTime = engineTime
+        self.userName = userName
+        self.authParameters = authParameters
+        self.privParameters = privParameters
+    }
+
+    public func serialize() -> Data {
+        let engData = ASN1Encoder.encodeOctetBytes(engineID)
+        let bootsData = ASN1Encoder.encodeInteger(Int64(engineBoots))
+        let timeData = ASN1Encoder.encodeInteger(Int64(engineTime))
+        let userData = ASN1Encoder.encodeOctetString(userName)
+        let authData = ASN1Encoder.encodeOctetBytes(authParameters)
+        let privData = ASN1Encoder.encodeOctetBytes(privParameters)
+        return ASN1Encoder.encodeSequence(engData + bootsData + timeData + userData + authData + privData)
+    }
+
+    public static func deserialize(data: Data) throws -> UsmSecurityParameters {
+        var decoder = ASN1Decoder(data: data)
+        var seq = try decoder.enterSequence()
+        let eng = try seq.readOctetBytes()
+        let boots = Int32(try seq.readInteger())
+        let time = Int32(try seq.readInteger())
+        let user = try seq.readOctetString()
+        let auth = try seq.readOctetBytes()
+        let priv = try seq.readOctetBytes()
+        return UsmSecurityParameters(
+            engineID: eng,
+            engineBoots: boots,
+            engineTime: time,
+            userName: user,
+            authParameters: auth,
+            privParameters: priv
+        )
+    }
+}
+
+/// SNMPv3 Message (RFC 3412)
+public struct SNMPv3Message: Sendable {
+    public let msgID: Int32
+    public let msgMaxSize: Int32
+    public let msgFlags: UInt8 // 0x04 = reportable, 0x01 = auth, 0x02 = priv
+    public let securityModel: Int32 // 3 = USM
+    public var securityParameters: UsmSecurityParameters
+    public var scopedPDUData: Data
+    public var isEncrypted: Bool
+
+    public init(
+        msgID: Int32 = Int32.random(in: 1...Int32.max),
+        msgMaxSize: Int32 = 65507,
+        msgFlags: UInt8 = 0x04,
+        securityModel: Int32 = 3,
+        securityParameters: UsmSecurityParameters,
+        scopedPDUData: Data,
+        isEncrypted: Bool = false
+    ) {
+        self.msgID = msgID
+        self.msgMaxSize = msgMaxSize
+        self.msgFlags = msgFlags
+        self.securityModel = securityModel
+        self.securityParameters = securityParameters
+        self.scopedPDUData = scopedPDUData
+        self.isEncrypted = isEncrypted
+    }
+
+    public func serialize(authKey: Data = Data(), authProtocol: SNMPv3AuthProtocol = .none) throws -> Data {
+        let idData = ASN1Encoder.encodeInteger(Int64(msgID))
+        let sizeData = ASN1Encoder.encodeInteger(Int64(msgMaxSize))
+        let flagsData = ASN1Encoder.encodeOctetBytes(Data([msgFlags]))
+        let modelData = ASN1Encoder.encodeInteger(Int64(securityModel))
+        let headerSeq = ASN1Encoder.encodeSequence(idData + sizeData + flagsData + modelData)
+
+        var secParams = securityParameters
+        if authProtocol != .none {
+            secParams.authParameters = Data(repeating: 0, count: authProtocol.truncatedAuthLength)
+        }
+        let rawSecParamsSeq = secParams.serialize()
+        let secParamsOctetString = ASN1Encoder.encodeOctetBytes(rawSecParamsSeq)
+
+        let dataPayload: Data
+        if isEncrypted {
+            dataPayload = ASN1Encoder.encodeOctetBytes(scopedPDUData)
+        } else {
+            dataPayload = scopedPDUData
+        }
+
+        let verData = ASN1Encoder.encodeInteger(3)
+        var rawMsg = ASN1Encoder.encodeSequence(verData + headerSeq + secParamsOctetString + dataPayload)
+
+        if authProtocol != .none && !authKey.isEmpty {
+            let hmac = SNMPv3Crypto.computeAuthHMAC(data: rawMsg, authKey: authKey, protocol: authProtocol)
+            secParams.authParameters = hmac
+            let finalSecParams = ASN1Encoder.encodeOctetBytes(secParams.serialize())
+            rawMsg = ASN1Encoder.encodeSequence(verData + headerSeq + finalSecParams + dataPayload)
+        }
+
+        return rawMsg
+    }
+
+    public static func deserialize(data: Data) throws -> SNMPv3Message {
+        var outerDecoder = ASN1Decoder(data: data)
+        var msgSeq = try outerDecoder.enterSequence()
+
+        let verInt = try msgSeq.readInteger()
+        guard verInt == 3 else {
+            throw NSError(domain: "SNMPEngine", code: -1, userInfo: [NSLocalizedDescriptionKey: "Expected SNMPv3 version (3), got \(verInt)"])
+        }
+
+        var headerSeq = try msgSeq.enterSequence()
+        let msgId = Int32(try headerSeq.readInteger())
+        let msgMaxSize = Int32(try headerSeq.readInteger())
+        let flagsData = try headerSeq.readOctetBytes()
+        let msgFlags = flagsData.first ?? 0
+        let secModel = Int32(try headerSeq.readInteger())
+
+        let secParamsRaw = try msgSeq.readOctetBytes()
+        let secParams = try UsmSecurityParameters.deserialize(data: secParamsRaw)
+
+        let pduTag = try msgSeq.peekTag()
+        let isEnc = (pduTag == ASN1Tag.octetString)
+        let scopedData: Data
+        if isEnc {
+            scopedData = try msgSeq.readOctetBytes()
+        } else {
+            let len = try msgSeq.readLength()
+            scopedData = try msgSeq.readRawBytes(count: len)
+        }
+
+        return SNMPv3Message(
+            msgID: msgId,
+            msgMaxSize: msgMaxSize,
+            msgFlags: msgFlags,
+            securityModel: secModel,
+            securityParameters: secParams,
+            scopedPDUData: scopedData,
+            isEncrypted: isEnc
+        )
+    }
+}
+

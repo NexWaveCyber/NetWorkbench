@@ -1,6 +1,6 @@
 import Foundation
 
-public struct InvestigationRecord: Sendable, Identifiable, Hashable {
+public struct InvestigationRecord: Sendable, Identifiable, Hashable, Codable {
     public let id: String
     public var title: String
     public var description: String
@@ -37,7 +37,7 @@ public struct InvestigationRecord: Sendable, Identifiable, Hashable {
     }
 }
 
-public struct TimelineEventRecord: Sendable, Identifiable, Hashable {
+public struct TimelineEventRecord: Sendable, Identifiable, Hashable, Codable {
     public let id: String
     public let investigationId: String
     public let timestamp: Double
@@ -62,7 +62,7 @@ public struct TimelineEventRecord: Sendable, Identifiable, Hashable {
     }
 }
 
-public struct DiagnosticHistoryRecord: Sendable, Identifiable, Hashable {
+public struct DiagnosticHistoryRecord: Sendable, Identifiable, Hashable, Codable {
     public let id: String
     public let target: String
     public let targetType: String

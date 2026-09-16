@@ -10,7 +10,7 @@ public final class InvestigationRepository: Sendable {
 
     public func insert(_ record: InvestigationRecord) throws {
         let sql = """
-        INSERT INTO investigations (id, title, description, environment_id, status, severity, created_at, updated_at, resolved_at, resolution)
+        INSERT OR REPLACE INTO investigations (id, title, description, environment_id, status, severity, created_at, updated_at, resolved_at, resolution)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
         """
         try db.withLock {
@@ -90,7 +90,7 @@ public final class InvestigationRepository: Sendable {
 
     public func addTimelineEvent(_ event: TimelineEventRecord) throws {
         let sql = """
-        INSERT INTO timeline_events (id, investigation_id, timestamp, title, detail, category)
+        INSERT OR REPLACE INTO timeline_events (id, investigation_id, timestamp, title, detail, category)
         VALUES (?, ?, ?, ?, ?, ?);
         """
         try db.withLock {
@@ -156,7 +156,7 @@ public final class DiagnosticHistoryRepository: Sendable {
 
     public func record(_ item: DiagnosticHistoryRecord) throws {
         let sql = """
-        INSERT INTO diagnostic_history (id, target, target_type, timestamp, dns_healthy, ping_latency, packet_loss, tcp_healthy, tls_healthy, http_status, summary, raw_json)
+        INSERT OR REPLACE INTO diagnostic_history (id, target, target_type, timestamp, dns_healthy, ping_latency, packet_loss, tcp_healthy, tls_healthy, http_status, summary, raw_json)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
         """
         try db.withLock {

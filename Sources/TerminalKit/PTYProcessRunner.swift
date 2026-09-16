@@ -68,8 +68,17 @@ public final class PTYProcessRunner: @unchecked Sendable {
         startReaderLoop(fd: master)
     }
 
-    /// Launch standard SSH session
-    public func launchSSH(host: String, port: Int = 22, username: String, identityFile: String? = nil) throws {
+    private var pendingPassword: String?
+
+    /// Launch standard SSH session with optional identity file or automated password
+    public func launchSSH(
+        host: String,
+        port: Int = 22,
+        username: String,
+        identityFile: String? = nil,
+        password: String? = nil
+    ) throws {
+        self.pendingPassword = password
         var args = [
             "-p", "\(port)",
             "-o", "StrictHostKeyChecking=no",
@@ -111,6 +120,7 @@ public final class PTYProcessRunner: @unchecked Sendable {
     /// Terminate process and clean up descriptors
     public func terminate() {
         isRunning = false
+        pendingPassword = nil
         if let proc = process, proc.isRunning {
             proc.terminate()
         }
@@ -138,6 +148,17 @@ public final class PTYProcessRunner: @unchecked Sendable {
                 if bytesRead > 0 {
                     let data = Data(buffer[0..<bytesRead])
                     if let string = String(data: data, encoding: .utf8) ?? String(data: data, encoding: .ascii) {
+                        // Check if SSH host is prompting for password and we have a pending credential
+                        if let pass = self.pendingPassword, !pass.isEmpty {
+                            let lower = string.lowercased()
+                            if lower.contains("password:") || lower.contains("password for") || lower.contains("passphrase:") {
+                                self.pendingPassword = nil
+                                DispatchQueue.global().asyncAfter(deadline: .now() + 0.1) { [weak self] in
+                                    self?.send(text: "\(pass)\n")
+                                }
+                            }
+                        }
+
                         DispatchQueue.main.async {
                             self.onOutput?(string)
                         }
@@ -151,6 +172,7 @@ public final class PTYProcessRunner: @unchecked Sendable {
                 }
             }
         }
+
         thread.name = "PTYProcessReader"
         thread.qualityOfService = .userInteractive
         thread.start()

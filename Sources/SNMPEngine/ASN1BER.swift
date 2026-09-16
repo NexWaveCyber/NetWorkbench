@@ -261,6 +261,15 @@ public struct ASN1Decoder {
         return String(data: bytes, encoding: .utf8) ?? bytes.map { String(format: "%02x", $0) }.joined(separator: " ")
     }
 
+    public mutating func readOctetBytes() throws -> Data {
+        let tag = try readTag()
+        guard tag == ASN1Tag.octetString else {
+            throw ASN1Error.invalidTag(tag)
+        }
+        let len = try readLength()
+        return try readRawBytes(count: len)
+    }
+
     public mutating func readOID() throws -> String {
         let tag = try readTag()
         guard tag == ASN1Tag.objectIdentifier else { throw ASN1Error.invalidTag(tag) }

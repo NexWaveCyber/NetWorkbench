@@ -215,6 +215,193 @@ public actor SNMPClient {
         )
     }
 
+    // MARK: - SNMPv3 Support
+
+    public struct V3Config: Sendable {
+        public var userName: String
+        public var securityLevel: SNMPv3SecurityLevel
+        public var authProtocol: SNMPv3AuthProtocol
+        public var authPassword: String
+        public var privProtocol: SNMPv3PrivProtocol
+        public var privPassword: String
+        public var contextName: String
+        public var authoritativeEngineID: Data?
+        public var engineBoots: Int32
+        public var engineTime: Int32
+
+        public init(
+            userName: String,
+            securityLevel: SNMPv3SecurityLevel = .authPriv,
+            authProtocol: SNMPv3AuthProtocol = .sha256,
+            authPassword: String = "",
+            privProtocol: SNMPv3PrivProtocol = .aes128,
+            privPassword: String = "",
+            contextName: String = "",
+            authoritativeEngineID: Data? = nil,
+            engineBoots: Int32 = 0,
+            engineTime: Int32 = 0
+        ) {
+            self.userName = userName
+            self.securityLevel = securityLevel
+            self.authProtocol = authProtocol
+            self.authPassword = authPassword
+            self.privProtocol = privProtocol
+            self.privPassword = privPassword
+            self.contextName = contextName
+            self.authoritativeEngineID = authoritativeEngineID
+            self.engineBoots = engineBoots
+            self.engineTime = engineTime
+        }
+    }
+
+    /// Performs SNMPv3 Authoritative EngineID and time synchronization probe
+    public func discoverEngine(
+        host: String,
+        port: Int = 161,
+        timeout: TimeInterval = 3.0
+    ) async throws -> (engineID: Data, engineBoots: Int32, engineTime: Int32) {
+        // Probe: empty engineID, boots=0, time=0, empty user, reportable flag = 0x04
+        let dummyPDU = SNMPPDU(tag: ASN1Tag.getRequest, varBinds: [])
+        let dummyScoped = ScopedPDU(contextEngineID: Data(), contextName: "", pdu: dummyPDU)
+        let scopedData = try dummyScoped.serialize()
+
+        let probeSecParams = UsmSecurityParameters(
+            engineID: Data(),
+            engineBoots: 0,
+            engineTime: 0,
+            userName: "",
+            authParameters: Data(),
+            privParameters: Data()
+        )
+
+        let probeMsg = SNMPv3Message(
+            msgID: Int32.random(in: 1...Int32.max),
+            msgFlags: 0x04, // Reportable, noAuthNoPriv
+            securityParameters: probeSecParams,
+            scopedPDUData: scopedData,
+            isEncrypted: false
+        )
+
+        let probeData = try probeMsg.serialize()
+        let respData = try await sendRawUDP(host: host, port: port, payload: probeData, timeout: timeout)
+        let respMsg = try SNMPv3Message.deserialize(data: respData)
+
+        let eng = respMsg.securityParameters.engineID
+        let boots = respMsg.securityParameters.engineBoots
+        let time = respMsg.securityParameters.engineTime
+        return (eng, boots, time)
+    }
+
+    /// Executes an SNMPv3 GetRequest with USM authentication and encryption
+    public func getV3(
+        host: String,
+        port: Int = 161,
+        config: V3Config,
+        oids: [String],
+        timeout: TimeInterval = 3.0
+    ) async throws -> [SNMPVarBind] {
+        var activeConfig = config
+
+        // 1. Discover authoritative EngineID if not specified
+        if activeConfig.authoritativeEngineID == nil || activeConfig.authoritativeEngineID!.isEmpty {
+            do {
+                let disc = try await discoverEngine(host: host, port: port, timeout: timeout)
+                activeConfig.authoritativeEngineID = disc.engineID
+                activeConfig.engineBoots = disc.engineBoots
+                activeConfig.engineTime = disc.engineTime
+            } catch {
+                // If discovery probe fails, proceed with empty engineID fallback
+                activeConfig.authoritativeEngineID = Data()
+            }
+        }
+
+        let engineID = activeConfig.authoritativeEngineID ?? Data()
+
+        // 2. Derive localized keys
+        let authKey = SNMPv3Crypto.passwordToKey(
+            password: activeConfig.authPassword,
+            engineID: engineID,
+            protocol: activeConfig.authProtocol
+        )
+        let privKey = SNMPv3Crypto.passwordToKey(
+            password: activeConfig.privPassword,
+            engineID: engineID,
+            protocol: activeConfig.authProtocol
+        )
+
+        // 3. Build ScopedPDU
+        let varBinds = oids.map { SNMPVarBind(oid: $0, value: .null) }
+        let pdu = SNMPPDU(tag: ASN1Tag.getRequest, varBinds: varBinds)
+        let scoped = ScopedPDU(contextEngineID: engineID, contextName: activeConfig.contextName, pdu: pdu)
+        let rawScopedData = try scoped.serialize()
+
+        // 4. Handle Privacy / Encryption
+        let scopedPayload: Data
+        let privParams: Data
+        let isEncrypted = (activeConfig.securityLevel == .authPriv && activeConfig.privProtocol != .none)
+
+        if isEncrypted {
+            let enc = try SNMPv3Crypto.encryptAES128(
+                payload: rawScopedData,
+                privKey: privKey,
+                engineBoots: activeConfig.engineBoots,
+                engineTime: activeConfig.engineTime
+            )
+            scopedPayload = enc.ciphertext
+            privParams = enc.privParams
+        } else {
+            scopedPayload = rawScopedData
+            privParams = Data()
+        }
+
+        // 5. Build USM Security Parameters & Message
+        var flags: UInt8 = 0x04 // reportable
+        if activeConfig.securityLevel == .authNoPriv { flags |= 0x01 }
+        if activeConfig.securityLevel == .authPriv { flags |= 0x03 }
+
+        let secParams = UsmSecurityParameters(
+            engineID: engineID,
+            engineBoots: activeConfig.engineBoots,
+            engineTime: activeConfig.engineTime,
+            userName: activeConfig.userName,
+            authParameters: Data(),
+            privParameters: privParams
+        )
+
+        let v3Msg = SNMPv3Message(
+            msgID: Int32.random(in: 1...Int32.max),
+            msgFlags: flags,
+            securityParameters: secParams,
+            scopedPDUData: scopedPayload,
+            isEncrypted: isEncrypted
+        )
+
+        let reqWire = try v3Msg.serialize(authKey: authKey, authProtocol: activeConfig.authProtocol)
+        let respWire = try await sendRawUDP(host: host, port: port, payload: reqWire, timeout: timeout)
+        let respMsg = try SNMPv3Message.deserialize(data: respWire)
+
+        // Decrypt response ScopedPDU if response is encrypted
+        let respScopedData: Data
+        if respMsg.isEncrypted {
+            respScopedData = try SNMPv3Crypto.decryptAES128(
+                ciphertext: respMsg.scopedPDUData,
+                privKey: privKey,
+                engineBoots: respMsg.securityParameters.engineBoots,
+                engineTime: respMsg.securityParameters.engineTime,
+                privParams: respMsg.securityParameters.privParameters
+            )
+        } else {
+            respScopedData = respMsg.scopedPDUData
+        }
+
+        let respScopedPDU = try ScopedPDU.deserialize(data: respScopedData)
+        if respScopedPDU.pdu.errorStatus != .noError {
+            throw SNMPClientError.responseError(respScopedPDU.pdu.errorStatus)
+        }
+
+        return respScopedPDU.pdu.varBinds
+    }
+
     // MARK: - UDP Transport
 
     private func sendSNMPMessage(
@@ -224,6 +411,16 @@ public actor SNMPClient {
         timeout: TimeInterval
     ) async throws -> SNMPMessage {
         let payload = try message.serialize()
+        let respData = try await sendRawUDP(host: host, port: port, payload: payload, timeout: timeout)
+        return try SNMPMessage.deserialize(data: respData)
+    }
+
+    public func sendRawUDP(
+        host: String,
+        port: Int,
+        payload: Data,
+        timeout: TimeInterval
+    ) async throws -> Data {
         let nwEndpoint = NWEndpoint.hostPort(
             host: NWEndpoint.Host(host),
             port: NWEndpoint.Port(rawValue: UInt16(port))!
@@ -272,13 +469,7 @@ public actor SNMPClient {
                                     continuation.resume(throwing: SNMPClientError.emptyResponse)
                                     return
                                 }
-
-                                do {
-                                    let resp = try SNMPMessage.deserialize(data: data)
-                                    continuation.resume(returning: resp)
-                                } catch {
-                                    continuation.resume(throwing: error)
-                                }
+                                continuation.resume(returning: data)
                             }
                         }
                     })
@@ -299,6 +490,7 @@ public actor SNMPClient {
         }
     }
 }
+
 
 private final class SafeResumer: @unchecked Sendable {
     private let lock = NSLock()

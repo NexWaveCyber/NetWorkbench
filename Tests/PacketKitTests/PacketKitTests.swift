@@ -128,4 +128,106 @@ struct PacketKitTests {
         // Check property does not crash
         _ = WiresharkBridge.isWiresharkInstalled
     }
+
+    @Test("LLDP Dissector extracts chassis, port, system name, and VLAN")
+    func lldpDissection() {
+        var frame = Data()
+        // Ethernet Header
+        frame.append(contentsOf: [0x01, 0x80, 0xC2, 0x00, 0x00, 0x0E]) // Dst MAC
+        frame.append(contentsOf: [0x00, 0x11, 0x22, 0x33, 0x44, 0x55]) // Src MAC
+        frame.append(contentsOf: [0x88, 0xCC])                         // EtherType LLDP
+
+        // TLV 1: Chassis ID (Type 1, Len 7) -> (1 << 9) | 7 = 0x0207
+        frame.append(contentsOf: [0x02, 0x07, 0x04])
+        frame.append(contentsOf: [0x00, 0x11, 0x22, 0x33, 0x44, 0x55])
+
+        // TLV 2: Port ID (Type 2, Len 9 = 1 byte subtype + 8 bytes "Gi1/0/24") -> (2 << 9) | 9 = 0x0409
+        frame.append(contentsOf: [0x04, 0x09, 0x05]) // Subtype 5 (Interface name)
+        frame.append("Gi1/0/24".data(using: .utf8)!)
+
+        // TLV 3: TTL 120s -> (3 << 9) | 2 = 0x0602
+        frame.append(contentsOf: [0x06, 0x02, 0x00, 0x78])
+
+        // TLV 5: System Name "sw-core-01" (Len 10) -> (5 << 9) | 10 = 0x0A0A
+        frame.append(contentsOf: [0x0A, 0x0A])
+        frame.append("sw-core-01".data(using: .utf8)!)
+
+        // TLV 0: End of LLDPDU (0x0000)
+        frame.append(contentsOf: [0x00, 0x00])
+
+        let (info, summary, layers) = LLDPDissector.dissect(data: frame, offset: 14)
+        #expect(info.systemName == "sw-core-01")
+        #expect(info.portID == "Gi1/0/24")
+        #expect(info.ttlSeconds == 120)
+        #expect(summary.contains("sw-core-01"))
+        #expect(!layers.isEmpty)
+    }
+
+    @Test("CDP Dissector extracts device ID, port ID, platform, and native VLAN")
+    func cdpDissection() {
+        var frame = Data()
+        // Ethernet Header
+        frame.append(contentsOf: [0x01, 0x00, 0x0C, 0xCC, 0xCC, 0xCC]) // Dst MAC
+        frame.append(contentsOf: [0x00, 0xAA, 0xBB, 0xCC, 0xDD, 0xEE]) // Src MAC
+        frame.append(contentsOf: [0x00, 0x50])                         // Length 80
+        // LLC/SNAP
+        frame.append(contentsOf: [0xAA, 0xAA, 0x03, 0x00, 0x00, 0x0C, 0x20, 0x00])
+
+        // CDP Header: Version 2, TTL 180, Checksum 0x1234
+        frame.append(contentsOf: [0x02, 0xB4, 0x12, 0x34])
+
+        // TLV 0x0001: Device ID "catalyst-3850" (Type 2 bytes, Len 4 + 13 = 17)
+        frame.append(contentsOf: [0x00, 0x01, 0x00, 0x11])
+        frame.append("catalyst-3850".data(using: .utf8)!)
+
+        // TLV 0x0003: Port ID "Gi1/0/1" (Len 4 + 7 = 11)
+        frame.append(contentsOf: [0x00, 0x03, 0x00, 0x0B])
+        frame.append("Gi1/0/1".data(using: .utf8)!)
+
+        // TLV 0x0006: Platform "cisco WS-C3850" (Len 4 + 14 = 18)
+        frame.append(contentsOf: [0x00, 0x06, 0x00, 0x12])
+        frame.append("cisco WS-C3850".data(using: .utf8)!)
+
+        // TLV 0x000A: Native VLAN 100 (Len 4 + 2 = 6)
+        frame.append(contentsOf: [0x00, 0x0A, 0x00, 0x06, 0x00, 0x64])
+
+        let (info, summary, layers) = CDPDissector.dissect(data: frame, offset: 22)
+        #expect(info.deviceID == "catalyst-3850")
+        #expect(info.portID == "Gi1/0/1")
+        #expect(info.platform == "cisco WS-C3850")
+        #expect(info.nativeVLAN == 100)
+        #expect(summary.contains("catalyst-3850"))
+        #expect(!layers.isEmpty)
+    }
+
+    @Test("Passive Neighbor Discovery Engine identifies switch and records active link")
+    func passiveNeighborDiscovery() {
+        let engine = PassiveNeighborDiscoveryEngine()
+
+        var lldpFrame = Data()
+        lldpFrame.append(contentsOf: [0x01, 0x80, 0xC2, 0x00, 0x00, 0x0E])
+        lldpFrame.append(contentsOf: [0x00, 0x11, 0x22, 0x33, 0x44, 0x55])
+        lldpFrame.append(contentsOf: [0x88, 0xCC])
+        // TLV 1: Chassis ID (Len 7)
+        lldpFrame.append(contentsOf: [0x02, 0x07, 0x04, 0x00, 0x11, 0x22, 0x33, 0x44, 0x55])
+        // TLV 2: Port ID (Len 7 = 1 byte subtype + 6 bytes "Eth1/1") -> (2 << 9) | 7 = 0x0407
+        lldpFrame.append(contentsOf: [0x04, 0x07, 0x05])
+        lldpFrame.append("Eth1/1".data(using: .utf8)!)
+        // TLV 5: System Name (Len 14 = "arista-spine01") -> (5 << 9) | 14 = 0x0A0E
+        lldpFrame.append(contentsOf: [0x0A, 0x0E])
+        lldpFrame.append("arista-spine01".data(using: .utf8)!)
+        // TLV 0: End of LLDPDU
+        lldpFrame.append(contentsOf: [0x00, 0x00])
+
+        let neighbor = engine.processFrame(packetData: lldpFrame)
+        #expect(neighbor != nil)
+        #expect(neighbor?.systemName == "arista-spine01")
+        #expect(neighbor?.portName == "Eth1/1")
+        #expect(neighbor?.sourceProtocol == "LLDP")
+
+        #expect(engine.activeLinkNeighbor?.systemName == "arista-spine01")
+        #expect(engine.discoveredNeighbors.count == 1)
+    }
+
 }
+

@@ -33,11 +33,12 @@ public final class TerminalManager: @unchecked Sendable {
         port: Int = 22,
         username: String = "admin",
         identityFile: String? = nil,
+        password: String? = nil,
         autoConnect: Bool = true
     ) -> TerminalSession {
         // Check if an identical session already exists
         if let existing = sessions.first(where: {
-            if case .ssh(let h, let p, let u, _) = $0.connectionType {
+            if case .ssh(let h, let p, let u, _, _) = $0.connectionType {
                 return h == host && p == port && u == username
             }
             return false
@@ -51,7 +52,7 @@ public final class TerminalManager: @unchecked Sendable {
 
         let session = TerminalSession(
             title: "\(username)@\(host)",
-            connectionType: .ssh(host: host, port: port, username: username, identityFile: identityFile)
+            connectionType: .ssh(host: host, port: port, username: username, identityFile: identityFile, password: password)
         )
         sessions.append(session)
         activeSessionId = session.id
@@ -61,6 +62,7 @@ public final class TerminalManager: @unchecked Sendable {
         }
         return session
     }
+
 
     /// Open a hardware USB Serial Console session tab
     @discardableResult

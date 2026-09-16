@@ -1,9 +1,49 @@
 import Foundation
 import NetworkCore
 
+/// Authentication method for SSH session
+public enum SSHAuthMethod: Sendable, Hashable, Codable {
+    case password(String)
+    case keyFile(path: String)
+    case keychain(credentialId: String)
+    case interactive
+}
+
+/// Profile configuration for connecting to remote network devices via SSH
+public struct SSHProfile: Identifiable, Sendable, Hashable, Codable {
+    public let id: UUID
+    public var name: String
+    public var host: String
+    public var port: Int
+    public var username: String
+    public var authMethod: SSHAuthMethod
+    public var terminalType: String
+    public var logSession: Bool
+
+    public init(
+        id: UUID = UUID(),
+        name: String = "",
+        host: String,
+        port: Int = 22,
+        username: String,
+        authMethod: SSHAuthMethod = .interactive,
+        terminalType: String = "xterm-256color",
+        logSession: Bool = false
+    ) {
+        self.id = id
+        self.name = name.isEmpty ? "\(username)@\(host)" : name
+        self.host = host
+        self.port = port
+        self.username = username
+        self.authMethod = authMethod
+        self.terminalType = terminalType
+        self.logSession = logSession
+    }
+}
+
 /// Connection mode for a network engineering terminal session
 public enum TerminalConnectionType: Sendable, Hashable {
-    case ssh(host: String, port: Int = 22, username: String, identityFile: String? = nil)
+    case ssh(host: String, port: Int = 22, username: String, identityFile: String? = nil, password: String? = nil)
     case serial(devicePath: String, baudRate: Int = 9600, dataBits: Int = 8, parity: SerialParity = .none, stopBits: Int = 1)
     case telnet(host: String, port: Int = 23)
     case localShell
@@ -11,7 +51,7 @@ public enum TerminalConnectionType: Sendable, Hashable {
 
     public var title: String {
         switch self {
-        case .ssh(let host, _, let user, _):
+        case .ssh(let host, _, let user, _, _):
             return "\(user)@\(host)"
         case .serial(let path, let baud, _, _, _):
             let shortName = path.components(separatedBy: "/").last ?? path
@@ -35,6 +75,7 @@ public enum TerminalConnectionType: Sendable, Hashable {
         }
     }
 }
+
 
 /// Serial communication parity options
 public enum SerialParity: String, Sendable, CaseIterable, Identifiable {

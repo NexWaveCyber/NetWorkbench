@@ -31,7 +31,7 @@ public final class TerminalSession: Identifiable, @unchecked Sendable {
         status = .connecting("Establishing connection...")
 
         switch connectionType {
-        case .ssh(let host, let port, let username, let identityFile):
+        case .ssh(let host, let port, let username, let identityFile, let password):
             let runner = PTYProcessRunner()
             self.ptyRunner = runner
 
@@ -46,7 +46,7 @@ public final class TerminalSession: Identifiable, @unchecked Sendable {
             }
 
             do {
-                try runner.launchSSH(host: host, port: port, username: username, identityFile: identityFile)
+                try runner.launchSSH(host: host, port: port, username: username, identityFile: identityFile, password: password)
                 self.status = .connected
                 appendOutput("[Connected to \(username)@\(host):\(port)]\n")
             } catch {
@@ -176,6 +176,20 @@ public final class TerminalSession: Identifiable, @unchecked Sendable {
     /// Export whole session transcript to string
     public func exportTranscript() -> String {
         lines.map { $0.text }.joined(separator: "\n")
+    }
+
+    /// Export formatted session log with timestamps and session header
+    public func exportSessionLog() -> String {
+        let formatter = ISO8601DateFormatter()
+        var log = "# NexWave Terminal Session Log\n"
+        log += "# Title: \(title)\n"
+        log += "# Mode: \(connectionType.title)\n"
+        log += "# Exported: \(formatter.string(from: Date()))\n"
+        log += "# ------------------------------------------------------------\n\n"
+        for line in lines {
+            log += "[\(formatter.string(from: line.timestamp))] \(line.text)\n"
+        }
+        return log
     }
 
     // MARK: - Output Buffering & Parsing

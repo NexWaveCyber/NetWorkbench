@@ -17,6 +17,7 @@ public struct TerminalWorkbenchView: View {
     @State private var sshHost: String = "192.168.1.1"
     @State private var sshPort: String = "22"
     @State private var sshUser: String = "admin"
+    @State private var sshPassword: String = ""
     @State private var sshKeyPath: String = ""
     @State private var selectedSerialPort: String = ""
     @State private var selectedBaudRate: Int = 9600
@@ -123,7 +124,7 @@ public struct TerminalWorkbenchView: View {
 
                 // External Terminal Launch Menu
                 Menu {
-                    if let session = activeSession, case .ssh(let host, let port, let user, _) = session.connectionType {
+                    if let session = activeSession, case .ssh(let host, let port, let user, _, _) = session.connectionType {
                         Button("Open in Terminal.app") {
                             let cmd = ExternalTerminalBridge.shared.sshCommand(host: host, port: port, username: user)
                             ExternalTerminalBridge.shared.launchInTerminalApp(command: cmd)
@@ -442,12 +443,21 @@ public struct TerminalWorkbenchView: View {
                     }
 
                     VStack(alignment: .leading, spacing: 6) {
+                        Text("PASSWORD / KEYCHAIN PASSPHRASE")
+                            .font(Theme.monoText(10, weight: .bold))
+                            .foregroundStyle(.secondary)
+                        SecureField("Device password (auto-injected on prompt)", text: $sshPassword)
+                            .textFieldStyle(.roundedBorder)
+                    }
+
+                    VStack(alignment: .leading, spacing: 6) {
                         Text("OPTIONAL IDENTITY KEY PATH")
                             .font(Theme.monoText(10, weight: .bold))
                             .foregroundStyle(.secondary)
                         TextField("~/.ssh/id_rsa (leave empty for password)", text: $sshKeyPath)
                             .textFieldStyle(.roundedBorder)
                     }
+
 
                 } else if newSessionType == 1 {
                     // USB Serial Form
@@ -551,11 +561,13 @@ public struct TerminalWorkbenchView: View {
         case 0:
             let portInt = Int(sshPort) ?? 22
             let key = sshKeyPath.isEmpty ? nil : sshKeyPath
+            let pass = sshPassword.isEmpty ? nil : sshPassword
             state.terminalManager.openSSHSession(
                 host: sshHost,
                 port: portInt,
                 username: sshUser,
-                identityFile: key
+                identityFile: key,
+                password: pass
             )
         case 1:
             let path = selectedSerialPort.isEmpty ? "/dev/cu.usbserial-001" : selectedSerialPort
@@ -569,7 +581,7 @@ public struct TerminalWorkbenchView: View {
 
     private func exportTranscript() {
         guard let session = activeSession else { return }
-        let text = session.exportTranscript()
+        let text = session.exportSessionLog()
         let panel = NSSavePanel()
         panel.nameFieldStringValue = "session_\(session.title.replacingOccurrences(of: "@", with: "_")).log"
         panel.canCreateDirectories = true
@@ -577,6 +589,7 @@ public struct TerminalWorkbenchView: View {
             try? text.write(to: url, atomically: true, encoding: .utf8)
         }
     }
+
 
     private func terminalOutputColor(for line: String) -> Color {
         let lower = line.lowercased()

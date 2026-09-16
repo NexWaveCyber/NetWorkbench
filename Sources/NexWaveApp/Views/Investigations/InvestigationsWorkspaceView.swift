@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 import InvestigationKit
 import PersistenceKit
 
@@ -24,11 +25,20 @@ public struct InvestigationsWorkspaceView: View {
                         .font(.system(size: 11, weight: .bold))
                         .foregroundStyle(.secondary)
                     Spacer()
+
+                    Button(action: { importBundle() }) {
+                        Image(systemName: "square.and.arrow.down")
+                            .font(.system(size: 12))
+                    }
+                    .buttonStyle(.plain)
+                    .help("Import Investigation Bundle (.nwi)")
+
                     Button(action: { showingNewSheet = true }) {
                         Image(systemName: "plus")
                             .font(.system(size: 12, weight: .bold))
                     }
                     .buttonStyle(.plain)
+                    .help("Create New Investigation")
                 }
                 .padding(.horizontal, 16)
                 .padding(.vertical, 12)
@@ -113,6 +123,15 @@ public struct InvestigationsWorkspaceView: View {
                             .foregroundStyle(.secondary)
                     }
                     Spacer()
+                    Button {
+                        exportBundle(for: inv)
+                    } label: {
+                        Label("Export Bundle (.nwi)", systemImage: "square.and.arrow.up")
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .help("Export complete incident bundle for team collaboration")
+
                     statusBadge(inv.status)
                 }
 
@@ -238,6 +257,57 @@ public struct InvestigationsWorkspaceView: View {
             return
         }
         timelineEvents = (try? state.investigationManager.fetchTimeline(forInvestigationId: inv.id)) ?? []
+    }
+
+    private func exportBundle(for inv: Investigation) {
+        let savePanel = NSSavePanel()
+        savePanel.title = "Export Investigation Bundle"
+        savePanel.prompt = "Export"
+        let cleanTitle = inv.title.replacingOccurrences(of: "[^a-zA-Z0-9_-]", with: "_", options: .regularExpression)
+        savePanel.nameFieldStringValue = "\(cleanTitle).nwi"
+        if let nwiType = UTType(filenameExtension: "nwi") {
+            savePanel.allowedContentTypes = [nwiType, .data]
+        } else {
+            savePanel.allowedContentTypes = [.data]
+        }
+
+        if savePanel.runModal() == .OK, let url = savePanel.url {
+            do {
+                try state.investigationManager.exportInvestigationBundle(
+                    id: inv.id,
+                    to: url,
+                    notes: "Exported from NexWave Studio on \(Date().formatted())"
+                )
+                state.toastMessage = "Exported '\(url.lastPathComponent)' successfully."
+            } catch {
+                state.toastMessage = "Export failed: \(error.localizedDescription)"
+            }
+        }
+    }
+
+    private func importBundle() {
+        let openPanel = NSOpenPanel()
+        openPanel.title = "Import Investigation Bundle (.nwi)"
+        openPanel.prompt = "Import"
+        openPanel.canChooseFiles = true
+        openPanel.canChooseDirectories = false
+        openPanel.allowsMultipleSelection = false
+        if let nwiType = UTType(filenameExtension: "nwi") {
+            openPanel.allowedContentTypes = [nwiType, .data]
+        } else {
+            openPanel.allowedContentTypes = [.data]
+        }
+
+        if openPanel.runModal() == .OK, let url = openPanel.url {
+            do {
+                let imported = try state.investigationManager.importInvestigationBundle(from: url)
+                state.refreshInvestigations()
+                state.selectedInvestigation = imported
+                state.toastMessage = "Imported investigation '\(imported.title)' successfully."
+            } catch {
+                state.toastMessage = "Import failed: \(error.localizedDescription)"
+            }
+        }
     }
 
     private var newInvestigationSheet: some View {

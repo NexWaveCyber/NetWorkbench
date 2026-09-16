@@ -1,6 +1,7 @@
 import SwiftUI
 import DeviceKit
 import NetworkCore
+import PacketKit
 
 public enum TopologyPreset: String, CaseIterable, Identifiable {
     case enterprise = "Enterprise Campus (3-Tier)"
@@ -59,6 +60,10 @@ public struct TopologyCanvasView: View {
         VStack(spacing: 0) {
             toolbarDeck
             Divider().overlay(Theme.borderLight)
+
+            if let neighbor = PassiveNeighborDiscoveryEngine.shared.activeLinkNeighbor {
+                activeSwitchBanner(neighbor: neighbor)
+            }
 
             GeometryReader { geo in
                 ZStack(alignment: .topTrailing) {
@@ -680,4 +685,84 @@ public struct TopologyCanvasView: View {
         case .other: return Color.gray
         }
     }
+
+    // MARK: - Active Switch Link Banner & Auto-Wiring
+
+    private func activeSwitchBanner(neighbor: DiscoveredSwitchNeighbor) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: "cable.connector.horizontal")
+                .font(.system(size: 13, weight: .bold))
+                .foregroundStyle(Theme.cyanPulse)
+
+            Text("ETHERNET SWITCH DETECTED:")
+                .font(Theme.monoText(10, weight: .bold))
+                .foregroundStyle(Theme.cyanPulse)
+
+            Text(neighbor.displayTitle)
+                .font(Theme.monoText(11, weight: .medium))
+                .foregroundStyle(Color.white)
+
+            Spacer()
+
+            Button(action: {
+                addDiscoveredSwitchToGraph(neighbor: neighbor)
+            }) {
+                HStack(spacing: 4) {
+                    Image(systemName: "plus.circle.fill")
+                        .font(.system(size: 10))
+                    Text("Add Switch to Canvas")
+                        .font(.system(size: 11, weight: .bold))
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 4)
+                .background(Theme.cyanPulse.opacity(0.25))
+                .clipShape(RoundedRectangle(cornerRadius: 6))
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 8)
+        .background(Theme.cardBackground.opacity(0.95))
+        .overlay(
+            Rectangle()
+                .frame(height: 1)
+                .foregroundStyle(Theme.cyanPulse.opacity(0.3)),
+            alignment: .bottom
+        )
+    }
+
+    private func addDiscoveredSwitchToGraph(neighbor: DiscoveredSwitchNeighbor) {
+        let nodeId = "discovered-\(neighbor.systemName.lowercased())"
+        if !graph.nodes.contains(where: { $0.id == nodeId }) {
+            let newNode = TopologyNode(
+                id: nodeId,
+                label: neighbor.systemName,
+                role: .switchRole,
+                vendor: neighbor.sourceProtocol == "CDP" ? .cisco : .generic,
+                ipAddress: neighbor.managementIP ?? "Dynamic",
+                platform: neighbor.platform.isEmpty ? nil : neighbor.platform,
+                status: .online,
+                tier: .access,
+                position: CGPoint(x: 450, y: 280),
+                vlans: neighbor.vlan != nil ? [neighbor.vlan!] : [1]
+            )
+            graph.nodes.append(newNode)
+
+            // Connect to local Mac host or edge router if exists
+            if let hostNode = graph.nodes.first(where: { $0.role == .workstation || $0.label.contains("Mac") || $0.role == .router }) {
+                let link = TopologyLink(
+                    sourceNodeId: hostNode.id,
+                    targetNodeId: newNode.id,
+                    sourceInterface: "en0",
+                    targetInterface: neighbor.portName,
+                    linkType: .ethernet,
+                    speedMbps: 1_000,
+                    status: .online,
+                    vlanId: neighbor.vlan
+                )
+                graph.links.append(link)
+            }
+        }
+    }
 }
+

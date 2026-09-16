@@ -1,6 +1,7 @@
 import Testing
 import Foundation
 @testable import PersistenceKit
+@testable import InvestigationKit
 
 @Suite("PersistenceKit SQLite WAL Storage")
 struct PersistenceKitTests {
@@ -60,5 +61,69 @@ struct PersistenceKitTests {
 
         // Clean up
         try? FileManager.default.removeItem(atPath: dbPath)
+    }
+
+    @Test("Investigation Bundle (.nwi) Export, Import, and Database Roundtrip")
+    func testInvestigationBundleRoundtrip() throws {
+        let tempDir = FileManager.default.temporaryDirectory
+        let dbPath1 = tempDir.appendingPathComponent("test_origin_\(UUID().uuidString).sqlite").path
+        let dbPath2 = tempDir.appendingPathComponent("test_target_\(UUID().uuidString).sqlite").path
+        let bundleFileUrl = tempDir.appendingPathComponent("incident_bundle_\(UUID().uuidString).nwi")
+
+        let originDb = try SQLiteDatabase(path: dbPath1)
+        let targetDb = try SQLiteDatabase(path: dbPath2)
+
+        let originManager = InvestigationManager(database: originDb)
+        let targetManager = InvestigationManager(database: targetDb)
+
+        // 1. Create origin investigation with timeline notes
+        let inv = try originManager.createInvestigation(
+            title: "BGP Flapping on AS64500",
+            description: "Transit link peer resetting every 45s",
+            severity: .critical
+        )
+
+        // 2. Export investigation bundle to file
+        let sampleConfig = AttachedConfigFile(
+            filename: "edge_router_running_config.txt",
+            deviceHostname: "edge-rt01.corp",
+            content: "router bgp 64500\n neighbor 192.0.2.1 remote-as 65000\n timers 10 30"
+        )
+        try originManager.exportInvestigationBundle(
+            id: inv.id,
+            to: bundleFileUrl,
+            notes: "Exported bundle for tier 3 Escalation review",
+            configFiles: [sampleConfig],
+            pcapData: "FAKE_PCAP_DATA".data(using: .utf8)
+        )
+
+        #expect(FileManager.default.fileExists(atPath: bundleFileUrl.path))
+
+        // 3. Import bundle into target database
+        let importedInv = try targetManager.importInvestigationBundle(from: bundleFileUrl)
+        #expect(importedInv.id == inv.id)
+        #expect(importedInv.title == "BGP Flapping on AS64500")
+        #expect(importedInv.severity == .critical)
+
+        // Verify loaded bundle structure directly
+        let loadedBundle = try InvestigationBundleManager.loadBundle(from: bundleFileUrl)
+        #expect(loadedBundle.investigation.title == "BGP Flapping on AS64500")
+        #expect(loadedBundle.timelineEvents.count >= 1)
+        #expect(loadedBundle.attachedConfigFiles.count == 1)
+        #expect(loadedBundle.attachedConfigFiles.first?.filename == "edge_router_running_config.txt")
+        #expect(loadedBundle.notes == "Exported bundle for tier 3 Escalation review")
+        #expect(loadedBundle.packetCaptureBase64 != nil)
+
+        // Verify target database has the investigation and timeline
+        let targetList = try targetManager.listInvestigations()
+        #expect(targetList.contains(where: { $0.id == inv.id }))
+
+        let targetTimeline = try targetManager.fetchTimeline(forInvestigationId: inv.id)
+        #expect(!targetTimeline.isEmpty)
+
+        // Clean up temporary files
+        try? FileManager.default.removeItem(atPath: dbPath1)
+        try? FileManager.default.removeItem(atPath: dbPath2)
+        try? FileManager.default.removeItem(atPath: bundleFileUrl.path)
     }
 }

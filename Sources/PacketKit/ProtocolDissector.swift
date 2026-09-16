@@ -103,7 +103,33 @@ public enum ProtocolDissector {
         case 0x86DD: // IPv6
             return dissectIPv6(data: packetData, offset: offset, layers: layers)
 
+        case 0x88CC: // IEEE 802.1AB LLDP
+            let (_, summary, lldpLayers) = LLDPDissector.dissect(data: packetData, offset: offset)
+            PassiveNeighborDiscoveryEngine.shared.processFrame(packetData: packetData)
+            return DissectionResult(
+                protocolType: .other("LLDP"),
+                sourceAddress: srcMAC,
+                destinationAddress: dstMAC,
+                summary: summary,
+                payloadLength: packetData.count - offset,
+                layers: layers + lldpLayers
+            )
+
         default:
+            if dstMAC == "01:00:0C:CC:CC:CC" || (packetData.count > offset + 8 && packetData[offset] == 0xAA && packetData[offset + 1] == 0xAA) {
+                let cdpOffset = (packetData.count >= offset + 8 && packetData[offset] == 0xAA) ? offset + 8 : offset
+                let (_, summary, cdpLayers) = CDPDissector.dissect(data: packetData, offset: cdpOffset)
+                PassiveNeighborDiscoveryEngine.shared.processFrame(packetData: packetData)
+                return DissectionResult(
+                    protocolType: .other("CDP"),
+                    sourceAddress: srcMAC,
+                    destinationAddress: dstMAC,
+                    summary: summary,
+                    payloadLength: packetData.count - offset,
+                    layers: layers + cdpLayers
+                )
+            }
+
             return DissectionResult(
                 protocolType: .other(String(format: "EtherType 0x%04X", etherType)),
                 sourceAddress: srcMAC,
@@ -112,6 +138,7 @@ public enum ProtocolDissector {
                 layers: layers
             )
         }
+
     }
 
     // MARK: - ARP Dissection

@@ -12,6 +12,15 @@ public struct SNMPStudioView: View {
     @State private var snmpVersion: SNMPVersion = .v2c
     @State private var studioMode: StudioMode = .systemSummary
 
+    // SNMPv3 USM Parameters
+    @State private var v3UserName: String = "snmpuser"
+    @State private var v3SecurityLevel: SNMPv3SecurityLevel = .authPriv
+    @State private var v3AuthProtocol: SNMPv3AuthProtocol = .sha256
+    @State private var v3AuthPassword: String = "AuthPass123"
+    @State private var v3PrivProtocol: SNMPv3PrivProtocol = .aes128
+    @State private var v3PrivPassword: String = "PrivPass123"
+    @State private var v3ContextName: String = ""
+
     @State private var isQuerying: Bool = false
     @State private var statusMessage: String? = nil
 
@@ -185,15 +194,75 @@ public struct SNMPStudioView: View {
                 .frame(width: 110)
             }
 
-            // Community
-            VStack(alignment: .leading, spacing: 4) {
-                Text("COMMUNITY STRING")
-                    .font(.system(size: 10, weight: .bold, design: .monospaced))
-                    .foregroundStyle(.secondary)
-                SecureField("public", text: $community)
-                    .textFieldStyle(.roundedBorder)
-                    .font(.system(size: 12, design: .monospaced))
-                    .frame(width: 140)
+            if snmpVersion == .v3 {
+                // SNMPv3 User
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("USER")
+                        .font(.system(size: 10, weight: .bold, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                    TextField("username", text: $v3UserName)
+                        .textFieldStyle(.roundedBorder)
+                        .font(.system(size: 12, design: .monospaced))
+                        .frame(width: 100)
+                }
+
+                // Security Level
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("SEC LEVEL")
+                        .font(.system(size: 10, weight: .bold, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                    Picker("", selection: $v3SecurityLevel) {
+                        ForEach(SNMPv3SecurityLevel.allCases) { lvl in
+                            Text(lvl.rawValue).tag(lvl)
+                        }
+                    }
+                    .frame(width: 120)
+                }
+
+                if v3SecurityLevel != .noAuthNoPriv {
+                    // Auth Protocol & Password
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("AUTH PROTO / PASS")
+                            .font(.system(size: 10, weight: .bold, design: .monospaced))
+                            .foregroundStyle(.secondary)
+                        HStack(spacing: 4) {
+                            Picker("", selection: $v3AuthProtocol) {
+                                ForEach(SNMPv3AuthProtocol.allCases) { p in
+                                    Text(p.rawValue).tag(p)
+                                }
+                            }
+                            .frame(width: 110)
+                            SecureField("password", text: $v3AuthPassword)
+                                .textFieldStyle(.roundedBorder)
+                                .font(.system(size: 12, design: .monospaced))
+                                .frame(width: 90)
+                        }
+                    }
+                }
+
+                if v3SecurityLevel == .authPriv {
+                    // Priv Protocol & Password
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("PRIV (AES-128)")
+                            .font(.system(size: 10, weight: .bold, design: .monospaced))
+                            .foregroundStyle(.secondary)
+                        SecureField("priv password", text: $v3PrivPassword)
+                            .textFieldStyle(.roundedBorder)
+                            .font(.system(size: 12, design: .monospaced))
+                            .frame(width: 100)
+                    }
+                }
+            } else {
+                // Community
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("COMMUNITY STRING")
+                        .font(.system(size: 10, weight: .bold, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                    SecureField("public", text: $community)
+                        .textFieldStyle(.roundedBorder)
+                        .font(.system(size: 12, design: .monospaced))
+                        .frame(width: 140)
+                }
             }
 
             Spacer()
@@ -229,6 +298,7 @@ public struct SNMPStudioView: View {
             RoundedRectangle(cornerRadius: 12)
                 .stroke(Theme.borderLight, lineWidth: 1)
         )
+
     }
 
     // MARK: - System Summary View
@@ -723,13 +793,32 @@ public struct SNMPStudioView: View {
 
             // Try live query; if physical device is offline, gracefully update with verified diagnostic response
             do {
-                let vbs = try await client.get(
-                    host: targetHost,
-                    port: Int(targetPort) ?? 161,
-                    community: community,
-                    version: snmpVersion,
-                    oids: ["1.3.6.1.2.1.1.1.0"]
-                )
+                let vbs: [SNMPVarBind]
+                if snmpVersion == .v3 {
+                    let v3Config = SNMPClient.V3Config(
+                        userName: v3UserName,
+                        securityLevel: v3SecurityLevel,
+                        authProtocol: v3AuthProtocol,
+                        authPassword: v3AuthPassword,
+                        privProtocol: v3PrivProtocol,
+                        privPassword: v3PrivPassword,
+                        contextName: v3ContextName
+                    )
+                    vbs = try await client.getV3(
+                        host: targetHost,
+                        port: Int(targetPort) ?? 161,
+                        config: v3Config,
+                        oids: ["1.3.6.1.2.1.1.1.0"]
+                    )
+                } else {
+                    vbs = try await client.get(
+                        host: targetHost,
+                        port: Int(targetPort) ?? 161,
+                        community: community,
+                        version: snmpVersion,
+                        oids: ["1.3.6.1.2.1.1.1.0"]
+                    )
+                }
                 if let vb = vbs.first {
                     sysDescr = vb.value.description
                     statusMessage = "Query succeeded in \(Int.random(in: 1...5))ms"
