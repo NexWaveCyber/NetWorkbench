@@ -84,6 +84,14 @@ public struct AppSidebar: View {
                     .background(Theme.electricAzure.opacity(0.18))
                     .foregroundStyle(Theme.electricAzure)
                     .clipShape(Capsule())
+            } else if item == .terminal && !state.terminalManager.sessions.isEmpty {
+                Text("\(state.terminalManager.sessions.count)")
+                    .font(Theme.monoText(10, weight: .bold))
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(Theme.quantumViolet.opacity(0.18))
+                    .foregroundStyle(Theme.quantumViolet)
+                    .clipShape(Capsule())
             }
         }
         .padding(.vertical, 2)
@@ -102,37 +110,30 @@ public struct AppSidebar: View {
     }
 
     private var sidebarFooter: some View {
-        HStack(spacing: 8) {
-            Circle()
-                .fill(Theme.signalEmerald)
-                .frame(width: 7, height: 7)
-                .overlay(
-                    Circle()
-                        .stroke(Theme.signalEmerald.opacity(0.4), lineWidth: 2)
-                        .scaleEffect(1.4)
-                )
+        HStack(spacing: 9) {
+            PulsingBeacon(color: Theme.signalEmerald, size: 7, isLive: true)
 
-            VStack(alignment: .leading, spacing: 1) {
-                Text("ENGINE ACTIVE • UNPRIVILEGED")
+            VStack(alignment: .leading, spacing: 1.5) {
+                Text("ENGINE ACTIVE • ZERO-ROOT")
                     .font(.system(size: 9, weight: .bold, design: .monospaced))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.primary.opacity(0.85))
                 Text("SQLite WAL • Safe Mode")
                     .font(.system(size: 10))
-                    .foregroundStyle(.tertiary)
+                    .foregroundStyle(.secondary)
             }
 
             Spacer()
 
-            Text("v1.0")
-                .font(Theme.monoText(10, weight: .semibold))
-                .padding(.horizontal, 5)
-                .padding(.vertical, 1)
-                .background(Color.primary.opacity(0.06))
+            Text("v1.0 Pro")
+                .font(Theme.monoText(10, weight: .bold))
+                .padding(.horizontal, 6)
+                .padding(.vertical, 2)
+                .background(Color.white.opacity(0.06))
                 .clipShape(RoundedRectangle(cornerRadius: 4))
                 .foregroundStyle(.secondary)
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
-        .background(Color(nsColor: .windowBackgroundColor))
+        .background(.ultraThinMaterial)
     }
 }

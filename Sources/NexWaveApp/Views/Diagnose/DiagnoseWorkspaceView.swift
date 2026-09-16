@@ -189,24 +189,26 @@ public struct DiagnoseWorkspaceView: View {
 
     // MARK: - Overall Status Banner
     private func overallStatusBanner(result: DiagnosticResult) -> some View {
-        HStack(alignment: .top, spacing: 16) {
+        HStack(alignment: .top, spacing: 18) {
             ZStack {
                 Circle()
-                    .fill(statusColor(result.overallStatus).opacity(0.15))
-                    .frame(width: 44, height: 44)
+                    .fill(statusColor(result.overallStatus).opacity(0.12))
+                    .frame(width: 48, height: 48)
                     .overlay(
                         Circle()
-                            .strokeBorder(statusColor(result.overallStatus), lineWidth: 2)
+                            .strokeBorder(statusColor(result.overallStatus).opacity(0.35), lineWidth: 1.5)
                     )
-                    .shadow(color: statusColor(result.overallStatus).opacity(0.3), radius: 6)
+                    .shadow(color: statusColor(result.overallStatus).opacity(0.25), radius: 8)
 
                 Image(systemName: statusIcon(result.overallStatus))
-                    .font(.system(size: 18, weight: .bold))
+                    .font(.system(size: 20, weight: .bold))
                     .foregroundStyle(statusColor(result.overallStatus))
             }
 
-            VStack(alignment: .leading, spacing: 5) {
-                HStack(alignment: .center) {
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(alignment: .center, spacing: 8) {
+                    PulsingBeacon(color: statusColor(result.overallStatus), size: 7, isLive: true)
+
                     Text(result.overallStatus.rawValue)
                         .font(.system(size: 18, weight: .bold))
                         .foregroundStyle(statusColor(result.overallStatus))
@@ -230,15 +232,15 @@ public struct DiagnoseWorkspaceView: View {
                     }) {
                         HStack(spacing: 5) {
                             Image(systemName: copiedReport ? "checkmark" : "doc.on.doc")
-                                .font(.system(size: 11))
+                                .font(.system(size: 11, weight: .semibold))
                             Text(copiedReport ? "Report Copied!" : "Export Report")
                                 .font(.system(size: 11, weight: .medium))
                         }
                         .padding(.horizontal, 10)
                         .padding(.vertical, 5)
-                        .background(Color.primary.opacity(0.05))
+                        .background(.ultraThinMaterial)
                         .clipShape(RoundedRectangle(cornerRadius: 6))
-                        .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(Theme.borderLight, lineWidth: 1))
+                        .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(Color.white.opacity(0.1), lineWidth: 1))
                     }
                     .buttonStyle(.plain)
 
@@ -247,7 +249,7 @@ public struct DiagnoseWorkspaceView: View {
                     }) {
                         HStack(spacing: 5) {
                             Image(systemName: "plus.circle.fill")
-                                .font(.system(size: 11))
+                                .font(.system(size: 11, weight: .bold))
                             Text("Create Investigation")
                                 .font(.system(size: 11, weight: .semibold))
                         }
@@ -256,17 +258,17 @@ public struct DiagnoseWorkspaceView: View {
                         .background(Theme.cyanGlowGradient)
                         .foregroundStyle(.black)
                         .clipShape(RoundedRectangle(cornerRadius: 6))
-                        .shadow(color: Theme.neonCyan.opacity(0.25), radius: 4)
+                        .shadow(color: Theme.neonCyan.opacity(0.25), radius: 6, x: 0, y: 2)
                     }
                     .buttonStyle(.plain)
                 }
 
                 Text(result.overallSummary)
-                    .font(.system(size: 13))
-                    .foregroundStyle(.secondary)
+                    .font(.system(size: 13, weight: .regular))
+                    .foregroundStyle(.primary.opacity(0.85))
             }
         }
-        .engineeringCard(padding: 16)
+        .glassHUDCard(padding: 18, cornerRadius: 12)
     }
 
     // MARK: - Findings Section

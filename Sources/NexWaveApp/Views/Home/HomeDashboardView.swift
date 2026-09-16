@@ -12,43 +12,39 @@ public struct HomeDashboardView: View {
     }
 
     public var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 22) {
-                // Hero Command Center Deck
-                heroDiagnoseCard
+        ZStack {
+            Theme.ambientMeshView
 
-                // Local Network Interface Telemetry Bar
-                networkInterfaceBar
+            ScrollView {
+                VStack(alignment: .leading, spacing: 22) {
+                    // Hero Command Center Deck
+                    heroDiagnoseCard
 
-                // Two Column Layout: Investigations & Diagnostic Feed
-                HStack(alignment: .top, spacing: 18) {
-                    activeInvestigationsCard
-                    recentDiagnosesCard
+                    // Local Network Interface Telemetry Bar
+                    networkInterfaceBar
+
+                    // Two Column Layout: Investigations & Diagnostic Feed
+                    HStack(alignment: .top, spacing: 18) {
+                        activeInvestigationsCard
+                        recentDiagnosesCard
+                    }
+
+                    // Interactive Studio Launchers
+                    toolboxStudiosGrid
                 }
-
-                // Interactive Studio Launchers
-                toolboxStudiosGrid
+                .padding(24)
             }
-            .padding(24)
         }
-        .background(Theme.secondaryBackground)
         .navigationTitle("Engineering Dashboard")
     }
 
     // MARK: - Hero Command Center Deck
     private var heroDiagnoseCard: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: 18) {
             HStack(alignment: .center) {
-                VStack(alignment: .leading, spacing: 4) {
+                VStack(alignment: .leading, spacing: 6) {
                     HStack(spacing: 8) {
-                        Circle()
-                            .fill(Theme.neonCyan)
-                            .frame(width: 7, height: 7)
-                            .overlay(
-                                Circle()
-                                    .stroke(Theme.neonCyan.opacity(0.4), lineWidth: 2)
-                                    .scaleEffect(1.6)
-                            )
+                        PulsingBeacon(color: Theme.neonCyan, size: 7, isLive: true)
 
                         Text("GLOBAL TELEMETRY ENGINE")
                             .font(.system(size: 10, weight: .bold, design: .monospaced))
@@ -63,19 +59,31 @@ public struct HomeDashboardView: View {
                     }
 
                     Text("Network Diagnostic Command Center")
-                        .font(.system(size: 22, weight: .bold))
+                        .font(.system(size: 24, weight: .bold))
+                        .foregroundStyle(
+                            LinearGradient(
+                                colors: [.white, Color.white.opacity(0.85)],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
                 }
 
                 Spacer()
 
                 ZStack {
                     Circle()
-                        .fill(Theme.neonCyan.opacity(0.1))
-                        .frame(width: 48, height: 48)
+                        .fill(Theme.neonCyan.opacity(0.12))
+                        .frame(width: 52, height: 52)
+                        .overlay(
+                            Circle()
+                                .stroke(Theme.neonCyan.opacity(0.3), lineWidth: 1.5)
+                        )
 
                     Image(systemName: "point.3.filled.connected.trianglepath.dotted")
                         .font(.system(size: 24))
                         .foregroundStyle(Theme.neonCyan)
+                        .shadow(color: Theme.neonCyan.opacity(0.5), radius: 6, x: 0, y: 0)
                 }
             }
 

@@ -127,9 +127,14 @@ public struct InvestigationsWorkspaceView: View {
                         exportBundle(for: inv)
                     } label: {
                         Label("Export Bundle (.nwi)", systemImage: "square.and.arrow.up")
+                            .font(.system(size: 11, weight: .semibold))
                     }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
+                    .buttonStyle(.plain)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 5)
+                    .background(.ultraThinMaterial)
+                    .clipShape(RoundedRectangle(cornerRadius: 6))
+                    .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(Theme.cyanPulse.opacity(0.35), lineWidth: 1))
                     .help("Export complete incident bundle for team collaboration")
 
                     statusBadge(inv.status)
@@ -141,13 +146,13 @@ public struct InvestigationsWorkspaceView: View {
                         .foregroundStyle(.secondary)
 
                     Label("Severity: \(inv.severity.rawValue)", systemImage: "exclamationmark.triangle")
-                        .font(.system(size: 11))
+                        .font(.system(size: 11, weight: .semibold))
                         .foregroundStyle(severityColor(inv.severity))
 
                     if let res = inv.resolution {
                         Label("Resolution: \(res)", systemImage: "checkmark.circle.fill")
-                            .font(.system(size: 11))
-                            .foregroundStyle(.green)
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundStyle(Theme.signalEmerald)
                     }
                 }
             }
@@ -159,11 +164,11 @@ public struct InvestigationsWorkspaceView: View {
             // Timeline Header
             HStack {
                 Text("CHRONOLOGICAL TIMELINE")
-                    .font(.system(size: 11, weight: .bold))
+                    .font(.system(size: 11, weight: .bold, design: .monospaced))
                     .foregroundStyle(.secondary)
                 Spacer()
                 Text("\(timelineEvents.count) Events")
-                    .font(.system(size: 11))
+                    .font(Theme.monoText(11, weight: .semibold))
                     .foregroundStyle(.secondary)
             }
             .padding(.horizontal, 20)
@@ -179,28 +184,39 @@ public struct InvestigationsWorkspaceView: View {
                                 Circle()
                                     .fill(categoryColor(event.category))
                                     .frame(width: 10, height: 10)
+                                    .shadow(color: categoryColor(event.category).opacity(0.6), radius: 4, x: 0, y: 0)
                                     .padding(.top, 4)
 
                                 Rectangle()
-                                    .fill(Color.primary.opacity(0.1))
-                                    .frame(width: 1)
+                                    .fill(
+                                        LinearGradient(
+                                            colors: [categoryColor(event.category).opacity(0.3), Color.primary.opacity(0.08)],
+                                            startPoint: .top,
+                                            endPoint: .bottom
+                                        )
+                                    )
+                                    .frame(width: 1.5)
                                     .frame(minHeight: 36)
                             }
 
-                            VStack(alignment: .leading, spacing: 4) {
+                            VStack(alignment: .leading, spacing: 5) {
                                 HStack {
                                     Text(event.title)
                                         .font(.system(size: 13, weight: .semibold))
                                     Spacer()
-                                    Text(Date(timeIntervalSince1970: event.timestamp).formatted(date: .omitted, time: .standard))
-                                        .font(.system(size: 11, design: .monospaced))
-                                        .foregroundStyle(.secondary)
+                                    HStack(spacing: 3) {
+                                        Image(systemName: "clock")
+                                            .font(.system(size: 9))
+                                        Text(Date(timeIntervalSince1970: event.timestamp).formatted(date: .omitted, time: .standard))
+                                            .font(Theme.monoText(11))
+                                    }
+                                    .foregroundStyle(.secondary)
                                 }
 
                                 if !event.detail.isEmpty {
                                     Text(event.detail)
                                         .font(.system(size: 12))
-                                        .foregroundStyle(.secondary)
+                                        .foregroundStyle(.primary.opacity(0.85))
                                 }
                             }
                             .padding(.bottom, 16)

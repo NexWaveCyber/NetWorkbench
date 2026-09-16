@@ -63,40 +63,62 @@ struct NexWaveApp: App {
                 }
 
                 ToolbarItem(placement: .navigation) {
-                    HStack(spacing: 6) {
-                        Circle()
-                            .fill(Theme.signalEmerald)
-                            .frame(width: 6, height: 6)
+                    HStack(spacing: 7) {
+                        PulsingBeacon(color: Theme.signalEmerald, size: 6, isLive: true)
                         Text("en0 • 192.168.1.142")
                             .font(Theme.monoText(11, weight: .semibold))
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(.primary.opacity(0.85))
+
+                        Text("1.0 Gbps")
+                            .font(Theme.monoText(9, weight: .bold))
+                            .foregroundStyle(Theme.cyanPulse)
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 1)
+                            .background(Theme.cyanPulse.opacity(0.12))
+                            .clipShape(Capsule())
                     }
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 3)
-                    .background(Color.primary.opacity(0.04))
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 4)
+                    .background(.ultraThinMaterial)
                     .clipShape(Capsule())
-                    .help("Active Interface: en0 (Wi-Fi / Ethernet)")
+                    .overlay(
+                        Capsule()
+                            .strokeBorder(LinearGradient(
+                                colors: [Color.white.opacity(0.15), Color.clear],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            ), lineWidth: 0.75)
+                    )
+                    .help("Active Network Adapter: en0 (Gigabit Ethernet / Wi-Fi)")
                 }
 
                 ToolbarItemGroup(placement: .automatic) {
                     Button(action: { state.showCommandPalette = true }) {
-                        HStack(spacing: 6) {
+                        HStack(spacing: 7) {
                             Image(systemName: "magnifyingglass")
-                                .font(.system(size: 11))
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundStyle(Theme.neonCyan)
                             Text("Command Palette")
-                                .font(.system(size: 12))
+                                .font(.system(size: 12, weight: .medium))
                             Text("⌘K")
                                 .font(Theme.monoText(10, weight: .bold))
-                                .padding(.horizontal, 5)
-                                .padding(.vertical, 1)
-                                .background(Color.primary.opacity(0.08))
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 1.5)
+                                .background(Color.white.opacity(0.08))
                                 .clipShape(RoundedRectangle(cornerRadius: 4))
+                                .foregroundStyle(.secondary)
                         }
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(.ultraThinMaterial)
+                        .clipShape(RoundedRectangle(cornerRadius: 6))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 6)
+                                .strokeBorder(Color.white.opacity(0.1), lineWidth: 0.75)
+                        )
                     }
                     .buttonStyle(.plain)
-                    .help("Open Command Palette (Cmd+K)")
+                    .help("Open Command Palette (⌘K)")
 
                     Button(action: {
                         withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
@@ -115,19 +137,33 @@ struct NexWaveApp: App {
             }
             .overlay(alignment: .bottomTrailing) {
                 if let toast = state.toastMessage {
-                    Text(toast)
-                        .font(.system(size: 12, weight: .medium))
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 10)
-                        .background(.ultraThickMaterial)
-                        .clipShape(Capsule())
-                        .shadow(radius: 4)
-                        .padding(24)
-                        .onAppear {
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+                    HStack(spacing: 10) {
+                        Image(systemName: "bolt.shield.fill")
+                            .font(.system(size: 13))
+                            .foregroundStyle(Theme.neonCyan)
+
+                        Text(toast)
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundStyle(.primary)
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 10)
+                    .background(.ultraThickMaterial)
+                    .clipShape(Capsule())
+                    .overlay(
+                        Capsule()
+                            .strokeBorder(Theme.cyanPulse.opacity(0.3), lineWidth: 1)
+                    )
+                    .shadow(color: Theme.neonCyan.opacity(0.15), radius: 10, x: 0, y: 3)
+                    .padding(24)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                    .onAppear {
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 3.2) {
+                            withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
                                 state.toastMessage = nil
                             }
                         }
+                    }
                 }
             }
         }

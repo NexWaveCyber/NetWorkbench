@@ -35,7 +35,7 @@ public enum Theme {
     }
 
     public static var borderHighlight: Color {
-        Color.white.opacity(0.12)
+        Color.white.opacity(0.14)
     }
 
     public static var glassBackground: Color {
@@ -83,13 +83,158 @@ public enum Theme {
         )
     }
 
+    public static var ambientMeshView: some View {
+        ZStack {
+            Color(red: 0.04, green: 0.05, blue: 0.08)
+            RadialGradient(
+                colors: [Color(red: 0.0, green: 0.28, blue: 0.42).opacity(0.16), Color.clear],
+                center: .topLeading,
+                startRadius: 80,
+                endRadius: 750
+            )
+            RadialGradient(
+                colors: [Color(red: 0.15, green: 0.05, blue: 0.35).opacity(0.12), Color.clear],
+                center: .bottomTrailing,
+                startRadius: 100,
+                endRadius: 800
+            )
+            RadialGradient(
+                colors: [Color(red: 0.0, green: 0.35, blue: 0.30).opacity(0.08), Color.clear],
+                center: .center,
+                startRadius: 50,
+                endRadius: 600
+            )
+        }
+        .ignoresSafeArea()
+    }
+
     // MARK: - Typography Styles
     public static func monoText(_ size: CGFloat, weight: Font.Weight = .regular) -> Font {
         .system(size: size, weight: weight, design: .monospaced)
     }
 }
 
-// MARK: - Advanced Engineering Card Modifier
+// MARK: - Continuous Pulsing Beacon
+public struct PulsingBeacon: View {
+    let color: Color
+    var size: CGFloat = 8
+    var isLive: Bool = true
+    
+    @State private var isPulsing = false
+
+    public init(color: Color, size: CGFloat = 8, isLive: Bool = true) {
+        self.color = color
+        self.size = size
+        self.isLive = isLive
+    }
+
+    public var body: some View {
+        ZStack {
+            if isLive {
+                Circle()
+                    .fill(color.opacity(0.45))
+                    .frame(width: size, height: size)
+                    .scaleEffect(isPulsing ? 2.2 : 1.0)
+                    .opacity(isPulsing ? 0.0 : 0.8)
+                    .animation(
+                        .easeInOut(duration: 1.6).repeatForever(autoreverses: false),
+                        value: isPulsing
+                    )
+            }
+
+            Circle()
+                .fill(color)
+                .frame(width: size, height: size)
+                .shadow(color: color.opacity(0.6), radius: 3, x: 0, y: 0)
+        }
+        .onAppear {
+            if isLive {
+                isPulsing = true
+            }
+        }
+    }
+}
+
+// MARK: - HUD Telemetry Metric Tile
+public struct HUDMetricTile: View {
+    let title: String
+    let value: String
+    var unit: String = ""
+    var delta: String? = nil
+    var deltaIsPositive: Bool = true
+    var statusColor: Color = Theme.neonCyan
+    var icon: String? = nil
+
+    public init(
+        title: String,
+        value: String,
+        unit: String = "",
+        delta: String? = nil,
+        deltaIsPositive: Bool = true,
+        statusColor: Color = Theme.neonCyan,
+        icon: String? = nil
+    ) {
+        self.title = title
+        self.value = value
+        self.unit = unit
+        self.delta = delta
+        self.deltaIsPositive = deltaIsPositive
+        self.statusColor = statusColor
+        self.icon = icon
+    }
+
+    public var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 6) {
+                if let icon = icon {
+                    Image(systemName: icon)
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(statusColor)
+                }
+                Text(title.uppercased())
+                    .font(.system(size: 10, weight: .bold, design: .monospaced))
+                    .foregroundStyle(.secondary)
+                Spacer()
+                if let delta = delta {
+                    HStack(spacing: 2) {
+                        Image(systemName: deltaIsPositive ? "arrow.up.right" : "arrow.down.right")
+                            .font(.system(size: 9, weight: .bold))
+                        Text(delta)
+                            .font(Theme.monoText(10, weight: .bold))
+                    }
+                    .foregroundStyle(deltaIsPositive ? Theme.signalEmerald : Theme.solarAmber)
+                    .padding(.horizontal, 5)
+                    .padding(.vertical, 1)
+                    .background(Color.primary.opacity(0.04))
+                    .clipShape(Capsule())
+                }
+            }
+
+            HStack(alignment: .firstTextBaseline, spacing: 4) {
+                Text(value)
+                    .font(.system(size: 20, weight: .bold, design: .monospaced))
+                    .foregroundStyle(.primary)
+
+                if !unit.isEmpty {
+                    Text(unit)
+                        .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+        .padding(14)
+        .background(
+            RoundedRectangle(cornerRadius: 10)
+                .fill(Theme.cardBackground)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 10)
+                .strokeBorder(Theme.borderLight, lineWidth: 1)
+        )
+    }
+}
+
+// MARK: - Advanced Engineering Card Modifier with Smooth Hover Lift
 public struct EngineeringCardModifier: ViewModifier {
     var padding: CGFloat = 16
     var cornerRadius: CGFloat = 12
@@ -108,19 +253,20 @@ public struct EngineeringCardModifier: ViewModifier {
             .overlay(
                 RoundedRectangle(cornerRadius: cornerRadius)
                     .strokeBorder(
-                        accentBorder ?? (isHovered ? Theme.cyanPulse.opacity(0.35) : Theme.borderLight),
+                        accentBorder ?? (isHovered ? Theme.cyanPulse.opacity(0.4) : Theme.borderLight),
                         lineWidth: isHovered ? 1.5 : 1.0
                     )
             )
+            .scaleEffect(hasHoverEffect && isHovered ? 1.012 : 1.0)
             .shadow(
-                color: isHovered ? Theme.cyanPulse.opacity(0.12) : Color.black.opacity(0.04),
-                radius: isHovered ? 8 : 2,
+                color: isHovered ? Theme.cyanPulse.opacity(0.14) : Color.black.opacity(0.04),
+                radius: isHovered ? 10 : 2,
                 x: 0,
-                y: isHovered ? 3 : 1
+                y: isHovered ? 4 : 1
             )
             .onHover { hovering in
                 if hasHoverEffect {
-                    withAnimation(.easeInOut(duration: 0.2)) {
+                    withAnimation(.spring(response: 0.25, dampingFraction: 0.75)) {
                         isHovered = hovering
                     }
                 }
@@ -142,14 +288,14 @@ public struct GlassHUDCardModifier: ViewModifier {
                 RoundedRectangle(cornerRadius: cornerRadius)
                     .strokeBorder(
                         LinearGradient(
-                            colors: [Color.white.opacity(0.15), Color.primary.opacity(0.05)],
+                            colors: [Color.white.opacity(0.18), Color.white.opacity(0.04)],
                             startPoint: .topLeading,
                             endPoint: .bottomTrailing
                         ),
                         lineWidth: 1
                     )
             )
-            .shadow(color: Color.black.opacity(0.06), radius: 6, x: 0, y: 2)
+            .shadow(color: Color.black.opacity(0.08), radius: 8, x: 0, y: 3)
     }
 }
 
@@ -190,7 +336,9 @@ public struct HUDStatusBadge: View {
 
     public var body: some View {
         HStack(spacing: 5) {
-            if let icon = icon {
+            if isPulsing {
+                PulsingBeacon(color: color, size: 6, isLive: true)
+            } else if let icon = icon {
                 Image(systemName: icon)
                     .font(.system(size: 9, weight: .bold))
             } else {
@@ -209,7 +357,7 @@ public struct HUDStatusBadge: View {
         .clipShape(Capsule())
         .overlay(
             Capsule()
-                .strokeBorder(color.opacity(0.25), lineWidth: 0.75)
+                .strokeBorder(color.opacity(0.28), lineWidth: 0.75)
         )
     }
 }
