@@ -11,6 +11,7 @@ public struct InvestigationsWorkspaceView: View {
     @State private var newSeverity = InvestigationSeverity.medium
     @State private var timelineEvents: [TimelineEventRecord] = []
     @State private var newEventText = ""
+    @State private var isTargetedForDrop = false
 
     public init(state: AppState) {
         self.state = state
@@ -25,6 +26,20 @@ public struct InvestigationsWorkspaceView: View {
                         .font(.system(size: 11, weight: .bold))
                         .foregroundStyle(.secondary)
                     Spacer()
+
+                    // Sample Incident Drill Templates
+                    Menu {
+                        ForEach(InvestigationBundleManager.createDemoInvestigations(), id: \.investigation.id) { demo in
+                            Button(demo.investigation.title) {
+                                loadDemoIncident(demo)
+                            }
+                        }
+                    } label: {
+                        Image(systemName: "sparkles")
+                            .font(.system(size: 12))
+                    }
+                    .menuStyle(.borderlessButton)
+                    .help("Load Enterprise Incident Drill Template")
 
                     Button(action: { importBundle() }) {
                         Image(systemName: "square.and.arrow.down")
@@ -79,6 +94,26 @@ public struct InvestigationsWorkspaceView: View {
                 }
                 .listStyle(.inset)
             }
+            .overlay {
+                if isTargetedForDrop {
+                    RoundedRectangle(cornerRadius: 8)
+                        .stroke(Theme.cyanPulse, style: StrokeStyle(lineWidth: 2, dash: [6, 4]))
+                        .background(Theme.cyanPulse.opacity(0.12))
+                        .overlay(
+                            VStack(spacing: 6) {
+                                Image(systemName: "arrow.down.doc.fill")
+                                    .font(.system(size: 24))
+                                    .foregroundStyle(Theme.cyanPulse)
+                                Text("Drop .nwi Investigation Bundle")
+                                    .font(.system(size: 12, weight: .bold))
+                                    .foregroundStyle(Theme.cyanPulse)
+                            }
+                        )
+                }
+            }
+            .onDrop(of: [.fileURL], isTargeted: $isTargetedForDrop) { providers in
+                handleFileDrop(providers: providers)
+            }
             .navigationSplitViewColumnWidth(min: 260, ideal: 300, max: 360)
         } detail: {
             // MARK: - Investigation Detail & Chronological Timeline
@@ -123,6 +158,22 @@ public struct InvestigationsWorkspaceView: View {
                             .foregroundStyle(.secondary)
                     }
                     Spacer()
+
+                    // Copy Slack / Jira Triage Summary
+                    Button {
+                        copySlackJiraTriage(for: inv)
+                    } label: {
+                        Label("Slack/Jira Triage", systemImage: "doc.on.doc")
+                            .font(.system(size: 11, weight: .semibold))
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 5)
+                    .background(.ultraThinMaterial)
+                    .clipShape(RoundedRectangle(cornerRadius: 6))
+                    .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(Theme.cyanPulse.opacity(0.35), lineWidth: 1))
+                    .help("Copy formatted triage post for Slack or Jira")
+
                     Button {
                         exportBundle(for: inv)
                     } label: {
@@ -325,6 +376,52 @@ public struct InvestigationsWorkspaceView: View {
             }
         }
     }
+
+    private func loadDemoIncident(_ bundle: InvestigationBundle) {
+        do {
+            try InvestigationBundleManager.importIntoDatabase(
+                bundle: bundle,
+                investigationRepo: InvestigationRepository(database: state.database),
+                historyRepo: DiagnosticHistoryRepository(database: state.database)
+            )
+            state.refreshInvestigations()
+            state.selectedInvestigation = state.investigations.first { $0.id == bundle.investigation.id }
+            state.toastMessage = "Loaded incident template: '\(bundle.investigation.title)'"
+        } catch {
+            state.toastMessage = "Failed to load drill: \(error.localizedDescription)"
+        }
+    }
+
+    private func copySlackJiraTriage(for inv: Investigation) {
+        let record = inv.toRecord()
+        let summary = InvestigationBundleManager.exportSlackJiraSummary(
+            investigation: record,
+            timeline: timelineEvents,
+            notes: inv.resolution ?? ""
+        )
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(summary, forType: .string)
+        state.toastMessage = "Copied Slack/Jira incident triage summary!"
+    }
+
+    private func handleFileDrop(providers: [NSItemProvider]) -> Bool {
+        guard let provider = providers.first else { return false }
+        _ = provider.loadObject(ofClass: URL.self) { url, _ in
+            guard let url = url, url.pathExtension.lowercased() == "nwi" else { return }
+            DispatchQueue.main.async {
+                do {
+                    let imported = try state.investigationManager.importInvestigationBundle(from: url)
+                    state.refreshInvestigations()
+                    state.selectedInvestigation = imported
+                    state.toastMessage = "Imported '\(imported.title)' successfully."
+                } catch {
+                    state.toastMessage = "Import error: \(error.localizedDescription)"
+                }
+            }
+        }
+        return true
+    }
+
 
     private var newInvestigationSheet: some View {
         VStack(alignment: .leading, spacing: 16) {

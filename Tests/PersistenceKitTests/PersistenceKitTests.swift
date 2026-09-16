@@ -1,5 +1,6 @@
 import Testing
 import Foundation
+import NetworkCore
 @testable import PersistenceKit
 @testable import InvestigationKit
 
@@ -126,4 +127,62 @@ struct PersistenceKitTests {
         try? FileManager.default.removeItem(atPath: dbPath2)
         try? FileManager.default.removeItem(atPath: bundleFileUrl.path)
     }
+
+    @Test("Pre-packaged enterprise demo incident bundles generation")
+    func testDemoInvestigationBundlesGeneration() {
+        let demos = InvestigationBundleManager.createDemoInvestigations()
+        #expect(demos.count == 3)
+
+        let bgpDemo = demos.first { $0.investigation.severity == "Critical" }
+        #expect(bgpDemo != nil)
+        #expect(bgpDemo?.investigation.title.contains("BGP") == true)
+        #expect((bgpDemo?.timelineEvents.count ?? 0) >= 3)
+
+        let crcDemo = demos.first { $0.investigation.severity == "High" }
+        #expect(crcDemo != nil)
+        #expect(crcDemo?.investigation.title.contains("CRC") == true)
+
+        let wifiDemo = demos.first { $0.investigation.severity == "Medium" }
+        #expect(wifiDemo != nil)
+        #expect(wifiDemo?.investigation.status == "Resolved")
+        #expect(wifiDemo?.investigation.resolution != nil)
+    }
+
+    @Test("Slack and Jira markdown incident triage export formatting")
+    func testSlackJiraSummaryExport() {
+        let demos = InvestigationBundleManager.createDemoInvestigations()
+        guard let criticalDemo = demos.first(where: { $0.investigation.severity == "Critical" }) else {
+            #expect(Bool(false), "Missing critical demo")
+            return
+        }
+
+        let summary = InvestigationBundleManager.exportSlackJiraSummary(bundle: criticalDemo)
+        #expect(summary.contains("INCIDENT TRIAGE: [CRITICAL]"))
+        #expect(summary.contains("Chronological Timeline Findings"))
+        #expect(summary.contains("BGP Session Down"))
+        #expect(summary.contains("FCS / CRC Error Burst"))
+        #expect(summary.contains("Engineering Notes / Next Steps"))
+        #expect(summary.contains("NexWave Studio Mac Network Workbench"))
+    }
+
+    @Test("WorkbenchError localized descriptions and actionable recovery suggestions")
+    func testWorkbenchErrorLocalizationAndRecovery() {
+        let captureErr = WorkbenchError.packetCaptureDenied(interface: "en0", detail: "Root privileges required for BPF")
+        #expect(captureErr.errorDescription?.contains("en0") == true)
+        #expect(captureErr.recoverySuggestion?.contains("/dev/bpf") == true)
+
+        let devErr = WorkbenchError.deviceUnreachable(target: "10.50.0.1:22", reason: "Host down")
+        #expect(devErr.errorDescription?.contains("10.50.0.1:22") == true)
+        #expect(devErr.recoverySuggestion?.contains("Check default gateway") == true)
+
+        let snmpErr = WorkbenchError.authenticationFailed(protocolName: "SNMPv3", detail: "USM authentication failure")
+        #expect(snmpErr.errorDescription?.contains("SNMPv3") == true)
+        #expect(snmpErr.recoverySuggestion?.contains("auth/priv keys") == true)
+
+        let bundleErr = WorkbenchError.bundleCorrupted(reason: "Unexpected EOF")
+        #expect(bundleErr.errorDescription?.contains("corrupted") == true)
+        #expect(bundleErr.recoverySuggestion?.contains(".nwi") == true)
+    }
 }
+
+

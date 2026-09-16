@@ -248,5 +248,56 @@ struct SNMPEngineTests {
         #expect(decodedMsg.securityParameters.engineBoots == 3)
         #expect(decodedMsg.securityParameters.authParameters.count == 16) // SHA256 truncated HMAC
     }
+
+    @Test("Malformed ASN.1 BER buffer safety and truncation defense")
+    func testMalformedBERBufferSafety() {
+        // Truncated length claim (header says length 64, data only has 2 bytes)
+        let corruptData = Data([0x02, 0x40, 0x01, 0x02])
+        var decoder = ASN1Decoder(data: corruptData)
+        #expect(throws: Error.self) {
+            _ = try decoder.readInteger()
+        }
+
+        // Truncated OID payload (length claims 5 bytes, but buffer only has 1 byte)
+        let corruptOIDData = Data([0x06, 0x05, 0x01])
+        var oidDecoder = ASN1Decoder(data: corruptOIDData)
+        #expect(throws: Error.self) {
+            _ = try oidDecoder.readOID()
+        }
+    }
+
+    @Test("SNMP Message deserialization rejects invalid version bytes and garbage")
+    func testInvalidSNMPVersionSafety() {
+        // Random garbage bytes
+        let garbage = Data([0xFF, 0xFE, 0xFD, 0xFC, 0x00, 0x11, 0x22])
+        #expect(throws: Error.self) {
+            _ = try SNMPMessage.deserialize(data: garbage)
+        }
+
+        // Empty payload
+        #expect(throws: Error.self) {
+            _ = try SNMPMessage.deserialize(data: Data())
+        }
+    }
+
+    @Test("OIDTrie deep subtree hierarchy and non-matching prefix queries")
+    func testOIDTrieSubtreePruning() {
+        let trie = OIDTrie()
+        trie.insert(oid: "1.3.6.1.4.1.9.9.48.1.1.1.5", name: "ciscoMemoryPoolUsed")
+        trie.insert(oid: "1.3.6.1.4.1.9.9.48.1.1.1.6", name: "ciscoMemoryPoolFree")
+
+        // Exact match with instance .1
+        let resolved = trie.resolveName(oid: "1.3.6.1.4.1.9.9.48.1.1.1.5.1")
+        #expect(resolved == "ciscoMemoryPoolUsed.1")
+
+        // Non-existent subtree query
+        let nonExistentChildren = trie.allChildren(prefix: "1.3.6.1.4.1.311")
+        #expect(nonExistentChildren.isEmpty)
+
+        // Matching subtree query
+        let matchingChildren = trie.allChildren(prefix: "1.3.6.1.4.1.9.9.48")
+        #expect(matchingChildren.count == 2)
+    }
 }
+
 

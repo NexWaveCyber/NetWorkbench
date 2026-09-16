@@ -130,5 +130,69 @@ struct TerminalTests {
         #expect(exportLog.contains(profile.name))
         #expect(exportLog.contains("show ip route"))
     }
+
+    @Test("Terminal Themes provide valid hex palettes for dark modes")
+    func testTerminalThemes() {
+        #expect(TerminalTheme.allCases.count == 4)
+        for theme in TerminalTheme.allCases {
+            #expect(!theme.rawValue.isEmpty)
+            #expect(theme.backgroundColorHex.hasPrefix("#"))
+            #expect(theme.foregroundColorHex.hasPrefix("#"))
+            #expect(theme.promptColorHex.hasPrefix("#"))
+            #expect(theme.selectionColorHex.hasPrefix("#"))
+        }
+        #expect(TerminalTheme.obsidian.id == "Obsidian Cyber")
+        #expect(TerminalTheme.matrix.promptColorHex == "#33FF33")
+    }
+
+    @Test("Command Macros include standard networking diagnostics and serialize cleanly")
+    func testCommandMacros() throws {
+        let macros = CommandMacro.defaultMacros
+        #expect(macros.count >= 8)
+
+        let intMacro = macros.first { $0.command == "show ip int br" }
+        #expect(intMacro != nil)
+        #expect(intMacro?.category == "L3")
+
+        let bgpMacro = macros.first { $0.command == "show ip bgp summary" }
+        #expect(bgpMacro != nil)
+        #expect(bgpMacro?.category == "Routing")
+
+        // Serialization roundtrip
+        let encoder = JSONEncoder()
+        let data = try encoder.encode(macros)
+        let decoder = JSONDecoder()
+        let decoded = try decoder.decode([CommandMacro].self, from: data)
+        #expect(decoded.count == macros.count)
+    }
+
+    @Test("Terminal Session live transcript search and case-insensitive filtering")
+    func testTranscriptSearch() {
+        let session = TerminalSession(
+            title: "Search Test",
+            connectionType: .simulation(presetName: "Switch")
+        )
+        session.connect()
+        session.sendCommand("show ip interface brief")
+        session.sendCommand("show ip route")
+        session.sendCommand("show version")
+
+        // Search for specific interface substring
+        let interfaceMatches = session.searchLines(query: "gigabit")
+        #expect(!interfaceMatches.isEmpty)
+
+        // Search case-insensitive
+        let upperMatches = session.searchLines(query: "GIGABIT")
+        #expect(upperMatches.count == interfaceMatches.count)
+
+        // Empty query returns all lines
+        let allLines = session.searchLines(query: "")
+        #expect(allLines.count == session.lines.count)
+
+        // Non-existent string returns empty
+        let nonExistent = session.searchLines(query: "nonexistent_pattern_xyz_12345")
+        #expect(nonExistent.isEmpty)
+    }
 }
+
 

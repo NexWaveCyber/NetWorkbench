@@ -173,6 +173,13 @@ public final class TerminalSession: Identifiable, @unchecked Sendable {
         lines.removeAll()
     }
 
+    /// Filter and search transcript lines by query
+    public func searchLines(query: String) -> [TerminalLine] {
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return lines }
+        return lines.filter { $0.text.localizedCaseInsensitiveContains(trimmed) }
+    }
+
     /// Export whole session transcript to string
     public func exportTranscript() -> String {
         lines.map { $0.text }.joined(separator: "\n")

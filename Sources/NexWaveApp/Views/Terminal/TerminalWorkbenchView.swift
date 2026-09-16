@@ -11,6 +11,9 @@ public struct TerminalWorkbenchView: View {
     @State private var fontSize: CGFloat = 12
     @State private var autoScroll: Bool = true
     @State private var historyIndex: Int = -1
+    @State private var selectedTheme: TerminalTheme = .obsidian
+    @State private var isSearching: Bool = false
+    @State private var searchQuery: String = ""
 
     // New Session Form States
     @State private var newSessionType: Int = 0 // 0: SSH, 1: Serial, 2: Simulation, 3: Local Shell
@@ -43,6 +46,12 @@ public struct TerminalWorkbenchView: View {
 
             Divider().overlay(Theme.borderLight)
 
+            // Optional Search Strip
+            if isSearching {
+                transcriptSearchBar
+                Divider().overlay(Theme.borderLight)
+            }
+
             // Quick Command Macro Snippets Strip
             commandSnippetsBar
 
@@ -65,6 +74,7 @@ public struct TerminalWorkbenchView: View {
             }
         }
     }
+
 
     // MARK: - Header Bar
 
@@ -121,6 +131,36 @@ public struct TerminalWorkbenchView: View {
                 .padding(.vertical, 4)
                 .background(Theme.cardBackground)
                 .clipShape(RoundedRectangle(cornerRadius: 6))
+
+                // Theme Selector Menu
+                Menu {
+                    ForEach(TerminalTheme.allCases) { theme in
+                        Button(action: { selectedTheme = theme }) {
+                            HStack {
+                                Text(theme.rawValue)
+                                if selectedTheme == theme {
+                                    Image(systemName: "checkmark")
+                                }
+                            }
+                        }
+                    }
+                } label: {
+                    Label(selectedTheme.rawValue, systemImage: "paintpalette")
+                        .font(.system(size: 11))
+                }
+                .menuStyle(.borderedButton)
+
+                // Search Transcript Toggle
+                Button(action: {
+                    isSearching.toggle()
+                    if !isSearching { searchQuery = "" }
+                }) {
+                    Image(systemName: "magnifyingglass")
+                        .font(.system(size: 11))
+                        .foregroundStyle(isSearching ? Theme.cyanPulse : .primary)
+                }
+                .buttonStyle(.bordered)
+                .help("Search Terminal Transcript")
 
                 // External Terminal Launch Menu
                 Menu {
@@ -239,6 +279,44 @@ public struct TerminalWorkbenchView: View {
         .background(Color(nsColor: .windowBackgroundColor).opacity(0.6))
     }
 
+    // MARK: - Search Bar
+
+    private var transcriptSearchBar: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
+
+            TextField("Filter lines (e.g. error, GigabitEthernet, down, BGP)...", text: $searchQuery)
+                .font(Theme.monoText(11))
+                .textFieldStyle(.plain)
+
+            if !searchQuery.isEmpty {
+                let matchCount = activeSession?.searchLines(query: searchQuery).count ?? 0
+                Text("\(matchCount) match\(matchCount == 1 ? "" : "es")")
+                    .font(Theme.monoText(10))
+                    .foregroundStyle(.secondary)
+
+                Button(action: { searchQuery = "" }) {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+            }
+
+            Button("Done") {
+                isSearching = false
+                searchQuery = ""
+            }
+            .font(.system(size: 11))
+            .buttonStyle(.bordered)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 6)
+        .background(Theme.cardBackground)
+    }
+
     // MARK: - Quick Command Snippets Bar
 
     private var commandSnippetsBar: some View {
@@ -249,15 +327,9 @@ public struct TerminalWorkbenchView: View {
 
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 6) {
-                    macroChip("show ip int br")
-                    macroChip("show version")
-                    macroChip("show cdp neighbors")
-                    macroChip("show lldp neighbors")
-                    macroChip("show running-config")
-                    macroChip("show mac address-table")
-                    macroChip("show ip route")
-                    macroChip("write memory")
-                    macroChip("ping 1.1.1.1")
+                    ForEach(CommandMacro.defaultMacros) { macro in
+                        macroChip(macro)
+                    }
                 }
             }
         }
@@ -266,39 +338,50 @@ public struct TerminalWorkbenchView: View {
         .background(Theme.surfaceBackground.opacity(0.8))
     }
 
-    private func macroChip(_ command: String) -> some View {
+    private func macroChip(_ macro: CommandMacro) -> some View {
         Button(action: {
-            activeSession?.sendCommand(command)
+            activeSession?.sendCommand(macro.command)
         }) {
-            Text(command)
-                .font(Theme.monoText(10, weight: .medium))
-                .foregroundStyle(Theme.cyanPulse)
-                .padding(.horizontal, 8)
-                .padding(.vertical, 3)
-                .background(Theme.cyanPulse.opacity(0.08))
-                .clipShape(Capsule())
-                .overlay(Capsule().stroke(Theme.cyanPulse.opacity(0.2), lineWidth: 0.75))
+            HStack(spacing: 4) {
+                Text(macro.category)
+                    .font(Theme.monoText(8, weight: .bold))
+                    .padding(.horizontal, 4)
+                    .padding(.vertical, 1)
+                    .background(Color(hex: selectedTheme.promptColorHex).opacity(0.2))
+                    .clipShape(RoundedRectangle(cornerRadius: 3))
+                Text(macro.name)
+                    .font(Theme.monoText(10, weight: .medium))
+            }
+            .foregroundStyle(Color(hex: selectedTheme.promptColorHex))
+            .padding(.horizontal, 8)
+            .padding(.vertical, 3)
+            .background(Color(hex: selectedTheme.promptColorHex).opacity(0.08))
+            .clipShape(Capsule())
+            .overlay(Capsule().stroke(Color(hex: selectedTheme.promptColorHex).opacity(0.25), lineWidth: 0.75))
         }
         .buttonStyle(.plain)
+        .help("Execute '\(macro.command)' on active session")
     }
 
     // MARK: - Terminal Console & Input
 
     private func terminalConsoleView(session: TerminalSession) -> some View {
-        VStack(spacing: 0) {
+        let displayedLines = searchQuery.isEmpty ? session.lines : session.searchLines(query: searchQuery)
+
+        return VStack(spacing: 0) {
             // Screen output
             ScrollViewReader { proxy in
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 2) {
-                        ForEach(session.lines) { line in
+                        ForEach(displayedLines) { line in
                             if line.isCommandInput {
                                 HStack(spacing: 6) {
                                     Text(">")
                                         .font(Theme.monoText(fontSize, weight: .bold))
-                                        .foregroundStyle(Theme.cyanPulse)
+                                        .foregroundStyle(Color(hex: selectedTheme.promptColorHex))
                                     Text(line.text)
                                         .font(Theme.monoText(fontSize, weight: .semibold))
-                                        .foregroundStyle(Color.white)
+                                        .foregroundStyle(Color(hex: selectedTheme.foregroundColorHex))
                                 }
                                 .padding(.vertical, 1)
                             } else {
@@ -315,7 +398,7 @@ public struct TerminalWorkbenchView: View {
                     .padding(14)
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
-                .background(Color(red: 0.05, green: 0.06, blue: 0.08))
+                .background(Color(hex: selectedTheme.backgroundColorHex))
                 .onChange(of: session.lines.count) { _, _ in
                     if autoScroll {
                         proxy.scrollTo("bottomAnchor", anchor: .bottom)
@@ -329,7 +412,7 @@ public struct TerminalWorkbenchView: View {
             HStack(spacing: 8) {
                 Text("\(session.title) #")
                     .font(Theme.monoText(11, weight: .bold))
-                    .foregroundStyle(Theme.cyanPulse)
+                    .foregroundStyle(Color(hex: selectedTheme.promptColorHex))
 
                 TextField("Enter command (e.g. show ip route, ping, conf t)...", text: $inputCommand)
                     .font(Theme.monoText(12))
@@ -600,6 +683,7 @@ public struct TerminalWorkbenchView: View {
         } else if lower.contains("warning") || lower.contains("timeout") {
             return Theme.solarAmber.opacity(0.9)
         }
-        return Color(red: 0.82, green: 0.86, blue: 0.90)
+        return Color(hex: selectedTheme.foregroundColorHex)
     }
 }
+

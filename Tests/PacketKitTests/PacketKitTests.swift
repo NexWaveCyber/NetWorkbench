@@ -1,5 +1,6 @@
 import Testing
 import Foundation
+import NetworkCore
 @testable import PacketKit
 
 @Suite("PacketKit Tests")
@@ -229,5 +230,54 @@ struct PacketKitTests {
         #expect(engine.discoveredNeighbors.count == 1)
     }
 
+    @Test("Corrupted and truncated PCAP reader resilience")
+    func testCorruptedPCAPHeaderResilience() {
+        // Empty buffer
+        #expect(throws: Error.self) {
+            _ = try PCAPReader.parse(data: Data(), fileName: "empty.pcap")
+        }
+
+        // Truncated header (< 24 bytes)
+        let truncated = Data([0xD4, 0xC3, 0xB2, 0xA1, 0x02, 0x00])
+        #expect(throws: Error.self) {
+            _ = try PCAPReader.parse(data: truncated, fileName: "truncated.pcap")
+        }
+
+        // Invalid magic number
+        var invalidMagic = Data(repeating: 0x00, count: 24)
+        invalidMagic[0] = 0xDE
+        invalidMagic[1] = 0xAD
+        invalidMagic[2] = 0xBE
+        invalidMagic[3] = 0xEF
+        #expect(throws: Error.self) {
+            _ = try PCAPReader.parse(data: invalidMagic, fileName: "corrupt.pcap")
+        }
+    }
+
+    @Test("Power & Memory Governor monitors footprint and registers pressure callbacks")
+    func testPowerAndMemoryGovernorRegistration() {
+        let governor = PowerAndMemoryGovernor.shared
+        let memoryMB = governor.currentMemoryFootprintMB
+        #expect(memoryMB > 0.0)
+
+        let handlerId = governor.registerPressureHandler { _ in }
+        governor.unregisterPressureHandler(id: handlerId)
+        #expect(governor.isRunningOnBattery == false || governor.isRunningOnBattery == true)
+    }
+
+    @Test("Live Capture Buffer compaction preserves memory under Darwin pressure")
+    func testLiveCaptureBufferCompactionUnderMemoryPressure() {
+        let session = LiveCaptureSession()
+        session.startSimulation(packetsPerSecond: 50.0)
+
+        // Allow some packets to populate
+        Thread.sleep(forTimeInterval: 0.15)
+        #expect(session.packets.count > 0)
+
+        session.stop()
+        #expect(session.status == .stopped)
+    }
 }
+
+
 

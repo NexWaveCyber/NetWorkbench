@@ -1,5 +1,6 @@
 import Foundation
 import Darwin
+import NetworkCore
 
 public enum BPFAccessStatus: Sendable, Equatable {
     case accessible
@@ -178,11 +179,43 @@ public final class LiveCaptureSession: @unchecked Sendable {
     private var rateWindowBytes: Int = 0
     private var firstPacketTimestamp: Date? = nil
     private var lastPacketTimestamp: Date? = nil
+    private var memoryPressureId: UUID? = nil
 
-    public init() {}
+    public init() {
+        self.memoryPressureId = PowerAndMemoryGovernor.shared.registerPressureHandler { [weak self] level in
+            self?.handleMemoryPressure(level)
+        }
+    }
 
     deinit {
         stop()
+        if let id = memoryPressureId {
+            PowerAndMemoryGovernor.shared.unregisterPressureHandler(id: id)
+        }
+    }
+
+    /// Automatically compacts live buffers during OS memory constraints
+    private func handleMemoryPressure(_ level: PowerAndMemoryGovernor.PressureLevel) {
+        lock.lock()
+        defer { lock.unlock() }
+        switch level {
+        case .warning:
+            if packets.count > 1000 {
+                packets.removeFirst(packets.count - 1000)
+            }
+            if rawPCAPBuffer.count > 2_000_000 {
+                rawPCAPBuffer = rawPCAPBuffer.suffix(1_000_000)
+            }
+        case .critical:
+            if packets.count > 400 {
+                packets.removeFirst(packets.count - 400)
+            }
+            if rawPCAPBuffer.count > 500_000 {
+                rawPCAPBuffer = rawPCAPBuffer.suffix(250_000)
+            }
+        case .normal:
+            break
+        }
     }
 
     // MARK: - Live Capture Execution
