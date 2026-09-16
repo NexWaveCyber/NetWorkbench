@@ -25,9 +25,12 @@ public final class MenuBarMonitorEngine: @unchecked Sendable {
     public var activeInterface: String = "en0"
     public var localIP: String = "127.0.0.1"
     public var defaultGateway: String = "127.0.0.1"
+    public var defaultGatewayIPv6: String = ""
     public var dnsServer: String = ""
+    public var dnsServerIPv6: String = ""
     public var allDnsServers: [String] = []
     public var gatewayLatencyMs: Double? = nil
+    public var gatewayIPv6LatencyMs: Double? = nil
     public var internetLatencyMs: Double? = nil
     public var publicIP: String = "Resolving..."
     public var publicIPv4: String = "Resolving..."
@@ -80,10 +83,17 @@ public final class MenuBarMonitorEngine: @unchecked Sendable {
             self.dnsServer = dns.primary
             self.allDnsServers = dns.all
         }
+        if let v6DNS = dns.all.first(where: { $0.contains(":") }) {
+            self.dnsServerIPv6 = v6DNS
+        }
         let v6 = queryLocalIPv6(interface: self.activeInterface)
         if !v6.isEmpty {
             self.localIPv6 = v6
             self.hasIPv6 = true
+        }
+        let gw6 = parseDefaultRouteIPv6()
+        if !gw6.isEmpty {
+            self.defaultGatewayIPv6 = gw6
         }
         Task { [weak self] in
             await self?.fetchPublicIPDetails()
@@ -133,6 +143,9 @@ public final class MenuBarMonitorEngine: @unchecked Sendable {
             self.dnsServer = dns.primary
             self.allDnsServers = dns.all
         }
+        if let v6DNS = dns.all.first(where: { $0.contains(":") }) {
+            self.dnsServerIPv6 = v6DNS
+        }
 
         // 4. Ping local default gateway
         let gwRTT = await pingHost(host: self.defaultGateway, timeoutMs: 800)
@@ -142,6 +155,13 @@ public final class MenuBarMonitorEngine: @unchecked Sendable {
             if self.gatewaySamples.count > 24 {
                 self.gatewaySamples.removeFirst(self.gatewaySamples.count - 24)
             }
+        }
+
+        // 5. Query & Ping IPv6 Default Gateway
+        let gw6 = parseDefaultRouteIPv6()
+        if !gw6.isEmpty {
+            self.defaultGatewayIPv6 = gw6
+            self.gatewayIPv6LatencyMs = await pingHostIPv6(host: gw6, interface: self.activeInterface)
         }
 
         // 5. Ping Internet (1.1.1.1)
@@ -181,6 +201,27 @@ public final class MenuBarMonitorEngine: @unchecked Sendable {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/sbin/ping")
         process.arguments = ["-c", "1", "-W", "\(timeoutMs)", host]
+        process.standardOutput = pipe
+        process.standardError = Pipe()
+
+        do {
+            try process.run()
+            process.waitUntilExit()
+            let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            guard let output = String(data: data, encoding: .utf8) else { return nil }
+            return parsePingLatency(output: output)
+        } catch {
+            return nil
+        }
+    }
+
+    /// Performs an instantaneous IPv6 ping probe using /sbin/ping6
+    public func pingHostIPv6(host: String, interface: String, timeoutMs: Int = 800) async -> Double? {
+        guard !host.isEmpty else { return nil }
+        let pipe = Pipe()
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/sbin/ping6")
+        process.arguments = ["-c", "1", "-I", interface, host]
         process.standardOutput = pipe
         process.standardError = Pipe()
 
@@ -303,13 +344,14 @@ public final class MenuBarMonitorEngine: @unchecked Sendable {
             netstatProc.waitUntilExit()
             let data = netstatPipe.fileHandleForReading.readDataToEndOfFile()
             if let output = String(data: data, encoding: .utf8) {
-                for line in output.components(separatedBy: .newlines) {
-                    let parts = line.split(whereSeparator: \.isWhitespace)
-                    if parts.count >= 4 && parts[0] == "default" {
-                        let gw = String(parts[1])
-                        let iface = parts.count >= 6 ? String(parts[3]) : (parts.count >= 4 ? String(parts[parts.count - 1]) : "en0")
-                        if !gw.starts(with: "link#") {
-                            return (gw, iface)
+                let lines = output.components(separatedBy: .newlines)
+                for line in lines {
+                    let parts = line.split(separator: " ", omittingEmptySubsequences: true)
+                    if parts.count >= 6 && parts[0] == "default" {
+                        let gateway = String(parts[1])
+                        let iface = String(parts[5])
+                        if !gateway.isEmpty {
+                            return (gateway, iface)
                         }
                     }
                 }
@@ -317,6 +359,53 @@ public final class MenuBarMonitorEngine: @unchecked Sendable {
         }
 
         return ("", "en0")
+    }
+
+    public func parseDefaultRouteIPv6() -> String {
+        let pipe = Pipe()
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/sbin/route")
+        process.arguments = ["-n", "get", "-inet6", "default"]
+        process.standardOutput = pipe
+        process.standardError = Pipe()
+
+        if let _ = try? process.run() {
+            process.waitUntilExit()
+            let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            if let output = String(data: data, encoding: .utf8) {
+                for line in output.components(separatedBy: .newlines) {
+                    let trimmed = line.trimmingCharacters(in: .whitespaces)
+                    if trimmed.starts(with: "gateway:") {
+                        let gw = trimmed.replacingOccurrences(of: "gateway:", with: "").trimmingCharacters(in: .whitespaces)
+                        return gw.components(separatedBy: "%")[0]
+                    }
+                }
+            }
+        }
+
+        // Fallback: netstat -rn -f inet6
+        let netstatPipe = Pipe()
+        let netstatProc = Process()
+        netstatProc.executableURL = URL(fileURLWithPath: "/usr/sbin/netstat")
+        netstatProc.arguments = ["-rn", "-f", "inet6"]
+        netstatProc.standardOutput = netstatPipe
+        netstatProc.standardError = Pipe()
+
+        if let _ = try? netstatProc.run() {
+            netstatProc.waitUntilExit()
+            let data = netstatPipe.fileHandleForReading.readDataToEndOfFile()
+            if let output = String(data: data, encoding: .utf8) {
+                for line in output.components(separatedBy: .newlines) {
+                    let parts = line.split(separator: " ", omittingEmptySubsequences: true)
+                    if parts.count >= 4 && parts[0] == "default" {
+                        let gw = String(parts[1])
+                        return gw.components(separatedBy: "%")[0]
+                    }
+                }
+            }
+        }
+
+        return ""
     }
 
     public func extractRouteDetails(from output: String) -> (gateway: String, interface: String) {

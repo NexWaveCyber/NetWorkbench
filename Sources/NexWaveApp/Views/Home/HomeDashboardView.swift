@@ -3,10 +3,16 @@ import NetworkCore
 import DiagnosticsEngine
 import InvestigationKit
 
+public enum NetworkTelemetryProtocolMode: String, CaseIterable, Sendable {
+    case dualStack = "Dual-Stack"
+    case ipv4 = "IPv4"
+    case ipv6 = "IPv6"
+}
+
 public struct HomeDashboardView: View {
     @Bindable var state: AppState
     @State private var monitor = MenuBarMonitorEngine.shared
-    @State private var preferPublicIPv6: Bool = true
+    @State private var protocolMode: NetworkTelemetryProtocolMode = .dualStack
     @State private var hoveredStudio: String? = nil
 
     public init(state: AppState) {
@@ -191,158 +197,230 @@ public struct HomeDashboardView: View {
 
     // MARK: - Network Interface Bar
     private var networkInterfaceBar: some View {
-        HStack(spacing: 12) {
-            kpiCard(
-                label: "PRIMARY LINK",
-                val: primaryLinkDisplay,
-                icon: monitor.wifiLink != nil ? "wifi" : "cable.connector",
-                badge: "Active",
-                badgeColor: Theme.signalEmerald
-            )
-            kpiCard(
-                label: "LOCAL IPV4",
-                val: monitor.localIP,
-                icon: "laptopcomputer",
-                badge: monitor.activeInterface,
-                badgeColor: Theme.azurePro,
-                copyValue: monitor.localIP,
-                helpText: monitor.localIPv6.isEmpty ? "Local IPv4: \(monitor.localIP)" : "Local IPv4: \(monitor.localIP)\nLocal IPv6 (SLAAC): \(monitor.localIPv6)"
-            )
-            kpiCard(
-                label: "DEFAULT GATEWAY",
-                val: monitor.defaultGateway,
-                icon: "network",
-                badge: gatewayLatencyBadge,
-                badgeColor: Theme.neonCyan,
-                copyValue: monitor.defaultGateway
-            )
-            kpiCard(
-                label: "SYSTEM RESOLVER",
-                val: monitor.dnsServer.isEmpty ? "Unassigned" : monitor.dnsServer,
-                icon: "arrow.triangle.branch",
-                badge: monitor.dnsResolverName,
-                badgeColor: Theme.signalEmerald,
-                copyValue: monitor.dnsServer.isEmpty ? nil : monitor.dnsServer,
-                helpText: monitor.allDnsServers.isEmpty ? "No active DNS servers detected" : "Configured DNS Resolvers:\n" + monitor.allDnsServers.joined(separator: "\n")
-            )
-            publicWanCard
+        VStack(alignment: .leading, spacing: 10) {
+            // Header with title and protocol switcher
+            HStack(alignment: .center) {
+                HStack(spacing: 7) {
+                    Image(systemName: "point.3.filled.connected.trianglepath.dotted")
+                        .font(.system(size: 11))
+                        .foregroundStyle(Theme.neonCyan)
+
+                    Text("ACTIVE INTERFACE & DUAL-STACK TELEMETRY")
+                        .font(.system(size: 10, weight: .bold, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                }
+
+                Spacer()
+
+                // Mode Selector: [Dual-Stack | IPv4 | IPv6]
+                HStack(spacing: 2) {
+                    ForEach(NetworkTelemetryProtocolMode.allCases, id: \.self) { mode in
+                        Button(action: {
+                            withAnimation(.easeInOut(duration: 0.18)) {
+                                protocolMode = mode
+                            }
+                        }) {
+                            Text(mode.rawValue)
+                                .font(.system(size: 10, weight: protocolMode == mode ? .bold : .medium, design: .monospaced))
+                                .padding(.horizontal, 9)
+                                .padding(.vertical, 3)
+                                .background(protocolMode == mode ? Theme.neonCyan.opacity(0.18) : Color.clear)
+                                .foregroundStyle(protocolMode == mode ? Theme.neonCyan : Color.secondary)
+                                .clipShape(RoundedRectangle(cornerRadius: 6))
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(2)
+                .background(Color.primary.opacity(0.04))
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+                .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Theme.borderLight, lineWidth: 1))
+            }
+
+            // 5 Cards Matrix
+            HStack(spacing: 12) {
+                primaryLinkCard
+                localAddressCard
+                defaultGatewayCard
+                systemResolverCard
+                publicWanCard
+            }
         }
     }
 
-    private var publicWanCard: some View {
-        let isV6 = preferPublicIPv6 && monitor.hasIPv6
-        let activeIP = isV6 ? monitor.publicIPv6 : (monitor.publicIPv4.isEmpty || monitor.publicIPv4 == "Resolving..." ? monitor.publicIP : monitor.publicIPv4)
-        let label = isV6 ? "PUBLIC IPV6 (WAN)" : "PUBLIC IPV4 (WAN)"
-
-        return HStack(spacing: 10) {
-            ZStack {
-                RoundedRectangle(cornerRadius: 8)
-                    .fill(Theme.neonCyan.opacity(0.12))
-                    .frame(width: 32, height: 32)
-
-                Image(systemName: "globe")
-                    .font(.system(size: 14))
-                    .foregroundStyle(Theme.neonCyan)
-            }
-
-            VStack(alignment: .leading, spacing: 2) {
-                HStack(spacing: 5) {
-                    Text(label)
-                        .font(.system(size: 9, weight: .bold, design: .monospaced))
-                        .foregroundStyle(.secondary)
-
-                    if monitor.hasIPv6 {
-                        Button(action: {
-                            withAnimation(.easeInOut(duration: 0.2)) {
-                                preferPublicIPv6.toggle()
-                            }
-                        }) {
-                            Text(preferPublicIPv6 ? "v6 ⇄ v4" : "v4 ⇄ v6")
-                                .font(.system(size: 7, weight: .heavy, design: .monospaced))
-                                .padding(.horizontal, 4)
-                                .padding(.vertical, 1)
-                                .background(Theme.neonCyan.opacity(0.18))
-                                .foregroundStyle(Theme.neonCyan)
-                                .clipShape(Capsule())
-                        }
-                        .buttonStyle(.plain)
-                        .help("Toggle between Public IPv6 and Public IPv4 display")
+    // MARK: - Card 1: Primary Link
+    private var primaryLinkCard: some View {
+        telemetryCard(
+            label: "PRIMARY LINK",
+            icon: monitor.wifiLink != nil ? "wifi" : "cable.connector",
+            badge: "Active",
+            badgeColor: Theme.signalEmerald,
+            helpText: "Active network adapter: \(monitor.activeInterface)"
+        ) {
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(spacing: 4) {
+                    Text(monitor.activeInterface)
+                        .font(Theme.monoText(12, weight: .bold))
+                        .foregroundStyle(Theme.neonCyan)
+                    if let wifi = monitor.wifiLink {
+                        Text("• \(wifi.phyMode.displayName)")
+                            .font(.system(size: 10, weight: .medium))
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
                     } else {
-                        Text("IPv4")
-                            .font(.system(size: 8, weight: .bold, design: .monospaced))
-                            .padding(.horizontal, 4)
-                            .padding(.vertical, 1)
-                            .background(Theme.signalEmerald.opacity(0.15))
-                            .foregroundStyle(Theme.signalEmerald)
-                            .clipShape(Capsule())
+                        Text("• GbE Link")
+                            .font(.system(size: 10, weight: .medium))
+                            .foregroundStyle(.secondary)
                     }
                 }
 
-                Text(activeIP)
-                    .font(Theme.monoText(11, weight: .semibold))
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.75)
-            }
-
-            Spacer()
-
-            if !activeIP.isEmpty && activeIP != "Resolving..." && activeIP != "Unavailable" && activeIP != "Not Configured" {
-                Button(action: {
-                    NSPasteboard.general.clearContents()
-                    NSPasteboard.general.setString(activeIP, forType: .string)
-                    state.toastMessage = "Copied \(activeIP) to clipboard"
-                }) {
-                    Image(systemName: "doc.on.doc")
-                        .font(.system(size: 11))
+                if let wifi = monitor.wifiLink {
+                    Text("\(Int(wifi.transmitRate)) Mbps • Ch \(wifi.channel) (\(wifi.band.rawValue))")
+                        .font(Theme.monoText(10, weight: .medium))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                } else {
+                    Text("1000BASE-T Full-Duplex")
+                        .font(Theme.monoText(10, weight: .medium))
                         .foregroundStyle(.secondary)
                 }
-                .buttonStyle(.plain)
-                .help("Copy to clipboard")
             }
         }
-        .padding(12)
-        .frame(maxWidth: .infinity)
-        .engineeringCard(padding: 0, cornerRadius: 10, hasHoverEffect: true)
-        .help("Public IPv6: \(monitor.publicIPv6)\nPublic IPv4: \(monitor.publicIPv4)\nLocal IPv6: \(monitor.localIPv6.isEmpty ? "None" : monitor.localIPv6)")
     }
 
-    private var primaryLinkDisplay: String {
-        if let wifi = monitor.wifiLink {
-            let ssidPart = (!wifi.ssid.isEmpty && wifi.ssid != "<redacted>") ? " • \(wifi.ssid)" : ""
-            return "\(monitor.activeInterface)\(ssidPart) (\(wifi.phyMode.displayName))"
+    // MARK: - Card 2: Local Address (IPv4 & IPv6)
+    private var localAddressCard: some View {
+        let showV4 = protocolMode == .dualStack || protocolMode == .ipv4
+        let showV6 = (protocolMode == .dualStack || protocolMode == .ipv6) && monitor.hasIPv6
+
+        return telemetryCard(
+            label: "LOCAL ADDRESS",
+            icon: "laptopcomputer",
+            badge: monitor.hasIPv6 ? "Dual-Stack" : "IPv4",
+            badgeColor: monitor.hasIPv6 ? Theme.neonCyan : Theme.azurePro,
+            helpText: "Local IPv4: \(monitor.localIP)\nLocal IPv6 (SLAAC): \(monitor.localIPv6)"
+        ) {
+            VStack(alignment: .leading, spacing: 3) {
+                if showV4 {
+                    dualStackAddressRow(tag: "v4", val: monitor.localIP, tagColor: Theme.azurePro, copyKey: "Local IPv4")
+                }
+                if showV6 {
+                    dualStackAddressRow(tag: "v6", val: monitor.localIPv6.isEmpty ? "None" : monitor.localIPv6, tagColor: Theme.neonCyan, copyKey: "Local IPv6")
+                }
+                if !showV4 && !showV6 {
+                    dualStackAddressRow(tag: "v6", val: "No IPv6 on \(monitor.activeInterface)", tagColor: .orange, copyKey: "")
+                }
+            }
         }
-        return "\(monitor.activeInterface) (GbE / Active)"
     }
 
-    private var gatewayLatencyBadge: String {
-        if let rtt = monitor.gatewayLatencyMs {
-            return rtt < 1.0 ? "< 1ms" : String(format: "%.1f ms", rtt)
+    // MARK: - Card 3: Default Gateway (IPv4 & IPv6)
+    private var defaultGatewayCard: some View {
+        let showV4 = protocolMode == .dualStack || protocolMode == .ipv4
+        let showV6 = (protocolMode == .dualStack || protocolMode == .ipv6) && !monitor.defaultGatewayIPv6.isEmpty
+
+        let latencyBadge: String = {
+            if let rtt = monitor.gatewayLatencyMs {
+                return rtt < 1.0 ? "< 1ms" : String(format: "%.1f ms", rtt)
+            }
+            return "< 1ms"
+        }()
+
+        return telemetryCard(
+            label: "DEFAULT GATEWAY",
+            icon: "network",
+            badge: latencyBadge,
+            badgeColor: Theme.neonCyan,
+            helpText: "IPv4 Gateway: \(monitor.defaultGateway)\nIPv6 Gateway: \(monitor.defaultGatewayIPv6)"
+        ) {
+            VStack(alignment: .leading, spacing: 3) {
+                if showV4 {
+                    dualStackAddressRow(tag: "v4", val: monitor.defaultGateway, tagColor: Theme.azurePro, copyKey: "Default Gateway IPv4")
+                }
+                if showV6 {
+                    dualStackAddressRow(tag: "v6", val: monitor.defaultGatewayIPv6, tagColor: Theme.neonCyan, copyKey: "Default Gateway IPv6")
+                }
+                if !showV4 && !showV6 {
+                    dualStackAddressRow(tag: "v6", val: "No IPv6 Gateway", tagColor: .orange, copyKey: "")
+                }
+            }
         }
-        return "< 1ms"
     }
 
-    private func kpiCard(
+    // MARK: - Card 4: System Resolver (IPv4 & IPv6)
+    private var systemResolverCard: some View {
+        let showV4 = protocolMode == .dualStack || protocolMode == .ipv4
+        let showV6 = (protocolMode == .dualStack || protocolMode == .ipv6) && !monitor.dnsServerIPv6.isEmpty
+
+        return telemetryCard(
+            label: "SYSTEM RESOLVER",
+            icon: "arrow.triangle.branch",
+            badge: monitor.dnsResolverName,
+            badgeColor: Theme.signalEmerald,
+            helpText: "Configured Resolvers:\n" + monitor.allDnsServers.joined(separator: "\n")
+        ) {
+            VStack(alignment: .leading, spacing: 3) {
+                if showV4 {
+                    dualStackAddressRow(tag: "v4", val: monitor.dnsServer.isEmpty ? "Unassigned" : monitor.dnsServer, tagColor: Theme.azurePro, copyKey: "DNS IPv4")
+                }
+                if showV6 {
+                    dualStackAddressRow(tag: "v6", val: monitor.dnsServerIPv6.isEmpty ? "2606:4700::1111" : monitor.dnsServerIPv6, tagColor: Theme.neonCyan, copyKey: "DNS IPv6")
+                }
+                if !showV4 && !showV6 {
+                    dualStackAddressRow(tag: "v6", val: "No IPv6 Nameserver", tagColor: .orange, copyKey: "")
+                }
+            }
+        }
+    }
+
+    // MARK: - Card 5: Public WAN (IPv4 & IPv6)
+    private var publicWanCard: some View {
+        let showV4 = protocolMode == .dualStack || protocolMode == .ipv4
+        let showV6 = protocolMode == .dualStack || protocolMode == .ipv6
+
+        let v4Val = monitor.publicIPv4.isEmpty || monitor.publicIPv4 == "Resolving..." ? monitor.publicIP : monitor.publicIPv4
+        let v6Val = monitor.publicIPv6
+
+        return telemetryCard(
+            label: "PUBLIC WAN",
+            icon: "globe",
+            badge: monitor.hasIPv6 ? "Dual-Stack" : "IPv4",
+            badgeColor: monitor.hasIPv6 ? Theme.neonCyan : Theme.signalEmerald,
+            helpText: "Public IPv6: \(monitor.publicIPv6)\nPublic IPv4: \(monitor.publicIPv4)"
+        ) {
+            VStack(alignment: .leading, spacing: 3) {
+                if showV4 {
+                    dualStackAddressRow(tag: "v4", val: v4Val, tagColor: Theme.azurePro, copyKey: "Public IPv4")
+                }
+                if showV6 {
+                    dualStackAddressRow(tag: "v6", val: v6Val, tagColor: Theme.neonCyan, copyKey: "Public IPv6")
+                }
+            }
+        }
+    }
+
+    // MARK: - Reusable Card Container
+    private func telemetryCard<Content: View>(
         label: String,
-        val: String,
         icon: String,
         badge: String? = nil,
         badgeColor: Color? = nil,
-        copyValue: String? = nil,
-        helpText: String? = nil
+        helpText: String? = nil,
+        @ViewBuilder content: () -> Content
     ) -> some View {
-        HStack(spacing: 10) {
+        HStack(alignment: .top, spacing: 9) {
             ZStack {
                 RoundedRectangle(cornerRadius: 8)
                     .fill(Theme.azurePro.opacity(0.12))
-                    .frame(width: 32, height: 32)
+                    .frame(width: 30, height: 30)
 
                 Image(systemName: icon)
-                    .font(.system(size: 14))
+                    .font(.system(size: 13))
                     .foregroundStyle(Theme.azurePro)
             }
 
-            VStack(alignment: .leading, spacing: 2) {
-                HStack(spacing: 6) {
+            VStack(alignment: .leading, spacing: 5) {
+                HStack(spacing: 5) {
                     Text(label)
                         .font(.system(size: 9, weight: .bold, design: .monospaced))
                         .foregroundStyle(.secondary)
@@ -358,31 +436,50 @@ public struct HomeDashboardView: View {
                     }
                 }
 
-                Text(val)
-                    .font(Theme.monoText(12, weight: .semibold))
-                    .lineLimit(1)
+                content()
             }
 
-            Spacer()
-
-            if let copyValue = copyValue {
-                Button(action: {
-                    NSPasteboard.general.clearContents()
-                    NSPasteboard.general.setString(copyValue, forType: .string)
-                    state.toastMessage = "Copied \(copyValue) to clipboard"
-                }) {
-                    Image(systemName: "doc.on.doc")
-                        .font(.system(size: 11))
-                        .foregroundStyle(.secondary)
-                }
-                .buttonStyle(.plain)
-                .help("Copy to clipboard")
-            }
+            Spacer(minLength: 0)
         }
-        .padding(12)
-        .frame(maxWidth: .infinity)
+        .padding(10)
+        .frame(maxWidth: .infinity, minHeight: 68)
         .engineeringCard(padding: 0, cornerRadius: 10, hasHoverEffect: true)
         .help(helpText ?? label)
+    }
+
+    // MARK: - Reusable Dual-Stack Address Row
+    private func dualStackAddressRow(tag: String, val: String, tagColor: Color = .secondary, copyKey: String) -> some View {
+        HStack(spacing: 4) {
+            Text(tag)
+                .font(.system(size: 8, weight: .bold, design: .monospaced))
+                .foregroundStyle(tagColor)
+                .padding(.horizontal, 3)
+                .padding(.vertical, 1)
+                .background(tagColor.opacity(0.14))
+                .clipShape(RoundedRectangle(cornerRadius: 3))
+
+            Text(val)
+                .font(Theme.monoText(11, weight: .semibold))
+                .foregroundStyle(tag == "v6" ? Theme.neonCyan : .primary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.72)
+
+            Spacer(minLength: 2)
+
+            if !val.isEmpty && val != "Resolving..." && val != "Unavailable" && val != "None" && !copyKey.isEmpty {
+                Button(action: {
+                    NSPasteboard.general.clearContents()
+                    NSPasteboard.general.setString(val, forType: .string)
+                    state.toastMessage = "Copied \(copyKey): \(val)"
+                }) {
+                    Image(systemName: "doc.on.doc")
+                        .font(.system(size: 9))
+                        .foregroundStyle(.secondary.opacity(0.65))
+                }
+                .buttonStyle(.plain)
+                .help("Copy \(copyKey)")
+            }
+        }
     }
 
     // MARK: - Active Investigations Card
