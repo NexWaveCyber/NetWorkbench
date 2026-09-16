@@ -5,6 +5,7 @@ import InvestigationKit
 
 public struct HomeDashboardView: View {
     @Bindable var state: AppState
+    @State private var monitor = MenuBarMonitorEngine.shared
     @State private var hoveredStudio: String? = nil
 
     public init(state: AppState) {
@@ -36,6 +37,9 @@ public struct HomeDashboardView: View {
             }
         }
         .navigationTitle("Engineering Dashboard")
+        .onAppear {
+            monitor.startMonitoring()
+        }
     }
 
     // MARK: - Hero Command Center Deck
@@ -151,7 +155,7 @@ public struct HomeDashboardView: View {
                         .font(.system(size: 11, weight: .medium))
                         .foregroundStyle(.secondary)
 
-                    ForEach(["google.com", "1.1.1.1", "api.github.com", "192.168.1.1"], id: \.self) { sample in
+                    ForEach(["google.com", "1.1.1.1", "api.github.com", monitor.defaultGateway], id: \.self) { sample in
                         Button(action: {
                             state.updateTargetClassification(sample)
                             startDiagnosisFromHome()
@@ -189,32 +193,51 @@ public struct HomeDashboardView: View {
         HStack(spacing: 14) {
             kpiCard(
                 label: "PRIMARY LINK",
-                val: "en0 (Wi-Fi 6 / GbE)",
-                icon: "wifi",
+                val: primaryLinkDisplay,
+                icon: monitor.wifiLink != nil ? "wifi" : "cable.connector",
                 badge: "Active",
                 badgeColor: Theme.signalEmerald
             )
             kpiCard(
                 label: "LOCAL IPV4",
-                val: "192.168.1.142",
+                val: monitor.localIP,
                 icon: "laptopcomputer",
-                copyValue: "192.168.1.142"
+                badge: monitor.activeInterface,
+                badgeColor: Theme.azurePro,
+                copyValue: monitor.localIP
             )
             kpiCard(
                 label: "DEFAULT GATEWAY",
-                val: "192.168.1.1",
+                val: monitor.defaultGateway,
                 icon: "network",
-                badge: "< 1ms",
-                badgeColor: Theme.neonCyan
+                badge: gatewayLatencyBadge,
+                badgeColor: Theme.neonCyan,
+                copyValue: monitor.defaultGateway
             )
             kpiCard(
                 label: "SYSTEM RESOLVER",
-                val: "System DNS",
+                val: monitor.dnsServer,
                 icon: "arrow.triangle.branch",
-                badge: "Healthy",
-                badgeColor: Theme.signalEmerald
+                badge: "Active DNS",
+                badgeColor: Theme.signalEmerald,
+                copyValue: monitor.dnsServer
             )
         }
+    }
+
+    private var primaryLinkDisplay: String {
+        if let wifi = monitor.wifiLink {
+            let ssidPart = (!wifi.ssid.isEmpty && wifi.ssid != "<redacted>") ? " • \(wifi.ssid)" : ""
+            return "\(monitor.activeInterface)\(ssidPart) (\(wifi.phyMode.displayName))"
+        }
+        return "\(monitor.activeInterface) (GbE / Active)"
+    }
+
+    private var gatewayLatencyBadge: String {
+        if let rtt = monitor.gatewayLatencyMs {
+            return rtt < 1.0 ? "< 1ms" : String(format: "%.1f ms", rtt)
+        }
+        return "< 1ms"
     }
 
     private func kpiCard(

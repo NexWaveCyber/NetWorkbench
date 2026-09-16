@@ -161,7 +161,7 @@ public struct DiagnoseWorkspaceView: View {
                     .font(.system(size: 11, weight: .medium))
                     .foregroundStyle(.secondary)
 
-                ForEach(["google.com", "1.1.1.1", "api.github.com", "192.168.1.1"], id: \.self) { sample in
+                ForEach(["google.com", "1.1.1.1", "api.github.com", MenuBarMonitorEngine.shared.defaultGateway], id: \.self) { sample in
                     Button(action: {
                         state.updateTargetClassification(sample)
                         triggerDiagnosis()

@@ -30,6 +30,10 @@ struct NexWaveApp: App {
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
     @State private var showInspector = false
 
+    init() {
+        MenuBarMonitorEngine.shared.startMonitoring()
+    }
+
     var body: some Scene {
         WindowGroup(id: "main-window") {
             NavigationSplitView(columnVisibility: $columnVisibility) {
@@ -65,17 +69,27 @@ struct NexWaveApp: App {
                 ToolbarItem(placement: .navigation) {
                     HStack(spacing: 7) {
                         PulsingBeacon(color: Theme.signalEmerald, size: 6, isLive: true)
-                        Text("en0 • 192.168.1.142")
+                        Text("\(menuBarMonitor.activeInterface) • \(menuBarMonitor.localIP)")
                             .font(Theme.monoText(11, weight: .semibold))
                             .foregroundStyle(.primary.opacity(0.85))
 
-                        Text("1.0 Gbps")
-                            .font(Theme.monoText(9, weight: .bold))
-                            .foregroundStyle(Theme.cyanPulse)
-                            .padding(.horizontal, 5)
-                            .padding(.vertical, 1)
-                            .background(Theme.cyanPulse.opacity(0.12))
-                            .clipShape(Capsule())
+                        if let wifi = menuBarMonitor.wifiLink, wifi.transmitRate > 0 {
+                            Text("\(Int(wifi.transmitRate)) Mbps")
+                                .font(Theme.monoText(9, weight: .bold))
+                                .foregroundStyle(Theme.cyanPulse)
+                                .padding(.horizontal, 5)
+                                .padding(.vertical, 1)
+                                .background(Theme.cyanPulse.opacity(0.12))
+                                .clipShape(Capsule())
+                        } else {
+                            Text("1.0 Gbps")
+                                .font(Theme.monoText(9, weight: .bold))
+                                .foregroundStyle(Theme.cyanPulse)
+                                .padding(.horizontal, 5)
+                                .padding(.vertical, 1)
+                                .background(Theme.cyanPulse.opacity(0.12))
+                                .clipShape(Capsule())
+                        }
                     }
                     .padding(.horizontal, 9)
                     .padding(.vertical, 4)
@@ -89,7 +103,7 @@ struct NexWaveApp: App {
                                 endPoint: .bottomTrailing
                             ), lineWidth: 0.75)
                     )
-                    .help("Active Network Adapter: en0 (Gigabit Ethernet / Wi-Fi)")
+                    .help("Active Network Adapter: \(menuBarMonitor.activeInterface) (\(menuBarMonitor.localIP)) • Gateway: \(menuBarMonitor.defaultGateway)")
                 }
 
                 ToolbarItemGroup(placement: .automatic) {

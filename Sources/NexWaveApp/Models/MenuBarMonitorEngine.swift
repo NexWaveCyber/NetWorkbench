@@ -1,6 +1,7 @@
 import SwiftUI
 import Foundation
 import WiFiKit
+import Darwin
 
 public enum NetworkHealthStatus: String, Sendable {
     case optimal = "Optimal"
@@ -23,6 +24,7 @@ public final class MenuBarMonitorEngine: @unchecked Sendable {
     public var activeInterface: String = "en0"
     public var localIP: String = "127.0.0.1"
     public var defaultGateway: String = "127.0.0.1"
+    public var dnsServer: String = "1.1.1.1"
     public var gatewayLatencyMs: Double? = nil
     public var internetLatencyMs: Double? = nil
     public var publicIP: String = "Resolving..."
@@ -35,7 +37,24 @@ public final class MenuBarMonitorEngine: @unchecked Sendable {
     private var monitorTask: Task<Void, Never>? = nil
     private var lastPublicIPCheck: Date = .distantPast
 
-    public init() {}
+    public init() {
+        // Fast synchronous discovery of route, local IP, and DNS resolver
+        let route = parseDefaultRoute()
+        if !route.interface.isEmpty {
+            self.activeInterface = route.interface
+        }
+        if !route.gateway.isEmpty {
+            self.defaultGateway = route.gateway
+        }
+        let ip = queryLocalIP(interface: self.activeInterface)
+        if !ip.isEmpty && ip != "127.0.0.1" {
+            self.localIP = ip
+        }
+        let dns = parseSystemDNS()
+        if !dns.isEmpty {
+            self.dnsServer = dns
+        }
+    }
 
     public func startMonitoring() {
         guard monitorTask == nil else { return }
@@ -65,11 +84,17 @@ public final class MenuBarMonitorEngine: @unchecked Sendable {
 
         // 2. Query local IP on active interface
         let ip = queryLocalIP(interface: self.activeInterface)
-        if !ip.isEmpty {
+        if !ip.isEmpty && ip != "127.0.0.1" {
             self.localIP = ip
         }
 
-        // 3. Ping local default gateway
+        // 3. Query system DNS
+        let dns = parseSystemDNS()
+        if !dns.isEmpty {
+            self.dnsServer = dns
+        }
+
+        // 4. Ping local default gateway
         let gwRTT = await pingHost(host: self.defaultGateway, timeoutMs: 800)
         self.gatewayLatencyMs = gwRTT
         if let rtt = gwRTT {
@@ -79,11 +104,11 @@ public final class MenuBarMonitorEngine: @unchecked Sendable {
             }
         }
 
-        // 4. Ping Internet (1.1.1.1)
+        // 5. Ping Internet (1.1.1.1)
         let inetRTT = await pingHost(host: "1.1.1.1", timeoutMs: 900)
         self.internetLatencyMs = inetRTT
 
-        // 5. Evaluate Health Status
+        // 6. Evaluate Health Status
         if gwRTT == nil && inetRTT == nil {
             self.healthStatus = .offline
         } else if let gw = gwRTT, gw > 60.0 || inetRTT == nil {
@@ -92,7 +117,7 @@ public final class MenuBarMonitorEngine: @unchecked Sendable {
             self.healthStatus = .optimal
         }
 
-        // 6. Wi-Fi status if interface is en0
+        // 7. Wi-Fi status if interface is Wi-Fi
         if self.activeInterface.starts(with: "en0") {
             let link = await WiFiEngine.shared.fetchCurrentLink(interfaceName: self.activeInterface)
             self.wifiLink = link
@@ -100,7 +125,7 @@ public final class MenuBarMonitorEngine: @unchecked Sendable {
             self.wifiLink = nil
         }
 
-        // 7. Refresh Public IP periodically (every 5 minutes)
+        // 8. Refresh Public IP periodically (every 5 minutes)
         if Date().timeIntervalSince(lastPublicIPCheck) > 300 {
             lastPublicIPCheck = Date()
             Task {
@@ -176,15 +201,43 @@ public final class MenuBarMonitorEngine: @unchecked Sendable {
         process.standardOutput = pipe
         process.standardError = Pipe()
 
-        do {
-            try process.run()
+        if let _ = try? process.run() {
             process.waitUntilExit()
             let data = pipe.fileHandleForReading.readDataToEndOfFile()
-            guard let output = String(data: data, encoding: .utf8) else { return ("", "") }
-            return extractRouteDetails(from: output)
-        } catch {
-            return ("", "")
+            if let output = String(data: data, encoding: .utf8) {
+                let details = extractRouteDetails(from: output)
+                if !details.gateway.isEmpty {
+                    return details
+                }
+            }
         }
+
+        // Fallback: parse netstat -rn -f inet
+        let netstatPipe = Pipe()
+        let netstatProc = Process()
+        netstatProc.executableURL = URL(fileURLWithPath: "/usr/sbin/netstat")
+        netstatProc.arguments = ["-rn", "-f", "inet"]
+        netstatProc.standardOutput = netstatPipe
+        netstatProc.standardError = Pipe()
+
+        if let _ = try? netstatProc.run() {
+            netstatProc.waitUntilExit()
+            let data = netstatPipe.fileHandleForReading.readDataToEndOfFile()
+            if let output = String(data: data, encoding: .utf8) {
+                for line in output.components(separatedBy: .newlines) {
+                    let parts = line.split(whereSeparator: \.isWhitespace)
+                    if parts.count >= 4 && parts[0] == "default" {
+                        let gw = String(parts[1])
+                        let iface = parts.count >= 6 ? String(parts[3]) : (parts.count >= 4 ? String(parts[parts.count - 1]) : "en0")
+                        if !gw.starts(with: "link#") {
+                            return (gw, iface)
+                        }
+                    }
+                }
+            }
+        }
+
+        return ("", "en0")
     }
 
     public func extractRouteDetails(from output: String) -> (gateway: String, interface: String) {
@@ -203,6 +256,7 @@ public final class MenuBarMonitorEngine: @unchecked Sendable {
     }
 
     public func queryLocalIP(interface: String) -> String {
+        // 1. Try ipconfig getifaddr
         let pipe = Pipe()
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/sbin/ipconfig")
@@ -210,17 +264,59 @@ public final class MenuBarMonitorEngine: @unchecked Sendable {
         process.standardOutput = pipe
         process.standardError = Pipe()
 
-        do {
-            try process.run()
+        if let _ = try? process.run() {
             process.waitUntilExit()
             let data = pipe.fileHandleForReading.readDataToEndOfFile()
             if let ip = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines), !ip.isEmpty {
                 return ip
             }
-            return ""
-        } catch {
-            return ""
         }
+
+        // 2. Darwin getifaddrs fallback
+        var ifaddr: UnsafeMutablePointer<ifaddrs>?
+        guard getifaddrs(&ifaddr) == 0, let firstAddr = ifaddr else { return "127.0.0.1" }
+        defer { freeifaddrs(ifaddr) }
+
+        var ptr: UnsafeMutablePointer<ifaddrs>? = firstAddr
+        while let current = ptr {
+            let name = String(cString: current.pointee.ifa_name)
+            if (name == interface || interface.isEmpty) && current.pointee.ifa_addr != nil && current.pointee.ifa_addr.pointee.sa_family == UInt8(AF_INET) {
+                var hostname = [CChar](repeating: 0, count: Int(NI_MAXHOST))
+                if getnameinfo(current.pointee.ifa_addr, socklen_t(current.pointee.ifa_addr.pointee.sa_len), &hostname, socklen_t(hostname.count), nil, 0, NI_NUMERICHOST) == 0 {
+                    let ipStr = hostname.withUnsafeBufferPointer { buffer in
+                        buffer.baseAddress.map { String(cString: $0) } ?? ""
+                    }
+                    if !ipStr.isEmpty && ipStr != "127.0.0.1" {
+                        return ipStr
+                    }
+                }
+            }
+            ptr = current.pointee.ifa_next
+        }
+
+        return "127.0.0.1"
+    }
+
+    public func parseSystemDNS() -> String {
+        if let content = try? String(contentsOfFile: "/etc/resolv.conf", encoding: .utf8) {
+            for line in content.components(separatedBy: .newlines) {
+                let trimmed = line.trimmingCharacters(in: .whitespaces)
+                if trimmed.starts(with: "nameserver ") {
+                    let ns = trimmed.replacingOccurrences(of: "nameserver ", with: "").trimmingCharacters(in: .whitespaces)
+                    if !ns.isEmpty && !ns.contains(":") { // Prefer clean IPv4
+                        return ns
+                    }
+                }
+            }
+            for line in content.components(separatedBy: .newlines) {
+                let trimmed = line.trimmingCharacters(in: .whitespaces)
+                if trimmed.starts(with: "nameserver ") {
+                    let ns = trimmed.replacingOccurrences(of: "nameserver ", with: "").trimmingCharacters(in: .whitespaces)
+                    if !ns.isEmpty { return ns }
+                }
+            }
+        }
+        return "1.1.1.1"
     }
 
     public func parsePingLatency(output: String) -> Double? {
