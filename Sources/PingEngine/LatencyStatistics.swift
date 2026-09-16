@@ -13,8 +13,10 @@ public struct LatencyStatistics: Sendable, Hashable {
     public let p95Ms: Double
     public let p99Ms: Double
     public let jitterMs: Double
+    public let rawSamples: [Double]
 
     public init(samples: [Double], sentCount: Int) {
+        self.rawSamples = samples
         self.sent = sentCount
         self.received = samples.count
         self.lost = max(0, sentCount - samples.count)

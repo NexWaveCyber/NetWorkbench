@@ -55,6 +55,7 @@ public final class AppState: @unchecked Sendable {
 
     // Target input in hero / diagnose
     public var targetInput: String = "api.example.com"
+    public var customPort: UInt16? = nil
     public var classifiedTarget: NetworkTarget? = nil
 
     // Active Diagnosis
@@ -143,15 +144,19 @@ public final class AppState: @unchecked Sendable {
     public func updateTargetClassification(_ text: String) {
         self.targetInput = text
         self.classifiedTarget = TargetClassifier.classify(text)
+        if let target = self.classifiedTarget, case .url(let u) = target, let port = u.port {
+            self.customPort = UInt16(port)
+        }
     }
 
     @MainActor
-    public func runDiagnosis(target: NetworkTarget) async {
+    public func runDiagnosis(target: NetworkTarget, port: UInt16? = nil) async {
         self.isDiagnosing = true
         self.currentProgress = PipelineProgress(stage: .resolvingDNS, percentage: 0.05, message: "Initializing diagnostic pipeline...")
 
         let pipeline = DiagnosticPipeline()
-        let result = await pipeline.execute(target: target) { progress in
+        let customNetPort = (port ?? customPort).map { NetworkPort($0) }
+        let result = await pipeline.execute(target: target, customPort: customNetPort) { progress in
             Task { @MainActor in
                 self.currentProgress = progress
             }

@@ -33,6 +33,7 @@ public struct DiagnosticFinding: Hashable, Sendable, Identifiable {
     public let statement: String
     public let faultDomain: String
     public let confidence: ConfidenceLevel
+    public let remediation: String?
 
     public init(
         classification: FindingClassification,
@@ -40,7 +41,8 @@ public struct DiagnosticFinding: Hashable, Sendable, Identifiable {
         title: String,
         statement: String,
         faultDomain: String,
-        confidence: ConfidenceLevel
+        confidence: ConfidenceLevel,
+        remediation: String? = nil
     ) {
         self.id = "\(classification.rawValue)_\(title)"
         self.classification = classification
@@ -49,6 +51,7 @@ public struct DiagnosticFinding: Hashable, Sendable, Identifiable {
         self.statement = statement
         self.faultDomain = faultDomain
         self.confidence = confidence
+        self.remediation = remediation
     }
 }
 
@@ -71,6 +74,7 @@ public struct DiagnosticResult: Sendable {
     public let findings: [DiagnosticFinding]
     public let overallStatus: OverallHealthStatus
     public let overallSummary: String
+    public let executionDurationMs: Double
 
     public init(
         target: NetworkTarget,
@@ -80,7 +84,8 @@ public struct DiagnosticResult: Sendable {
         tcp: ProbeResult?,
         path: PathObservation?,
         http: HTTPObservation?,
-        findings: [DiagnosticFinding]
+        findings: [DiagnosticFinding],
+        executionDurationMs: Double = 0.0
     ) {
         self.target = target
         self.timestamp = timestamp
@@ -90,6 +95,7 @@ public struct DiagnosticResult: Sendable {
         self.path = path
         self.http = http
         self.findings = findings
+        self.executionDurationMs = executionDurationMs
 
         // Determine overall status
         if let dns = dns, !dns.isHealthy {

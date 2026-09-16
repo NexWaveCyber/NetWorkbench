@@ -39,9 +39,12 @@ public final class DiagnosticPipeline: Sendable {
 
     public func execute(
         target: NetworkTarget,
+        customPort: NetworkPort? = nil,
         onProgress: (@Sendable (PipelineProgress) -> Void)? = nil
     ) async -> DiagnosticResult {
+        let startTime = DispatchTime.now()
         let host = target.destinationHost
+        let port = customPort ?? target.defaultPort
 
         // Stage 1: DNS Resolution
         onProgress?(PipelineProgress(stage: .resolvingDNS, percentage: 0.15, message: "Resolving \(host)..."))
@@ -50,24 +53,21 @@ public final class DiagnosticPipeline: Sendable {
             dnsResult = await dnsResolver.resolve(hostname: host)
         }
 
-        // Stage 2: TCP Handshake Probing
-        onProgress?(PipelineProgress(stage: .probingTCP, percentage: 0.35, message: "Testing TCP port \(target.defaultPort)..."))
-        let tcpResult = await tcpProber.probe(host: host, port: target.defaultPort)
+        // Stages 2-5: Parallel Execution via Structured Concurrency
+        onProgress?(PipelineProgress(stage: .probingTCP, percentage: 0.40, message: "Probing TCP port \(port.rawValue), ICMP, route hops, and HTTP/TLS in parallel..."))
 
-        // Stage 3: Measuring Latency & Jitter
-        onProgress?(PipelineProgress(stage: .measuringLatency, percentage: 0.55, message: "Sampling round-trip latency..."))
-        let latencyStats = await icmpProber.runSeries(host: host, count: 5, port: target.defaultPort)
+        async let tcpTask = tcpProber.probe(host: host, port: port)
+        async let latencyTask = icmpProber.runSeries(host: host, count: 5, port: port)
+        async let pathTask = tracerouteRunner.trace(target: host, maxHops: 12)
+        async let httpTask: HTTPObservation? = {
+            if target.targetType == .hostname || target.targetType == .url {
+                let useHTTPS = port.rawValue == 443 || port.rawValue == 8443 || (target.defaultPort.rawValue == 443 && port.rawValue != 80)
+                return await httpInspector.inspect(targetHost: host, port: port, useHTTPS: useHTTPS)
+            }
+            return nil
+        }()
 
-        // Stage 4: Discovering Path Hops
-        onProgress?(PipelineProgress(stage: .tracingPath, percentage: 0.70, message: "Tracing route hops (TTL 1..15)..."))
-        let pathObservation = await tracerouteRunner.trace(target: host, maxHops: 12)
-
-        // Stage 5: Inspecting TLS & HTTP
-        onProgress?(PipelineProgress(stage: .inspectingHTTP, percentage: 0.85, message: "Inspecting HTTP/TLS application layer..."))
-        var httpObservation: HTTPObservation? = nil
-        if target.targetType == .hostname || target.targetType == .url {
-            httpObservation = await httpInspector.inspect(targetHost: host, port: target.defaultPort, useHTTPS: true)
-        }
+        let (tcpResult, latencyStats, pathObservation, httpObservation) = await (tcpTask, latencyTask, pathTask, httpTask)
 
         // Stage 6: Deterministic Correlation
         onProgress?(PipelineProgress(stage: .correlating, percentage: 0.95, message: "Correlating multi-layer observations..."))
@@ -80,7 +80,8 @@ public final class DiagnosticPipeline: Sendable {
             http: httpObservation
         )
 
-        onProgress?(PipelineProgress(stage: .completed, percentage: 1.0, message: "Diagnosis complete."))
+        let elapsedMs = Double(DispatchTime.now().uptimeNanoseconds - startTime.uptimeNanoseconds) / 1_000_000.0
+        onProgress?(PipelineProgress(stage: .completed, percentage: 1.0, message: "Diagnosis complete in \(String(format: "%.1f", elapsedMs)) ms."))
 
         return DiagnosticResult(
             target: target,
@@ -90,7 +91,8 @@ public final class DiagnosticPipeline: Sendable {
             tcp: tcpResult,
             path: pathObservation,
             http: httpObservation,
-            findings: findings
+            findings: findings,
+            executionDurationMs: elapsedMs
         )
     }
 }

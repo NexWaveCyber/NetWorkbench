@@ -42,6 +42,12 @@ public enum Theme {
         Color.primary.opacity(0.03)
     }
 
+    // MARK: - High-Contrast Engineering Surfaces
+    public static let obsidianDark = Color(red: 0.04, green: 0.05, blue: 0.08)
+    public static let elevatedCardBackground = Color(red: 0.08, green: 0.10, blue: 0.15)
+    public static let innerChipBackground = Color(red: 0.05, green: 0.07, blue: 0.11)
+    public static let cardBorderHighContrast = Color.white.opacity(0.12)
+
     // MARK: - Gradients
     public static var cyanGlowGradient: LinearGradient {
         LinearGradient(

@@ -1,5 +1,7 @@
 import SwiftUI
+import AppKit
 import NetworkCore
+import DNSEngine
 import DiagnosticsEngine
 import TracerouteEngine
 import InvestigationKit
@@ -15,8 +17,13 @@ public enum DiagnoseTab: String, CaseIterable, Identifiable {
 
 public struct DiagnoseWorkspaceView: View {
     @Bindable var state: AppState
-    @State private var copiedReport = false
+    @State private var copiedMarkdown = false
+    @State private var copiedJSON = false
+    @State private var copiedRemediationId: String? = nil
     @State private var selectedTab: DiagnoseTab = .all
+    @State private var headerSearchText: String = ""
+    @State private var customPortInput: String = ""
+    @State private var isShowingCustomPortPopover = false
 
     public init(state: AppState) {
         self.state = state
@@ -48,23 +55,28 @@ public struct DiagnoseWorkspaceView: View {
                             }
                         }
                         .pickerStyle(.segmented)
-                        .frame(maxWidth: 500)
+                        .frame(maxWidth: 540)
 
                         switch selectedTab {
                         case .all:
                             findingsSection(result: result)
+                            
                             if let lat = result.latency, lat.received > 0 {
                                 LatencySparklineView(
-                                    samples: [lat.minMs, (lat.minMs + lat.medianMs)/2, lat.medianMs, (lat.medianMs + lat.maxMs)/2, lat.maxMs],
+                                    samples: lat.rawSamples.isEmpty ? [lat.minMs, lat.medianMs, lat.maxMs] : lat.rawSamples,
                                     minMs: lat.minMs,
                                     maxMs: lat.maxMs,
-                                    medianMs: lat.medianMs
+                                    medianMs: lat.medianMs,
+                                    avgMs: lat.avgMs,
+                                    p95Ms: lat.p95Ms
                                 )
                                 .engineeringCard()
                             }
+                            
                             if let path = result.path, !path.hops.isEmpty {
                                 PathTopologyView(hops: path.hops, latencyJumpHop: path.latencyJumpHop)
                             }
+                            
                             multiLayerObservationsGrid(result: result)
 
                         case .path:
@@ -96,21 +108,22 @@ public struct DiagnoseWorkspaceView: View {
     // MARK: - Header Bar
     private var headerBar: some View {
         VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 12) {
+            HStack(spacing: 10) {
                 ZStack {
                     RoundedRectangle(cornerRadius: 8)
                         .fill(Theme.neonCyan.opacity(0.12))
-                        .frame(width: 32, height: 32)
+                        .frame(width: 34, height: 34)
 
                     Image(systemName: "stethoscope")
-                        .font(.system(size: 16, weight: .bold))
+                        .font(.system(size: 17, weight: .bold))
                         .foregroundStyle(Theme.neonCyan)
                 }
 
+                // Main Target Input Field & Badges
                 HStack(spacing: 8) {
                     TextField("Enter target host, IP, URL, or subnet...", text: $state.targetInput)
                         .textFieldStyle(.plain)
-                        .font(Theme.monoText(15))
+                        .font(Theme.monoText(14))
                         .onChange(of: state.targetInput) { _, newValue in
                             state.updateTargetClassification(newValue)
                         }
@@ -118,22 +131,91 @@ public struct DiagnoseWorkspaceView: View {
                             triggerDiagnosis()
                         }
 
+                    // Target Type Capsule
                     if let target = state.classifiedTarget {
                         Text(target.targetType.rawValue)
                             .font(Theme.monoText(10, weight: .bold))
-                            .padding(.horizontal, 8)
+                            .padding(.horizontal, 7)
                             .padding(.vertical, 3)
                             .background(Theme.azurePro.opacity(0.15))
                             .foregroundStyle(Theme.azurePro)
                             .clipShape(Capsule())
                     }
+
+                    // Port Selector Capsule
+                    Menu {
+                        Button("Default (443 - HTTPS)") { state.customPort = nil }
+                        Button("Port 80 (HTTP)") { state.customPort = 80 }
+                        Button("Port 53 (DNS)") { state.customPort = 53 }
+                        Button("Port 853 (DNS-over-TLS)") { state.customPort = 853 }
+                        Button("Port 22 (SSH)") { state.customPort = 22 }
+                        Button("Port 8080 (Alt-HTTP)") { state.customPort = 8080 }
+                        Divider()
+                        Button("Custom Port...") {
+                            isShowingCustomPortPopover = true
+                        }
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "number")
+                                .font(.system(size: 9, weight: .bold))
+                            Text(portLabel)
+                                .font(Theme.monoText(10, weight: .bold))
+                            Image(systemName: "chevron.down")
+                                .font(.system(size: 8))
+                        }
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 3.5)
+                        .background(state.customPort == nil ? Color.primary.opacity(0.06) : Theme.neonCyan.opacity(0.15))
+                        .foregroundStyle(state.customPort == nil ? Color.secondary : Theme.neonCyan)
+                        .clipShape(Capsule())
+                    }
+                    .menuStyle(.borderlessButton)
+                    .popover(isPresented: $isShowingCustomPortPopover) {
+                        VStack(alignment: .leading, spacing: 10) {
+                            Text("Specify Diagnostic Port")
+                                .font(.system(size: 12, weight: .bold))
+                            HStack {
+                                TextField("e.g. 8443", text: $customPortInput)
+                                    .textFieldStyle(.roundedBorder)
+                                    .frame(width: 90)
+                                Button("Apply") {
+                                    if let p = UInt16(customPortInput) {
+                                        state.customPort = p
+                                    }
+                                    isShowingCustomPortPopover = false
+                                }
+                                .keyboardShortcut(.defaultAction)
+                            }
+                        }
+                        .padding(12)
+                    }
+
+                    // Recent History Recall Menu
+                    if !state.recentHistory.isEmpty {
+                        Menu {
+                            Text("Recent Targets").font(.caption)
+                            ForEach(state.recentHistory.prefix(8), id: \.id) { record in
+                                Button(record.target) {
+                                    state.updateTargetClassification(record.target)
+                                    triggerDiagnosis()
+                                }
+                            }
+                        } label: {
+                            Image(systemName: "clock.arrow.circlepath")
+                                .font(.system(size: 13, weight: .medium))
+                                .foregroundStyle(.secondary)
+                        }
+                        .menuStyle(.borderlessButton)
+                        .help("Recall recent target")
+                    }
                 }
                 .padding(.horizontal, 12)
-                .padding(.vertical, 8)
+                .padding(.vertical, 7)
                 .background(Theme.cardBackground)
                 .clipShape(RoundedRectangle(cornerRadius: 8))
                 .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Theme.borderLight, lineWidth: 1))
 
+                // Diagnose Trigger Button
                 Button(action: triggerDiagnosis) {
                     HStack(spacing: 6) {
                         if state.isDiagnosing {
@@ -161,7 +243,7 @@ public struct DiagnoseWorkspaceView: View {
                     .font(.system(size: 11, weight: .medium))
                     .foregroundStyle(.secondary)
 
-                ForEach(["google.com", "1.1.1.1", "api.github.com", MenuBarMonitorEngine.shared.defaultGateway], id: \.self) { sample in
+                ForEach(["1.1.1.1", "google.com", "api.github.com", MenuBarMonitorEngine.shared.defaultGateway], id: \.self) { sample in
                     Button(action: {
                         state.updateTargetClassification(sample)
                         triggerDiagnosis()
@@ -180,10 +262,20 @@ public struct DiagnoseWorkspaceView: View {
         }
     }
 
+    private var portLabel: String {
+        if let p = state.customPort {
+            return "PORT \(p)"
+        }
+        if let t = state.classifiedTarget {
+            return "PORT \(t.defaultPort.rawValue)"
+        }
+        return "PORT 443"
+    }
+
     private func triggerDiagnosis() {
         guard let target = state.classifiedTarget else { return }
         Task {
-            await state.runDiagnosis(target: target)
+            await state.runDiagnosis(target: target, port: state.customPort)
         }
     }
 
@@ -193,7 +285,7 @@ public struct DiagnoseWorkspaceView: View {
             ZStack {
                 Circle()
                     .fill(statusColor(result.overallStatus).opacity(0.12))
-                    .frame(width: 48, height: 48)
+                    .frame(width: 50, height: 50)
                     .overlay(
                         Circle()
                             .strokeBorder(statusColor(result.overallStatus).opacity(0.35), lineWidth: 1.5)
@@ -201,11 +293,11 @@ public struct DiagnoseWorkspaceView: View {
                     .shadow(color: statusColor(result.overallStatus).opacity(0.25), radius: 8)
 
                 Image(systemName: statusIcon(result.overallStatus))
-                    .font(.system(size: 20, weight: .bold))
+                    .font(.system(size: 22, weight: .bold))
                     .foregroundStyle(statusColor(result.overallStatus))
             }
 
-            VStack(alignment: .leading, spacing: 6) {
+            VStack(alignment: .leading, spacing: 8) {
                 HStack(alignment: .center, spacing: 8) {
                     PulsingBeacon(color: statusColor(result.overallStatus), size: 7, isLive: true)
 
@@ -219,24 +311,61 @@ public struct DiagnoseWorkspaceView: View {
                     Text(result.target.displayString)
                         .font(Theme.monoText(15, weight: .bold))
 
+                    // Resolved IP Pill
+                    if let firstIP = result.dns?.ipv4Addresses.first?.description ?? result.dns?.ipv6Addresses.first?.description {
+                        HStack(spacing: 3) {
+                            Text("IP: \(firstIP)")
+                                .font(Theme.monoText(10.5, weight: .semibold))
+                            Button {
+                                NSPasteboard.general.clearContents()
+                                NSPasteboard.general.setString(firstIP, forType: .string)
+                            } label: {
+                                Image(systemName: "doc.on.doc")
+                                    .font(.system(size: 9))
+                            }
+                            .buttonStyle(.plain)
+                            .help("Copy target IP")
+                        }
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 2.5)
+                        .background(Color.primary.opacity(0.06))
+                        .clipShape(Capsule())
+                    }
+
+                    // Wall-Clock Execution Time Badge
+                    HStack(spacing: 4) {
+                        Image(systemName: "bolt.fill")
+                            .font(.system(size: 9))
+                            .foregroundStyle(Theme.neonCyan)
+                        Text(String(format: "%.1fs", result.executionDurationMs / 1000.0))
+                            .font(Theme.monoText(10, weight: .bold))
+                            .foregroundStyle(Theme.neonCyan)
+                    }
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 2.5)
+                    .background(Theme.neonCyan.opacity(0.12))
+                    .clipShape(Capsule())
+                    .help("Total wall-clock pipeline duration (concurrent execution)")
+
                     Spacer()
 
+                    // Export Markdown Button
                     Button(action: {
                         let md = AuditReportExporter.exportMarkdown(result: result)
                         NSPasteboard.general.clearContents()
                         NSPasteboard.general.setString(md, forType: .string)
-                        copiedReport = true
+                        copiedMarkdown = true
                         DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
-                            copiedReport = false
+                            copiedMarkdown = false
                         }
                     }) {
                         HStack(spacing: 5) {
-                            Image(systemName: copiedReport ? "checkmark" : "doc.on.doc")
+                            Image(systemName: copiedMarkdown ? "checkmark" : "doc.text")
                                 .font(.system(size: 11, weight: .semibold))
-                            Text(copiedReport ? "Report Copied!" : "Export Report")
+                            Text(copiedMarkdown ? "MD Copied!" : "Export MD")
                                 .font(.system(size: 11, weight: .medium))
                         }
-                        .padding(.horizontal, 10)
+                        .padding(.horizontal, 9)
                         .padding(.vertical, 5)
                         .background(.ultraThinMaterial)
                         .clipShape(RoundedRectangle(cornerRadius: 6))
@@ -244,6 +373,31 @@ public struct DiagnoseWorkspaceView: View {
                     }
                     .buttonStyle(.plain)
 
+                    // Export JSON Button
+                    Button(action: {
+                        let jsonStr = AuditReportExporter.exportJSON(result: result)
+                        NSPasteboard.general.clearContents()
+                        NSPasteboard.general.setString(jsonStr, forType: .string)
+                        copiedJSON = true
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                            copiedJSON = false
+                        }
+                    }) {
+                        HStack(spacing: 5) {
+                            Image(systemName: copiedJSON ? "checkmark" : "curlybraces")
+                                .font(.system(size: 11, weight: .semibold))
+                            Text(copiedJSON ? "JSON Copied!" : "Export JSON")
+                                .font(.system(size: 11, weight: .medium))
+                        }
+                        .padding(.horizontal, 9)
+                        .padding(.vertical, 5)
+                        .background(.ultraThinMaterial)
+                        .clipShape(RoundedRectangle(cornerRadius: 6))
+                        .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(Color.white.opacity(0.1), lineWidth: 1))
+                    }
+                    .buttonStyle(.plain)
+
+                    // Create Investigation Button
                     Button(action: {
                         state.createInvestigationFromLatestResult()
                     }) {
@@ -253,7 +407,7 @@ public struct DiagnoseWorkspaceView: View {
                             Text("Create Investigation")
                                 .font(.system(size: 11, weight: .semibold))
                         }
-                        .padding(.horizontal, 12)
+                        .padding(.horizontal, 11)
                         .padding(.vertical, 5)
                         .background(Theme.cyanGlowGradient)
                         .foregroundStyle(.black)
@@ -265,7 +419,7 @@ public struct DiagnoseWorkspaceView: View {
 
                 Text(result.overallSummary)
                     .font(.system(size: 13, weight: .regular))
-                    .foregroundStyle(.primary.opacity(0.85))
+                    .foregroundStyle(.primary.opacity(0.88))
             }
         }
         .glassHUDCard(padding: 18, cornerRadius: 12)
@@ -275,62 +429,109 @@ public struct DiagnoseWorkspaceView: View {
     private func findingsSection(result: DiagnosticResult) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
-                Text("DETERMINISTIC ANALYTICAL FINDINGS")
+                Text("DETERMINISTIC ANALYTICAL FINDINGS & REMEDIATION")
                     .font(.system(size: 10, weight: .bold, design: .monospaced))
                     .foregroundStyle(.secondary)
                 Spacer()
-                Text("\(result.findings.count) Findings Identified")
+                Text("\(result.findings.count) Findings Evaluated")
                     .font(Theme.monoText(10, weight: .semibold))
                     .foregroundStyle(.tertiary)
             }
 
-            VStack(spacing: 10) {
+            VStack(spacing: 12) {
                 ForEach(result.findings) { finding in
-                    HStack(alignment: .top, spacing: 14) {
-                        Text(finding.classification.rawValue.uppercased())
-                            .font(.system(size: 9, weight: .bold, design: .monospaced))
-                            .padding(.horizontal, 7)
-                            .padding(.vertical, 4)
-                            .background(classificationColor(finding.classification).opacity(0.14))
-                            .foregroundStyle(classificationColor(finding.classification))
-                            .clipShape(RoundedRectangle(cornerRadius: 5))
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 5)
-                                    .strokeBorder(classificationColor(finding.classification).opacity(0.3), lineWidth: 0.75)
-                            )
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack(alignment: .top, spacing: 12) {
+                            Text(finding.classification.rawValue.uppercased())
+                                .font(.system(size: 9, weight: .bold, design: .monospaced))
+                                .padding(.horizontal, 7)
+                                .padding(.vertical, 4)
+                                .background(classificationColor(finding.classification).opacity(0.14))
+                                .foregroundStyle(classificationColor(finding.classification))
+                                .clipShape(RoundedRectangle(cornerRadius: 5))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 5)
+                                        .strokeBorder(classificationColor(finding.classification).opacity(0.3), lineWidth: 0.75)
+                                )
 
-                        VStack(alignment: .leading, spacing: 4) {
-                            HStack {
-                                Text(finding.title)
-                                    .font(.system(size: 13, weight: .bold))
+                            VStack(alignment: .leading, spacing: 4) {
+                                HStack {
+                                    Text(finding.title)
+                                        .font(.system(size: 13, weight: .bold))
 
-                                Spacer()
+                                    Spacer()
 
-                                Text(finding.faultDomain)
-                                    .font(Theme.monoText(10, weight: .semibold))
-                                    .padding(.horizontal, 6)
-                                    .padding(.vertical, 2)
-                                    .background(Color.primary.opacity(0.04))
-                                    .clipShape(Capsule())
-                                    .foregroundStyle(.secondary)
-
-                                Text("•").foregroundStyle(.secondary)
-
-                                HStack(spacing: 3) {
-                                    ForEach(0..<3) { idx in
-                                        Circle()
-                                            .fill(confidenceDotColor(idx: idx, conf: finding.confidence))
-                                            .frame(width: 5, height: 5)
-                                    }
-                                    Text("\(finding.confidence.rawValue)")
-                                        .font(.system(size: 11, weight: .medium))
+                                    Text(finding.faultDomain)
+                                        .font(Theme.monoText(10, weight: .semibold))
+                                        .padding(.horizontal, 6)
+                                        .padding(.vertical, 2)
+                                        .background(Color.primary.opacity(0.04))
+                                        .clipShape(Capsule())
                                         .foregroundStyle(.secondary)
-                                }
-                            }
 
-                            Text(finding.statement)
-                                .font(.system(size: 12))
-                                .foregroundStyle(Color.primary.opacity(0.88))
+                                    Text("•").foregroundStyle(.secondary)
+
+                                    HStack(spacing: 3) {
+                                        ForEach(0..<3) { idx in
+                                            Circle()
+                                                .fill(confidenceDotColor(idx: idx, conf: finding.confidence))
+                                                .frame(width: 5, height: 5)
+                                        }
+                                        Text("\(finding.confidence.rawValue)")
+                                            .font(.system(size: 11, weight: .medium))
+                                            .foregroundStyle(.secondary)
+                                    }
+                                }
+
+                                Text(finding.statement)
+                                    .font(.system(size: 12))
+                                    .foregroundStyle(Color.primary.opacity(0.88))
+                            }
+                        }
+
+                        // Actionable Remediation Card
+                        if let remediation = finding.remediation {
+                            VStack(alignment: .leading, spacing: 4) {
+                                HStack(spacing: 6) {
+                                    Image(systemName: "wrench.and.screwdriver.fill")
+                                        .font(.system(size: 10))
+                                        .foregroundStyle(Theme.neonCyan)
+                                    Text("RECOMMENDED ACTIONABLE REMEDIATION")
+                                        .font(.system(size: 9.5, weight: .bold, design: .monospaced))
+                                        .foregroundStyle(Theme.neonCyan)
+                                    Spacer()
+                                    Button {
+                                        NSPasteboard.general.clearContents()
+                                        NSPasteboard.general.setString(remediation, forType: .string)
+                                        copiedRemediationId = finding.id
+                                        DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                                            copiedRemediationId = nil
+                                        }
+                                    } label: {
+                                        HStack(spacing: 3) {
+                                            Image(systemName: copiedRemediationId == finding.id ? "checkmark" : "doc.on.doc")
+                                                .font(.system(size: 8.5))
+                                            Text(copiedRemediationId == finding.id ? "Copied" : "Copy")
+                                                .font(.system(size: 8.5, weight: .semibold))
+                                        }
+                                        .padding(.horizontal, 6)
+                                        .padding(.vertical, 2)
+                                        .background(Theme.neonCyan.opacity(0.12))
+                                        .foregroundStyle(Theme.neonCyan)
+                                        .clipShape(Capsule())
+                                    }
+                                    .buttonStyle(.plain)
+                                }
+
+                                Text(remediation)
+                                    .font(Theme.monoText(11.5))
+                                    .foregroundStyle(Color.primary.opacity(0.92))
+                                    .lineSpacing(2)
+                            }
+                            .padding(10)
+                            .background(Theme.neonCyan.opacity(0.04))
+                            .clipShape(RoundedRectangle(cornerRadius: 6))
+                            .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(Theme.neonCyan.opacity(0.2), lineWidth: 1))
                         }
                     }
                     .padding(12)
@@ -354,9 +555,58 @@ public struct DiagnoseWorkspaceView: View {
                 observationCard(title: "Layer 7: DNS Resolution", icon: "arrow.triangle.branch", tint: Theme.azurePro) {
                     if let dns = result.dns {
                         VStack(alignment: .leading, spacing: 6) {
-                            metricRow(label: "Status", value: dns.isHealthy ? "Healthy" : "Failed", isSuccess: dns.isHealthy)
+                            HStack {
+                                Text("Status")
+                                    .font(.system(size: 12))
+                                    .foregroundStyle(.secondary)
+                                Spacer()
+                                HStack(spacing: 5) {
+                                    Text(dns.isHealthy ? "Healthy" : "Failed")
+                                        .font(Theme.monoText(12, weight: .semibold))
+                                        .foregroundStyle(dns.isHealthy ? Theme.signalEmerald : Theme.pulseCrimson)
+                                    if dns.isDNSSECValidated {
+                                        Text("DNSSEC")
+                                            .font(.system(size: 8.5, weight: .bold, design: .monospaced))
+                                            .padding(.horizontal, 5)
+                                            .padding(.vertical, 1.5)
+                                            .background(Theme.signalEmerald.opacity(0.15))
+                                            .foregroundStyle(Theme.signalEmerald)
+                                            .clipShape(Capsule())
+                                    }
+                                }
+                            }
                             metricRow(label: "Query Time", value: String(format: "%.1f ms", dns.queryTimeMs))
-                            metricRow(label: "IPv4", value: dns.ipv4Addresses.first?.description ?? "None")
+                            
+                            HStack {
+                                Text("IPv4")
+                                    .font(.system(size: 12))
+                                    .foregroundStyle(.secondary)
+                                Spacer()
+                                if let v4 = dns.ipv4Addresses.first?.description {
+                                    HStack(spacing: 4) {
+                                        Text(v4)
+                                            .font(Theme.monoText(11.5, weight: .semibold))
+                                        if dns.ipv4Addresses.count > 1 {
+                                            Text("+\(dns.ipv4Addresses.count - 1)")
+                                                .font(.system(size: 8.5, weight: .bold))
+                                                .padding(.horizontal, 4)
+                                                .padding(.vertical, 1)
+                                                .background(Color.primary.opacity(0.08))
+                                                .clipShape(Capsule())
+                                        }
+                                        Button {
+                                            NSPasteboard.general.clearContents()
+                                            NSPasteboard.general.setString(v4, forType: .string)
+                                        } label: {
+                                            Image(systemName: "doc.on.doc").font(.system(size: 8.5))
+                                        }
+                                        .buttonStyle(.plain)
+                                    }
+                                } else {
+                                    Text("None").font(Theme.monoText(12)).foregroundStyle(.secondary)
+                                }
+                            }
+                            
                             metricRow(label: "IPv6", value: dns.ipv6Addresses.first?.description ?? "None")
                         }
                     } else {
@@ -368,8 +618,8 @@ public struct DiagnoseWorkspaceView: View {
                 observationCard(title: "Layer 4: Transport & Latency", icon: "waveform.path.ecg", tint: Theme.neonCyan) {
                     if let lat = result.latency {
                         VStack(alignment: .leading, spacing: 6) {
-                            metricRow(label: "Median RTT", value: String(format: "%.1f ms", lat.medianMs))
-                            metricRow(label: "Min / Max", value: "\(String(format: "%.1f", lat.minMs)) / \(String(format: "%.1f", lat.maxMs)) ms")
+                            metricRow(label: "Median RTT (P50)", value: String(format: "%.1f ms", lat.medianMs))
+                            metricRow(label: "Min / Max / P95", value: "\(String(format: "%.1f", lat.minMs)) / \(String(format: "%.1f", lat.maxMs)) / \(String(format: "%.1f", lat.p95Ms)) ms")
                             metricRow(label: "RFC 3550 Jitter", value: String(format: "%.1f ms", lat.jitterMs))
                             metricRow(label: "Packet Loss", value: String(format: "%.0f%% (%d/%d)", lat.lossPercentage, lat.lost, lat.sent), isSuccess: lat.lossPercentage == 0)
                         }
@@ -385,7 +635,7 @@ public struct DiagnoseWorkspaceView: View {
                             metricRow(label: "Total Hops", value: "\(path.totalHops)")
                             metricRow(label: "Target Reached", value: path.finalHopReached ? "Yes" : "No", isSuccess: path.finalHopReached)
                             if let jump = path.latencyJumpHop, let delta = path.latencyDeltaMs {
-                                metricRow(label: "Anomaly", value: "+\(String(format: "%.0f", delta))ms at hop \(jump)")
+                                metricRow(label: "Anomaly Spike", value: "+\(String(format: "%.0f", delta))ms at hop \(jump)")
                             } else {
                                 metricRow(label: "Path Stability", value: "No anomalous RTT spikes")
                             }
@@ -403,6 +653,8 @@ public struct DiagnoseWorkspaceView: View {
                             metricRow(label: "TTFB", value: http.ttfbMs != nil ? String(format: "%.1f ms", http.ttfbMs!) : "N/A")
                             if let cert = http.certificateInfo {
                                 metricRow(label: "Certificate Expiry", value: cert.daysUntilExpiry != nil ? "\(cert.daysUntilExpiry!) days" : "Valid", isSuccess: !cert.isExpired)
+                            } else {
+                                metricRow(label: "Security", value: "Plaintext HTTP / None")
                             }
                         }
                     } else {
@@ -442,23 +694,51 @@ public struct DiagnoseWorkspaceView: View {
     // MARK: - Specialized Views
     private func hopsTableView(path: PathObservation) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("HOP ROUTING TABLE")
-                .font(.system(size: 10, weight: .bold, design: .monospaced))
-                .foregroundStyle(.secondary)
+            HStack {
+                Text("HOP ROUTING TABLE")
+                    .font(.system(size: 10, weight: .bold, design: .monospaced))
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Text("\(path.hops.count) hops • Final: \(path.finalHopReached ? "Reached" : "Unreached")")
+                    .font(Theme.monoText(10))
+                    .foregroundStyle(.secondary)
+            }
 
             Table(path.hops) {
                 TableColumn("Hop") { hop in
                     Text("\(hop.hopNumber)")
                         .font(Theme.monoText(12, weight: .bold))
                 }
-                .width(50)
+                .width(45)
 
                 TableColumn("IP Address") { hop in
-                    Text(hop.address ?? "* * *")
-                        .font(Theme.monoText(12))
-                        .foregroundStyle(hop.isTimeout ? .secondary : Color.primary)
+                    HStack(spacing: 4) {
+                        Text(hop.address ?? "* * *")
+                            .font(Theme.monoText(12))
+                            .foregroundStyle(hop.isTimeout ? .secondary : Color.primary)
+                        if let addr = hop.address, addr != "* * *" {
+                            Button {
+                                NSPasteboard.general.clearContents()
+                                NSPasteboard.general.setString(addr, forType: .string)
+                            } label: {
+                                Image(systemName: "doc.on.doc").font(.system(size: 8))
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
                 }
-                .width(200)
+                .width(180)
+
+                TableColumn("ASN / Carrier") { hop in
+                    if let asn = hop.asn {
+                        Text("\(asn) \(hop.asName ?? "")")
+                            .font(Theme.monoText(11))
+                            .foregroundStyle(Theme.azurePro)
+                    } else {
+                        Text("-").font(.system(size: 11)).foregroundStyle(.secondary)
+                    }
+                }
+                .width(140)
 
                 TableColumn("Round-Trip Time") { hop in
                     if let rtt = hop.rttMs {
@@ -469,13 +749,24 @@ public struct DiagnoseWorkspaceView: View {
                         Text("Timeout").font(.system(size: 11)).foregroundStyle(Theme.pulseCrimson)
                     }
                 }
-                .width(120)
+                .width(110)
+
+                TableColumn("Delta RTT") { hop in
+                    if let delta = hop.deltaMs, delta > 0.5 {
+                        Text(String(format: "+%.1f ms", delta))
+                            .font(Theme.monoText(11, weight: .semibold))
+                            .foregroundStyle(hop.hopNumber == path.latencyJumpHop ? Theme.solarAmber : .secondary)
+                    } else {
+                        Text("-").font(.system(size: 11)).foregroundStyle(.secondary)
+                    }
+                }
+                .width(85)
 
                 TableColumn("Status") { hop in
                     if hop.isTimeout {
                         Text("Filtered / No ICMP").font(.system(size: 11)).foregroundStyle(.secondary)
                     } else if hop.hopNumber == path.latencyJumpHop {
-                        Text("Latency Spike Detected").font(.system(size: 11, weight: .semibold)).foregroundStyle(Theme.solarAmber)
+                        Text("Latency Spike").font(.system(size: 11, weight: .semibold)).foregroundStyle(Theme.solarAmber)
                     } else {
                         Text("Responded").font(.system(size: 11)).foregroundStyle(Theme.signalEmerald)
                     }
@@ -489,14 +780,44 @@ public struct DiagnoseWorkspaceView: View {
     private func dnsDetailView(result: DiagnosticResult) -> some View {
         VStack(alignment: .leading, spacing: 14) {
             if let dns = result.dns {
-                HStack {
-                    Text("DNS RECORDS (\(dns.records.count))")
-                        .font(.system(size: 10, weight: .bold, design: .monospaced))
-                        .foregroundStyle(.secondary)
+                HStack(alignment: .center) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack(spacing: 8) {
+                            Text("DNS WIRE RECORDS (\(dns.records.count))")
+                                .font(.system(size: 10, weight: .bold, design: .monospaced))
+                                .foregroundStyle(.secondary)
+
+                            if dns.isDNSSECValidated {
+                                HStack(spacing: 4) {
+                                    Image(systemName: "checkmark.shield.fill")
+                                    Text("DNSSEC Validated (AD Flag)")
+                                }
+                                .font(.system(size: 9.5, weight: .bold, design: .monospaced))
+                                .padding(.horizontal, 7)
+                                .padding(.vertical, 2.5)
+                                .background(Theme.signalEmerald.opacity(0.15))
+                                .foregroundStyle(Theme.signalEmerald)
+                                .clipShape(Capsule())
+                            } else {
+                                HStack(spacing: 4) {
+                                    Image(systemName: "shield.slash")
+                                    Text("Standard Resolution (Unsigned)")
+                                }
+                                .font(.system(size: 9.5, weight: .semibold, design: .monospaced))
+                                .padding(.horizontal, 7)
+                                .padding(.vertical, 2.5)
+                                .background(Color.primary.opacity(0.05))
+                                .foregroundStyle(.secondary)
+                                .clipShape(Capsule())
+                            }
+                        }
+
+                        Text("Resolver: \(dns.resolverName) • Query time: \(String(format: "%.1f ms", dns.queryTimeMs))")
+                            .font(.system(size: 11))
+                            .foregroundStyle(.secondary)
+                    }
+
                     Spacer()
-                    Text("Resolver: \(dns.resolverName) (\(String(format: "%.1f", dns.queryTimeMs)) ms)")
-                        .font(.system(size: 11))
-                        .foregroundStyle(.secondary)
                 }
 
                 Table(dns.records) {
@@ -505,25 +826,44 @@ public struct DiagnoseWorkspaceView: View {
                             .font(.system(size: 10, weight: .bold, design: .monospaced))
                             .padding(.horizontal, 6)
                             .padding(.vertical, 2)
-                            .background(Theme.azurePro.opacity(0.15))
-                            .foregroundStyle(Theme.azurePro)
+                            .background(dnsTypeBadgeColor(rec.type).opacity(0.15))
+                            .foregroundStyle(dnsTypeBadgeColor(rec.type))
                             .clipShape(Capsule())
                     }
                     .width(65)
 
-                    TableColumn("Value") { rec in
-                        Text(rec.value)
-                            .font(Theme.monoText(12))
+                    TableColumn("Hostname") { rec in
+                        Text(rec.name)
+                            .font(Theme.monoText(11.5))
+                            .foregroundStyle(.secondary)
+                    }
+                    .width(160)
+
+                    TableColumn("Record Value") { rec in
+                        HStack(spacing: 6) {
+                            Text(rec.value)
+                                .font(Theme.monoText(12))
+                                .lineLimit(1)
+                            Spacer()
+                            Button {
+                                NSPasteboard.general.clearContents()
+                                NSPasteboard.general.setString(rec.value, forType: .string)
+                            } label: {
+                                Image(systemName: "doc.on.doc").font(.system(size: 8.5))
+                            }
+                            .buttonStyle(.plain)
+                            .help("Copy record value")
+                        }
                     }
 
                     TableColumn("TTL") { rec in
                         Text("\(rec.ttl)s")
-                            .font(.system(size: 11))
+                            .font(Theme.monoText(11))
                             .foregroundStyle(.secondary)
                     }
                     .width(70)
                 }
-                .frame(minHeight: 200)
+                .frame(minHeight: 220)
             }
         }
         .engineeringCard()
@@ -532,7 +872,7 @@ public struct DiagnoseWorkspaceView: View {
     private func httpDetailView(result: DiagnosticResult) -> some View {
         VStack(alignment: .leading, spacing: 14) {
             if let http = result.http {
-                Text("HTTP & TLS PROTOCOL METRICS")
+                Text("HTTP & TLS PROTOCOL PERFORMANCE")
                     .font(.system(size: 10, weight: .bold, design: .monospaced))
                     .foregroundStyle(.secondary)
 
@@ -548,19 +888,131 @@ public struct DiagnoseWorkspaceView: View {
                 if let cert = http.certificateInfo {
                     Divider()
                     VStack(alignment: .leading, spacing: 6) {
-                        Text("X.509 CERTIFICATE DETAILS")
-                            .font(.system(size: 10, weight: .bold, design: .monospaced))
-                            .foregroundStyle(.secondary)
+                        HStack {
+                            Text("X.509 SECURITY CERTIFICATE")
+                                .font(.system(size: 10, weight: .bold, design: .monospaced))
+                                .foregroundStyle(.secondary)
+                            Spacer()
+                            if let proto = cert.protocolVersion {
+                                Text(proto)
+                                    .font(Theme.monoText(9.5, weight: .bold))
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 2)
+                                    .background(Theme.signalEmerald.opacity(0.12))
+                                    .foregroundStyle(Theme.signalEmerald)
+                                    .clipShape(Capsule())
+                            }
+                            if let cipher = cert.cipherSuite {
+                                Text(cipher)
+                                    .font(Theme.monoText(9.5, weight: .bold))
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 2)
+                                    .background(Theme.quantumViolet.opacity(0.12))
+                                    .foregroundStyle(Theme.quantumViolet)
+                                    .clipShape(Capsule())
+                            }
+                        }
+
                         Text("Subject: \(cert.subjectSummary)")
                             .font(Theme.monoText(12))
-                        Text("Expires on: \(cert.expirationDate?.formatted() ?? "Unknown") (\(cert.daysUntilExpiry ?? 0) days remaining)")
-                            .font(.system(size: 11))
+                        if cert.issuerSummary != cert.subjectSummary && !cert.issuerSummary.isEmpty {
+                            Text("Issuer: \(cert.issuerSummary)")
+                                .font(Theme.monoText(11))
+                                .foregroundStyle(.secondary)
+                        }
+
+                        let expiryDesc: String = {
+                            if let days = cert.daysUntilExpiry {
+                                if days < 0 {
+                                    return "(\(abs(days)) days overdue)"
+                                } else if days == 0 {
+                                    return "(Expires today)"
+                                } else {
+                                    return "(\(days) days remaining)"
+                                }
+                            }
+                            return ""
+                        }()
+
+                        Text("Expires on: \(cert.expirationDate?.formatted(date: .abbreviated, time: .shortened) ?? "Unknown") \(expiryDesc)")
+                            .font(.system(size: 11, weight: .medium))
                             .foregroundStyle(cert.isExpired ? Theme.pulseCrimson : Theme.signalEmerald)
+                    }
+                }
+
+                // HTTP Response Headers Table
+                if !http.headers.isEmpty {
+                    Divider()
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack {
+                            Text("HTTP RESPONSE HEADERS (\(filteredHeaders(http.headers).count))")
+                                .font(.system(size: 10, weight: .bold, design: .monospaced))
+                                .foregroundStyle(.secondary)
+
+                            Spacer()
+
+                            HStack(spacing: 4) {
+                                Image(systemName: "magnifyingglass").font(.system(size: 10)).foregroundStyle(.secondary)
+                                TextField("Filter headers...", text: $headerSearchText)
+                                    .textFieldStyle(.plain)
+                                    .font(.system(size: 11))
+                                    .frame(width: 140)
+                            }
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 3)
+                            .background(Color.primary.opacity(0.04))
+                            .clipShape(RoundedRectangle(cornerRadius: 5))
+                            .overlay(RoundedRectangle(cornerRadius: 5).strokeBorder(Theme.borderLight, lineWidth: 1))
+                        }
+
+                        Table(filteredHeaders(http.headers)) {
+                            TableColumn("Header Name") { header in
+                                Text(header.key)
+                                    .font(Theme.monoText(11, weight: .bold))
+                                    .foregroundStyle(Theme.neonCyan)
+                            }
+                            .width(180)
+
+                            TableColumn("Header Value") { header in
+                                HStack {
+                                    Text(header.value)
+                                        .font(Theme.monoText(11.5))
+                                        .lineLimit(1)
+                                    Spacer()
+                                    Button {
+                                        NSPasteboard.general.clearContents()
+                                        NSPasteboard.general.setString(header.value, forType: .string)
+                                    } label: {
+                                        Image(systemName: "doc.on.doc").font(.system(size: 8.5))
+                                    }
+                                    .buttonStyle(.plain)
+                                }
+                            }
+                        }
+                        .frame(minHeight: 180)
                     }
                 }
             }
         }
         .engineeringCard()
+    }
+
+    private struct HeaderItem: Identifiable {
+        var id: String { key }
+        let key: String
+        let value: String
+    }
+
+    private func filteredHeaders(_ headers: [String: String]) -> [HeaderItem] {
+        let items = headers.map { HeaderItem(key: $0.key, value: $0.value) }
+            .sorted(by: { $0.key < $1.key })
+        if headerSearchText.isEmpty {
+            return items
+        }
+        return items.filter {
+            $0.key.localizedCaseInsensitiveContains(headerSearchText) ||
+            $0.value.localizedCaseInsensitiveContains(headerSearchText)
+        }
     }
 
     private func paramCell(label: String, val: String, color: Color? = nil) -> some View {
@@ -572,6 +1024,17 @@ public struct DiagnoseWorkspaceView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color.primary.opacity(0.02))
         .clipShape(RoundedRectangle(cornerRadius: 6))
+    }
+
+    private func dnsTypeBadgeColor(_ type: DNSRecordType) -> Color {
+        switch type {
+        case .a: return Theme.azurePro
+        case .aaaa: return Theme.neonCyan
+        case .cname: return Theme.solarAmber
+        case .mx: return Theme.quantumViolet
+        case .txt: return Color.secondary
+        default: return Color.primary
+        }
     }
 
     // MARK: - Progress & Empty States
@@ -596,7 +1059,7 @@ public struct DiagnoseWorkspaceView: View {
                 Text(state.currentProgress?.stage.rawValue ?? "Diagnosing Target...")
                     .font(.system(size: 17, weight: .bold))
 
-                Text(state.currentProgress?.message ?? "Running multi-layer deterministic diagnostics...")
+                Text(state.currentProgress?.message ?? "Running concurrent multi-layer deterministic diagnostics...")
                     .font(.system(size: 13))
                     .foregroundStyle(.secondary)
             }
@@ -609,7 +1072,7 @@ public struct DiagnoseWorkspaceView: View {
     }
 
     private var emptyStateView: some View {
-        VStack(spacing: 16) {
+        VStack(spacing: 20) {
             ZStack {
                 Circle()
                     .fill(Theme.neonCyan.opacity(0.08))
@@ -621,16 +1084,99 @@ public struct DiagnoseWorkspaceView: View {
             }
 
             VStack(spacing: 6) {
-                Text("Global Diagnostic Engine")
+                Text("NexWave Deterministic Diagnostic Engine")
                     .font(.system(size: 20, weight: .bold))
 
-                Text("Enter a target hostname, IP address, URL, or subnet above to initiate a comprehensive multi-layer diagnosis.")
+                Text("Enter a target hostname, IP, URL, or select a quick-launch diagnostic preset below to run comprehensive concurrent telemetry across DNS, TCP, Latency, Route Topology, and Application layers.")
                     .font(.system(size: 13))
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
-                    .frame(maxWidth: 420)
+                    .frame(maxWidth: 500)
             }
+
+            // Quick-Launch Preset Cards (4-grid)
+            VStack(alignment: .leading, spacing: 10) {
+                Text("RECOMMENDED DIAGNOSTIC PRESETS")
+                    .font(.system(size: 10, weight: .bold, design: .monospaced))
+                    .foregroundStyle(.secondary)
+
+                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
+                    presetCard(
+                        title: "Cloudflare Edge",
+                        host: "1.1.1.1",
+                        desc: "Global DNS root & anycast edge benchmark",
+                        icon: "bolt.shield",
+                        tint: Theme.neonCyan
+                    )
+                    presetCard(
+                        title: "Google Public Core",
+                        host: "google.com",
+                        desc: "Dual-stack IPv4/IPv6 transit & HTTP/3 probe",
+                        icon: "globe.americas.fill",
+                        tint: Theme.azurePro
+                    )
+                    presetCard(
+                        title: "GitHub API",
+                        host: "api.github.com",
+                        desc: "TLS 1.3 REST application endpoint check",
+                        icon: "server.rack",
+                        tint: Theme.quantumViolet
+                    )
+                    presetCard(
+                        title: "Default Gateway",
+                        host: MenuBarMonitorEngine.shared.defaultGateway,
+                        desc: "First-hop router, ARP & local subnet health",
+                        icon: "router",
+                        tint: Theme.signalEmerald
+                    )
+                }
+            }
+            .frame(maxWidth: 580)
+            .padding(.top, 8)
         }
+        .padding(24)
+    }
+
+    private func presetCard(title: String, host: String, desc: String, icon: String, tint: Color) -> some View {
+        Button {
+            state.updateTargetClassification(host)
+            triggerDiagnosis()
+        } label: {
+            HStack(spacing: 12) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill(tint.opacity(0.12))
+                        .frame(width: 36, height: 36)
+                    Image(systemName: icon)
+                        .font(.system(size: 16, weight: .bold))
+                        .foregroundStyle(tint)
+                }
+
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack {
+                        Text(title)
+                            .font(.system(size: 12, weight: .bold))
+                            .foregroundStyle(.primary)
+                        Spacer()
+                        Image(systemName: "arrow.up.right")
+                            .font(.system(size: 9, weight: .bold))
+                            .foregroundStyle(tint)
+                    }
+                    Text(host)
+                        .font(Theme.monoText(10, weight: .semibold))
+                        .foregroundStyle(tint)
+                    Text(desc)
+                        .font(.system(size: 10))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+            }
+            .padding(10)
+            .background(Theme.cardBackground)
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+            .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Theme.borderLight, lineWidth: 1))
+        }
+        .buttonStyle(.plain)
     }
 
     private func statusColor(_ status: OverallHealthStatus) -> Color {

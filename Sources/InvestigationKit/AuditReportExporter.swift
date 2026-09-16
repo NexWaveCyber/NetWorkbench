@@ -11,6 +11,7 @@ public struct AuditReportExporter: Sendable {
         # Diagnostic Evidence Report
         **Target**: `\(result.target.displayString)` (\(result.target.targetType.rawValue))  
         **Timestamp**: \(result.timestamp.formatted(date: .abbreviated, time: .standard))  
+        **Execution Time**: \(String(format: "%.1f ms", result.executionDurationMs))  
         **Overall Status**: **\(result.overallStatus.rawValue)**  
         **Executive Summary**: \(result.overallSummary)  
 
@@ -18,12 +19,13 @@ public struct AuditReportExporter: Sendable {
 
         ## Analytical Findings
 
-        | Classification | Severity | Finding | Fault Domain | Confidence |
-        | :--- | :--- | :--- | :--- | :--- |
+        | Classification | Severity | Finding | Fault Domain | Confidence | Remediation |
+        | :--- | :--- | :--- | :--- | :--- | :--- |
         """
 
         for f in result.findings {
-            md += "\n| `\(f.classification.rawValue)` | **\(f.severity.rawValue)** | \(f.statement) | \(f.faultDomain) | \(f.confidence.rawValue) |"
+            let rem = f.remediation ?? "N/A"
+            md += "\n| `\(f.classification.rawValue)` | **\(f.severity.rawValue)** | \(f.statement) | \(f.faultDomain) | \(f.confidence.rawValue) | \(rem) |"
         }
 
         md += "\n\n---\n\n## Multi-Layer Observations\n\n"
@@ -34,6 +36,7 @@ public struct AuditReportExporter: Sendable {
             ### 1. DNS Resolution
             - **Status**: \(dns.isHealthy ? "Healthy" : "Failed")
             - **Query Latency**: \(String(format: "%.1f", dns.queryTimeMs)) ms
+            - **DNSSEC Validated**: \(dns.isDNSSECValidated ? "Yes (AD Flag)" : "No")
             - **IPv4 Addresses**: \(dns.ipv4Addresses.map(\.description).joined(separator: ", "))
             - **IPv6 Addresses**: \(dns.ipv6Addresses.isEmpty ? "None" : dns.ipv6Addresses.map(\.description).joined(separator: ", "))
 
@@ -49,6 +52,7 @@ public struct AuditReportExporter: Sendable {
             - **Median (P50)**: \(String(format: "%.1f", lat.medianMs)) ms
             - **P95 Latency**: \(String(format: "%.1f", lat.p95Ms)) ms
             - **RFC 3550 Jitter**: \(String(format: "%.1f", lat.jitterMs)) ms
+            - **Raw Samples**: \(lat.rawSamples.map { String(format: "%.2f", $0) }.joined(separator: ", ")) ms
 
             """
         }
@@ -60,14 +64,16 @@ public struct AuditReportExporter: Sendable {
             - **Total Hops**: \(path.totalHops)
             - **Destination Reached**: \(path.finalHopReached ? "Yes" : "No")
 
-            | Hop | Address | Round-Trip (ms) | Status |
-            | :--- | :--- | :--- | :--- |
+            | Hop | Address | Round-Trip (ms) | Delta (ms) | ASN / Carrier | Status |
+            | :--- | :--- | :--- | :--- | :--- | :--- |
             """
             for h in path.hops {
                 let addr = h.address ?? "*"
                 let rtt = h.rttMs != nil ? String(format: "%.1f", h.rttMs!) : "-"
+                let delta = h.deltaMs != nil ? String(format: "+%.1f", h.deltaMs!) : "-"
+                let asn = h.asn != nil ? "\(h.asn!) (\(h.asName ?? ""))" : "-"
                 let status = h.isTimeout ? "Timed out" : "Responded"
-                md += "\n| \(h.hopNumber) | `\(addr)` | \(rtt) | \(status) |"
+                md += "\n| \(h.hopNumber) | `\(addr)` | \(rtt) | \(delta) | \(asn) | \(status) |"
             }
             md += "\n\n"
         }
@@ -77,10 +83,15 @@ public struct AuditReportExporter: Sendable {
             md += """
             ### 4. Application & TLS Layer
             - **HTTP Status**: \(http.statusCode)
+            - **Protocol**: \(http.httpVersion ?? "HTTP/1.1")
             - **Total Request Time**: \(String(format: "%.1f", http.totalTimeMs)) ms
             - **Time to First Byte (TTFB)**: \(http.ttfbMs != nil ? String(format: "%.1f ms", http.ttfbMs!) : "N/A")
             - **TLS Certificate**: \(http.certificateInfo?.subjectSummary ?? "N/A")
+            - **TLS Issuer**: \(http.certificateInfo?.issuerSummary ?? "N/A")
+            - **Expires on**: \(http.certificateInfo?.expirationDate?.formatted(date: .abbreviated, time: .shortened) ?? "N/A")
             - **Days Remaining**: \(http.certificateInfo?.daysUntilExpiry != nil ? "\(http.certificateInfo!.daysUntilExpiry!) days" : "N/A")
+            - **Cipher Suite**: \(http.certificateInfo?.cipherSuite ?? "N/A")
+            - **TLS Version**: \(http.certificateInfo?.protocolVersion ?? "N/A")
 
             """
         }
@@ -92,5 +103,130 @@ public struct AuditReportExporter: Sendable {
         """
 
         return md
+    }
+
+    /// Exports a complete diagnostic result as a structured JSON string.
+    public static func exportJSON(result: DiagnosticResult) -> String {
+        var dict: [String: Any] = [
+            "target": result.target.displayString,
+            "targetType": result.target.targetType.rawValue,
+            "timestamp": ISO8601DateFormatter().string(from: result.timestamp),
+            "executionDurationMs": result.executionDurationMs,
+            "overallStatus": result.overallStatus.rawValue,
+            "overallSummary": result.overallSummary
+        ]
+
+        var findingsArray: [[String: Any]] = []
+        for f in result.findings {
+            var fDict: [String: Any] = [
+                "id": f.id,
+                "classification": f.classification.rawValue,
+                "severity": f.severity.rawValue,
+                "title": f.title,
+                "statement": f.statement,
+                "faultDomain": f.faultDomain,
+                "confidence": f.confidence.rawValue
+            ]
+            if let rem = f.remediation {
+                fDict["remediation"] = rem
+            }
+            findingsArray.append(fDict)
+        }
+        dict["findings"] = findingsArray
+
+        if let dns = result.dns {
+            var dnsDict: [String: Any] = [
+                "resolverName": dns.resolverName,
+                "queryTimeMs": dns.queryTimeMs,
+                "isHealthy": dns.isHealthy,
+                "isDNSSECValidated": dns.isDNSSECValidated,
+                "ipv4": dns.ipv4Addresses.map(\.description),
+                "ipv6": dns.ipv6Addresses.map(\.description)
+            ]
+            var recordsArray: [[String: Any]] = []
+            for r in dns.records {
+                recordsArray.append([
+                    "name": r.name,
+                    "type": r.type.rawValue,
+                    "value": r.value,
+                    "ttl": r.ttl
+                ])
+            }
+            dnsDict["records"] = recordsArray
+            dict["dns"] = dnsDict
+        }
+
+        if let lat = result.latency {
+            dict["latency"] = [
+                "sent": lat.sent,
+                "received": lat.received,
+                "lossPercentage": lat.lossPercentage,
+                "minMs": lat.minMs,
+                "maxMs": lat.maxMs,
+                "avgMs": lat.avgMs,
+                "medianMs": lat.medianMs,
+                "p95Ms": lat.p95Ms,
+                "jitterMs": lat.jitterMs,
+                "rawSamples": lat.rawSamples
+            ]
+        }
+
+        if let path = result.path {
+            var hopsArray: [[String: Any]] = []
+            for h in path.hops {
+                var hDict: [String: Any] = [
+                    "hop": h.hopNumber,
+                    "isTimeout": h.isTimeout
+                ]
+                if let addr = h.address { hDict["address"] = addr }
+                if let rtt = h.rttMs { hDict["rttMs"] = rtt }
+                if let delta = h.deltaMs { hDict["deltaMs"] = delta }
+                if let asn = h.asn { hDict["asn"] = asn }
+                if let asName = h.asName { hDict["asName"] = asName }
+                hopsArray.append(hDict)
+            }
+            dict["path"] = [
+                "totalHops": path.totalHops,
+                "finalHopReached": path.finalHopReached,
+                "latencyJumpHop": path.latencyJumpHop as Any,
+                "latencyDeltaMs": path.latencyDeltaMs as Any,
+                "hops": hopsArray
+            ]
+        }
+
+        if let http = result.http {
+            var httpDict: [String: Any] = [
+                "statusCode": http.statusCode,
+                "totalTimeMs": http.totalTimeMs,
+                "headers": http.headers
+            ]
+            if let ttfb = http.ttfbMs { httpDict["ttfbMs"] = ttfb }
+            if let ver = http.httpVersion { httpDict["httpVersion"] = ver }
+            if let cert = http.certificateInfo {
+                var certDict: [String: Any] = [
+                    "subject": cert.subjectSummary,
+                    "issuer": cert.issuerSummary,
+                    "isExpired": cert.isExpired,
+                    "daysUntilExpiry": cert.daysUntilExpiry as Any
+                ]
+                if let exp = cert.expirationDate {
+                    certDict["expirationDate"] = ISO8601DateFormatter().string(from: exp)
+                }
+                if let cipher = cert.cipherSuite {
+                    certDict["cipherSuite"] = cipher
+                }
+                if let proto = cert.protocolVersion {
+                    certDict["protocolVersion"] = proto
+                }
+                httpDict["certificate"] = certDict
+            }
+            dict["http"] = httpDict
+        }
+
+        if let data = try? JSONSerialization.data(withJSONObject: dict, options: [.prettyPrinted, .sortedKeys]),
+           let str = String(data: data, encoding: .utf8) {
+            return str
+        }
+        return "{}"
     }
 }

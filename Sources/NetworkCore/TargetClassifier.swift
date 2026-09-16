@@ -32,6 +32,16 @@ public struct TargetClassifier: Sendable {
             return .ipv6(v6)
         }
 
+        // 4b. Check for host:port (e.g. "example.com:8080", "1.1.1.1:853", "localhost:3000")
+        if trimmed.contains(":") && !trimmed.contains("/") {
+            let parts = trimmed.split(separator: ":")
+            if parts.count == 2, let portNum = UInt16(parts[1]), portNum > 0 {
+                if let url = URL(string: "https://" + trimmed), url.host != nil {
+                    return .url(url)
+                }
+            }
+        }
+
         // 5. Check if it looks like a URL without scheme (e.g. "api.example.com/v1/health")
         if trimmed.contains("/") && !trimmed.contains(" ") {
             if let url = URL(string: "https://" + trimmed), url.host != nil {

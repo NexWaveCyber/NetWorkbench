@@ -29,6 +29,7 @@ struct NexWaveApp: App {
     @State private var menuBarMonitor = MenuBarMonitorEngine.shared
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
     @State private var showInspector = false
+    @AppStorage("menuBarIconStyle") private var menuBarIconStyle: String = "nextGenWave"
 
     init() {
         MenuBarMonitorEngine.shared.startMonitoring()
@@ -232,14 +233,68 @@ struct NexWaveApp: App {
             MenuBarQuickGlanceView(monitor: menuBarMonitor, state: state)
         } label: {
             HStack(spacing: 4) {
-                Image(systemName: "waveform.path.ecg")
-                if let ms = menuBarMonitor.gatewayLatencyMs {
-                    Text(String(format: "%.0fms", ms))
+                let iconName: String = {
+                    if menuBarMonitor.healthStatus == .offline {
+                        switch menuBarIconStyle {
+                        case "network": return "network.slash"
+                        case "topology": return "circle.slash"
+                        default: return "waveform.slash"
+                        }
+                    } else if menuBarMonitor.healthStatus == .degraded {
+                        switch menuBarIconStyle {
+                        case "network": return "network.badge.shield.half.filled"
+                        case "topology": return "point.3.connected.trianglepath.dotted"
+                        default: return "waveform.badge.exclamationmark"
+                        }
+                    } else {
+                        switch menuBarIconStyle {
+                        case "forwardWave": return "wave.3.forward"
+                        case "sineWave": return "waveform.path"
+                        case "spectrumWave": return "waveform"
+                        case "network": return "network"
+                        case "topology": return "point.3.connected.trianglepath.dotted"
+                        default: return "waveform.path.ecg" // NexWave Signature Next-Gen Wave
+                        }
+                    }
+                }()
+                Image(systemName: iconName)
+
+                if menuBarMonitor.healthStatus == .offline {
+                    Text("Offline")
+                        .font(Theme.monoText(10, weight: .bold))
+                } else if let ms = menuBarMonitor.gatewayLatencyMs {
+                    Text(ms < 1.0 ? "<1ms" : String(format: "%.0fms", ms))
                         .font(Theme.monoText(10, weight: .bold))
                 }
             }
+            .help(menuBarStatusTooltip)
         }
         .menuBarExtraStyle(.window)
+    }
+
+    private var menuBarStatusTooltip: String {
+        var lines = [
+            "NexWave Network Workbench",
+            "Health: \(menuBarMonitor.healthScorePercentage)% (\(menuBarMonitor.healthScoreLabel))",
+            "Active Interface: \(menuBarMonitor.activeInterface) (\(menuBarMonitor.localIP)/\(menuBarMonitor.cidrPrefix))"
+        ]
+        if let gw = menuBarMonitor.gatewayLatencyMs {
+            let gwStr = gw < 1.0 ? "< 1 ms" : String(format: "%.1f ms", gw)
+            lines.append("Gateway: \(menuBarMonitor.defaultGateway) (\(gwStr))")
+        }
+        if let inet = menuBarMonitor.internetLatencyMs {
+            lines.append("Internet WAN (1.1.1.1): \(String(format: "%.1f ms", inet))")
+        }
+        if let wifi = menuBarMonitor.wifiLink {
+            let mcsStr = wifi.mcsIndex != nil ? " • MCS \(wifi.mcsIndex!)" : ""
+            lines.append("Wi-Fi: \"\(wifi.ssid)\" (\(wifi.rssi) dBm\(mcsStr) • Ch \(wifi.channel) • \(wifi.phyMode.displayName))")
+        } else if menuBarMonitor.healthStatus != .offline {
+            lines.append("Ethernet: 1.0 Gbps Full-Duplex (1000BASE-T)")
+        } else {
+            lines.append("Carrier Status: Disconnected / Link Down")
+        }
+        lines.append("Click for Quick Glance • ⌘1 Open App")
+        return lines.joined(separator: "\n")
     }
 
     @ViewBuilder

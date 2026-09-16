@@ -8,14 +8,29 @@ public struct HopRecord: Hashable, Sendable, Identifiable {
     public let hostname: String?
     public let rttMs: Double?
     public let isTimeout: Bool
+    public let asn: String?
+    public let asName: String?
+    public let deltaMs: Double?
 
-    public init(hopNumber: Int, address: String?, hostname: String?, rttMs: Double?, isTimeout: Bool) {
+    public init(
+        hopNumber: Int,
+        address: String?,
+        hostname: String?,
+        rttMs: Double?,
+        isTimeout: Bool,
+        asn: String? = nil,
+        asName: String? = nil,
+        deltaMs: Double? = nil
+    ) {
         self.id = hopNumber
         self.hopNumber = hopNumber
         self.address = address
         self.hostname = hostname
         self.rttMs = rttMs
         self.isTimeout = isTimeout
+        self.asn = asn
+        self.asName = asName
+        self.deltaMs = deltaMs
     }
 }
 

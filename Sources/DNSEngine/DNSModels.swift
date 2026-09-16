@@ -79,6 +79,7 @@ public struct DNSResolutionResult: Sendable {
     public let queryTimeMs: Double
     public let isHealthy: Bool
     public let errorMessage: String?
+    public let isDNSSECValidated: Bool
 
     public init(
         hostname: String,
@@ -88,7 +89,8 @@ public struct DNSResolutionResult: Sendable {
         ipv6Addresses: [IPAddress.IPv6],
         queryTimeMs: Double,
         isHealthy: Bool,
-        errorMessage: String? = nil
+        errorMessage: String? = nil,
+        isDNSSECValidated: Bool = false
     ) {
         self.hostname = hostname
         self.resolverName = resolverName
@@ -98,5 +100,6 @@ public struct DNSResolutionResult: Sendable {
         self.queryTimeMs = queryTimeMs
         self.isHealthy = isHealthy
         self.errorMessage = errorMessage
+        self.isDNSSECValidated = isDNSSECValidated
     }
 }

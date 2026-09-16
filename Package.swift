@@ -67,7 +67,7 @@ let package = Package(
         ),
         .target(
             name: "TracerouteEngine",
-            dependencies: ["NetworkCore", "PingEngine"],
+            dependencies: ["NetworkCore", "PingEngine", "InternetIntel"],
             path: "Sources/TracerouteEngine"
         ),
         .target(

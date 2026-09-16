@@ -13,6 +13,7 @@ public struct SettingsWorkspaceView: View {
     @AppStorage("preferredDNSResolver") private var preferredDNSResolver: String = "1.1.1.1"
     @AppStorage("enableDoH") private var enableDoH: Bool = true
     @AppStorage("menuBarIntervalSec") private var menuBarIntervalSec: Double = 2.5
+    @AppStorage("menuBarIconStyle") private var menuBarIconStyle: String = "nextGenWave"
     @AppStorage("slaLatencyThresholdMs") private var slaLatencyThresholdMs: Double = 50.0
     @AppStorage("slaLossThresholdPct") private var slaLossThresholdPct: Double = 5.0
     @AppStorage("maxPacketBufferSize") private var maxPacketBufferSize: Int = 2000
@@ -254,6 +255,27 @@ public struct SettingsWorkspaceView: View {
                         .font(Theme.monoText(11, weight: .bold))
                     Slider(value: $slaLossThresholdPct, in: 1...20, step: 1)
                         .frame(width: 100)
+                }
+
+                Divider().overlay(Theme.borderLight)
+
+                HStack {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Menu Bar Status Icon")
+                            .font(.system(size: 12))
+                        Text("NexWave brand-aligned next-gen wave telemetry for wired & wireless users")
+                            .font(.system(size: 10))
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    Picker("", selection: $menuBarIconStyle) {
+                        Label("Next-Gen Wave (Signature)", systemImage: "waveform.path.ecg").tag("nextGenWave")
+                        Label("Forward Waves (>>>)", systemImage: "wave.3.forward").tag("forwardWave")
+                        Label("Carrier Wave (Sine)", systemImage: "waveform.path").tag("sineWave")
+                        Label("Spectrum Bars", systemImage: "waveform").tag("spectrumWave")
+                        Label("Unified Network (Globe)", systemImage: "network").tag("network")
+                    }
+                    .frame(width: 230)
                 }
             }
         }
