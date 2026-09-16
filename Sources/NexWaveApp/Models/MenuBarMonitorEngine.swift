@@ -30,6 +30,10 @@ public final class MenuBarMonitorEngine: @unchecked Sendable {
     public var gatewayLatencyMs: Double? = nil
     public var internetLatencyMs: Double? = nil
     public var publicIP: String = "Resolving..."
+    public var publicIPv4: String = "Resolving..."
+    public var publicIPv6: String = "Resolving..."
+    public var localIPv6: String = ""
+    public var hasIPv6: Bool = false
     public var asnName: String = ""
     public var wifiLink: WiFiCurrentLink? = nil
     public var gatewaySamples: [Double] = []
@@ -76,6 +80,14 @@ public final class MenuBarMonitorEngine: @unchecked Sendable {
             self.dnsServer = dns.primary
             self.allDnsServers = dns.all
         }
+        let v6 = queryLocalIPv6(interface: self.activeInterface)
+        if !v6.isEmpty {
+            self.localIPv6 = v6
+            self.hasIPv6 = true
+        }
+        Task { [weak self] in
+            await self?.fetchPublicIPDetails()
+        }
     }
 
     public func startMonitoring() {
@@ -108,6 +120,11 @@ public final class MenuBarMonitorEngine: @unchecked Sendable {
         let ip = queryLocalIP(interface: self.activeInterface)
         if !ip.isEmpty && ip != "127.0.0.1" {
             self.localIP = ip
+        }
+        let v6 = queryLocalIPv6(interface: self.activeInterface)
+        if !v6.isEmpty {
+            self.localIPv6 = v6
+            self.hasIPv6 = true
         }
 
         // 3. Query system DNS
@@ -197,20 +214,59 @@ public final class MenuBarMonitorEngine: @unchecked Sendable {
     }
 
     public func fetchPublicIPDetails() async {
-        guard let url = URL(string: "https://api.ipify.org?format=text") else { return }
-        var request = URLRequest(url: url)
-        request.timeoutInterval = 3.0
+        let v4Endpoints = ["https://api.ipify.org?format=text", "https://v4.ident.me", "https://ipv4.icanhazip.com"]
+        let v6Endpoints = ["https://api6.ipify.org?format=text", "https://v6.ident.me", "https://ipv6.icanhazip.com"]
 
-        do {
-            let (data, response) = try await URLSession.shared.data(for: request)
-            if let http = response as? HTTPURLResponse, http.statusCode == 200,
-               let ip = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) {
-                await MainActor.run {
-                    self.publicIP = ip
+        async let fetchV4: String? = {
+            for ep in v4Endpoints {
+                guard let url = URL(string: ep) else { continue }
+                var req = URLRequest(url: url)
+                req.timeoutInterval = 3.0
+                if let (data, resp) = try? await URLSession.shared.data(for: req),
+                   let http = resp as? HTTPURLResponse, http.statusCode == 200,
+                   let text = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines),
+                   !text.isEmpty && !text.contains(":") {
+                    return text
                 }
             }
-        } catch {
-            // Keep existing public IP or fallback
+            return nil
+        }()
+
+        async let fetchV6: String? = {
+            for ep in v6Endpoints {
+                guard let url = URL(string: ep) else { continue }
+                var req = URLRequest(url: url)
+                req.timeoutInterval = 3.0
+                if let (data, resp) = try? await URLSession.shared.data(for: req),
+                   let http = resp as? HTTPURLResponse, http.statusCode == 200,
+                   let text = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines),
+                   !text.isEmpty && text.contains(":") {
+                    return text
+                }
+            }
+            return nil
+        }()
+
+        let (resV4, resV6) = await (fetchV4, fetchV6)
+
+        await MainActor.run {
+            if let v4 = resV4 {
+                self.publicIPv4 = v4
+                self.publicIP = v4
+            } else if self.publicIPv4 == "Resolving..." {
+                self.publicIPv4 = "Unavailable"
+            }
+
+            if let v6 = resV6 {
+                self.publicIPv6 = v6
+                self.hasIPv6 = true
+            } else {
+                if self.localIPv6.isEmpty {
+                    self.publicIPv6 = "Not Configured"
+                } else if self.publicIPv6 == "Resolving..." {
+                    self.publicIPv6 = "No Global Route"
+                }
+            }
         }
     }
 
@@ -318,6 +374,30 @@ public final class MenuBarMonitorEngine: @unchecked Sendable {
         }
 
         return "127.0.0.1"
+    }
+
+    public func queryLocalIPv6(interface: String) -> String {
+        var ifaddr: UnsafeMutablePointer<ifaddrs>?
+        guard getifaddrs(&ifaddr) == 0, let firstAddr = ifaddr else { return "" }
+        defer { freeifaddrs(ifaddr) }
+
+        var ptr: UnsafeMutablePointer<ifaddrs>? = firstAddr
+        while let current = ptr {
+            let name = String(cString: current.pointee.ifa_name)
+            if (name == interface || interface.isEmpty) && current.pointee.ifa_addr != nil && current.pointee.ifa_addr.pointee.sa_family == UInt8(AF_INET6) {
+                var hostname = [CChar](repeating: 0, count: Int(NI_MAXHOST))
+                if getnameinfo(current.pointee.ifa_addr, socklen_t(current.pointee.ifa_addr.pointee.sa_len), &hostname, socklen_t(hostname.count), nil, 0, NI_NUMERICHOST) == 0 {
+                    let ipStr = hostname.withUnsafeBufferPointer { buffer in
+                        buffer.baseAddress.map { String(cString: $0) } ?? ""
+                    }
+                    if !ipStr.isEmpty && !ipStr.starts(with: "fe80") && !ipStr.starts(with: "::1") {
+                        return ipStr.components(separatedBy: "%")[0]
+                    }
+                }
+            }
+            ptr = current.pointee.ifa_next
+        }
+        return ""
     }
 
     public func parseSystemDNS() -> (primary: String, all: [String]) {

@@ -6,6 +6,7 @@ import InvestigationKit
 public struct HomeDashboardView: View {
     @Bindable var state: AppState
     @State private var monitor = MenuBarMonitorEngine.shared
+    @State private var preferPublicIPv6: Bool = true
     @State private var hoveredStudio: String? = nil
 
     public init(state: AppState) {
@@ -190,7 +191,7 @@ public struct HomeDashboardView: View {
 
     // MARK: - Network Interface Bar
     private var networkInterfaceBar: some View {
-        HStack(spacing: 14) {
+        HStack(spacing: 12) {
             kpiCard(
                 label: "PRIMARY LINK",
                 val: primaryLinkDisplay,
@@ -204,7 +205,8 @@ public struct HomeDashboardView: View {
                 icon: "laptopcomputer",
                 badge: monitor.activeInterface,
                 badgeColor: Theme.azurePro,
-                copyValue: monitor.localIP
+                copyValue: monitor.localIP,
+                helpText: monitor.localIPv6.isEmpty ? "Local IPv4: \(monitor.localIP)" : "Local IPv4: \(monitor.localIP)\nLocal IPv6 (SLAAC): \(monitor.localIPv6)"
             )
             kpiCard(
                 label: "DEFAULT GATEWAY",
@@ -223,7 +225,85 @@ public struct HomeDashboardView: View {
                 copyValue: monitor.dnsServer.isEmpty ? nil : monitor.dnsServer,
                 helpText: monitor.allDnsServers.isEmpty ? "No active DNS servers detected" : "Configured DNS Resolvers:\n" + monitor.allDnsServers.joined(separator: "\n")
             )
+            publicWanCard
         }
+    }
+
+    private var publicWanCard: some View {
+        let isV6 = preferPublicIPv6 && monitor.hasIPv6
+        let activeIP = isV6 ? monitor.publicIPv6 : (monitor.publicIPv4.isEmpty || monitor.publicIPv4 == "Resolving..." ? monitor.publicIP : monitor.publicIPv4)
+        let label = isV6 ? "PUBLIC IPV6 (WAN)" : "PUBLIC IPV4 (WAN)"
+
+        return HStack(spacing: 10) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(Theme.neonCyan.opacity(0.12))
+                    .frame(width: 32, height: 32)
+
+                Image(systemName: "globe")
+                    .font(.system(size: 14))
+                    .foregroundStyle(Theme.neonCyan)
+            }
+
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 5) {
+                    Text(label)
+                        .font(.system(size: 9, weight: .bold, design: .monospaced))
+                        .foregroundStyle(.secondary)
+
+                    if monitor.hasIPv6 {
+                        Button(action: {
+                            withAnimation(.easeInOut(duration: 0.2)) {
+                                preferPublicIPv6.toggle()
+                            }
+                        }) {
+                            Text(preferPublicIPv6 ? "v6 ⇄ v4" : "v4 ⇄ v6")
+                                .font(.system(size: 7, weight: .heavy, design: .monospaced))
+                                .padding(.horizontal, 4)
+                                .padding(.vertical, 1)
+                                .background(Theme.neonCyan.opacity(0.18))
+                                .foregroundStyle(Theme.neonCyan)
+                                .clipShape(Capsule())
+                        }
+                        .buttonStyle(.plain)
+                        .help("Toggle between Public IPv6 and Public IPv4 display")
+                    } else {
+                        Text("IPv4")
+                            .font(.system(size: 8, weight: .bold, design: .monospaced))
+                            .padding(.horizontal, 4)
+                            .padding(.vertical, 1)
+                            .background(Theme.signalEmerald.opacity(0.15))
+                            .foregroundStyle(Theme.signalEmerald)
+                            .clipShape(Capsule())
+                    }
+                }
+
+                Text(activeIP)
+                    .font(Theme.monoText(11, weight: .semibold))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.75)
+            }
+
+            Spacer()
+
+            if !activeIP.isEmpty && activeIP != "Resolving..." && activeIP != "Unavailable" && activeIP != "Not Configured" {
+                Button(action: {
+                    NSPasteboard.general.clearContents()
+                    NSPasteboard.general.setString(activeIP, forType: .string)
+                    state.toastMessage = "Copied \(activeIP) to clipboard"
+                }) {
+                    Image(systemName: "doc.on.doc")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+                .help("Copy to clipboard")
+            }
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity)
+        .engineeringCard(padding: 0, cornerRadius: 10, hasHoverEffect: true)
+        .help("Public IPv6: \(monitor.publicIPv6)\nPublic IPv4: \(monitor.publicIPv4)\nLocal IPv6: \(monitor.localIPv6.isEmpty ? "None" : monitor.localIPv6)")
     }
 
     private var primaryLinkDisplay: String {
