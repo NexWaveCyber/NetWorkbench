@@ -159,7 +159,7 @@ let package = Package(
         ),
         .target(
             name: "WiFiKit",
-            dependencies: ["NetworkCore"],
+            dependencies: ["NetworkCore", "DeviceKit"],
             path: "Sources/WiFiKit"
         ),
         .target(
@@ -249,7 +249,7 @@ let package = Package(
         ),
         .testTarget(
             name: "WiFiKitTests",
-            dependencies: ["WiFiKit", "NetworkCore"],
+            dependencies: ["WiFiKit", "NetworkCore", "DeviceKit"],
             path: "Tests/WiFiKitTests"
         ),
         .testTarget(

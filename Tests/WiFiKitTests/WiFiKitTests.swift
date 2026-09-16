@@ -1,6 +1,7 @@
 import Testing
 import Foundation
 @testable import WiFiKit
+import DeviceKit
 
 @Suite("WiFiKit Telemetry & RF Metrics")
 struct WiFiKitTests {
@@ -130,4 +131,129 @@ struct WiFiKitTests {
         #expect(guest != nil)
         #expect(guest?.channel == 44)
     }
+
+    @Test("Algorithmic RF Channel Recommendation")
+    func testChannelRecommendationEngine() async {
+        let engine = WiFiEngine()
+        // Simulate heavy congestion on 2.4 GHz Ch 1 & 11, clean Ch 6
+        let networks: [NearbyAP] = [
+            NearbyAP(ssid: "AP1", bssid: "00:00:00:00:00:01", channel: 1, band: .ghz2_4, channelWidth: .mhz20, rssi: -45, noise: -85, security: "WPA2", phyMode: "802.11n", isCurrentAssociation: false),
+            NearbyAP(ssid: "AP2", bssid: "00:00:00:00:00:02", channel: 1, band: .ghz2_4, channelWidth: .mhz20, rssi: -55, noise: -85, security: "WPA2", phyMode: "802.11n", isCurrentAssociation: false),
+            NearbyAP(ssid: "AP3", bssid: "00:00:00:00:00:03", channel: 11, band: .ghz2_4, channelWidth: .mhz20, rssi: -50, noise: -85, security: "WPA2", phyMode: "802.11n", isCurrentAssociation: false),
+            // 5 GHz: heavy on UNII-1 (36, 40, 44, 48), clean UNII-3 (149)
+            NearbyAP(ssid: "5G-1", bssid: "00:00:00:00:00:04", channel: 36, band: .ghz5, channelWidth: .mhz80, rssi: -50, noise: -85, security: "WPA2", phyMode: "802.11ax", isCurrentAssociation: false),
+            NearbyAP(ssid: "5G-2", bssid: "00:00:00:00:00:05", channel: 40, band: .ghz5, channelWidth: .mhz80, rssi: -55, noise: -85, security: "WPA2", phyMode: "802.11ax", isCurrentAssociation: false),
+            NearbyAP(ssid: "5G-3", bssid: "00:00:00:00:00:06", channel: 44, band: .ghz5, channelWidth: .mhz80, rssi: -60, noise: -85, security: "WPA2", phyMode: "802.11ax", isCurrentAssociation: false)
+        ]
+
+        let recs = await engine.recommendOptimalChannels(from: networks, currentChannel: 1)
+        #expect(recs.count == 3)
+
+        // 2.4 GHz recommendation should select Ch 6
+        let rec24 = recs.first { $0.band == .ghz2_4 }
+        #expect(rec24 != nil)
+        #expect(rec24?.recommendedChannel == 6)
+        #expect((rec24?.cleanlinessScore ?? 0) > 80)
+
+        // 5 GHz recommendation should select UNII-3 (149) or DFS
+        let rec5 = recs.first { $0.band == .ghz5 }
+        #expect(rec5 != nil)
+        #expect(rec5?.recommendedChannel != 36) // Ch 36 is congested
+        #expect(rec5?.contendingAPCount == 0)
+
+        // 6 GHz recommendation should exist
+        let rec6 = recs.first { $0.band == .ghz6 }
+        #expect(rec6 != nil)
+        #expect(rec6?.cleanlinessScore == 100)
+    }
+
+    @Test("Co-Channel Contention Assessment")
+    func testCoChannelContentionEvaluation() async {
+        let engine = WiFiEngine()
+        let currentLink = WiFiCurrentLink(
+            interfaceName: "en0",
+            macAddress: "de:06:f4:f1:6e:35",
+            ssid: "HomeOffice",
+            bssid: "00:1C:7F:6C:17:6E",
+            rssi: -50,
+            noise: -85,
+            transmitRate: 866.0,
+            channel: 36,
+            band: .ghz5,
+            channelWidth: .mhz80,
+            phyMode: .ac,
+            security: "WPA2",
+            countryCode: "US"
+        )
+
+        // Case 1: Clean - 0 competing APs
+        let cleanWarning = await engine.evaluateCoChannelContention(currentLink: currentLink, networks: [])
+        #expect(cleanWarning.severity == .clean)
+        #expect(cleanWarning.contendingAPCount == 0)
+
+        // Case 2: Severe - 4 competing APs on Ch 36
+        let busyNetworks = [
+            NearbyAP(ssid: "Neighbor1", bssid: "00:11:22:33:44:01", channel: 36, band: .ghz5, channelWidth: .mhz80, rssi: -60, noise: -85, security: "WPA2", phyMode: "802.11ac", isCurrentAssociation: false),
+            NearbyAP(ssid: "Neighbor2", bssid: "00:11:22:33:44:02", channel: 36, band: .ghz5, channelWidth: .mhz80, rssi: -65, noise: -85, security: "WPA2", phyMode: "802.11ac", isCurrentAssociation: false),
+            NearbyAP(ssid: "Neighbor3", bssid: "00:11:22:33:44:03", channel: 36, band: .ghz5, channelWidth: .mhz80, rssi: -70, noise: -85, security: "WPA2", phyMode: "802.11ac", isCurrentAssociation: false),
+            NearbyAP(ssid: "Neighbor4", bssid: "00:11:22:33:44:04", channel: 36, band: .ghz5, channelWidth: .mhz80, rssi: -72, noise: -85, security: "WPA2", phyMode: "802.11ac", isCurrentAssociation: false)
+        ]
+        let severeWarning = await engine.evaluateCoChannelContention(currentLink: currentLink, networks: busyNetworks)
+        #expect(severeWarning.severity == .severe)
+        #expect(severeWarning.contendingAPCount == 4)
+    }
+
+    @Test("OUI Hardware Vendor Resolution")
+    func testOUIHardwareVendorResolution() {
+        // Cisco Systems
+        #expect(OUIResolver.resolve(mac: "00:00:0C:12:34:56") == "Cisco Systems")
+        // Apple
+        #expect(OUIResolver.resolve(mac: "3C:07:54:AA:BB:CC") == "Apple")
+        // Aruba Networks
+        #expect(OUIResolver.resolve(mac: "00:0B:86:11:22:33") == "Aruba Networks")
+        // Ubiquiti Networks
+        #expect(OUIResolver.resolve(mac: "24:A4:3C:99:88:77") == "Ubiquiti Networks")
+        // eero
+        #expect(OUIResolver.resolve(mac: "50:F5:DA:44:55:66") == "eero")
+    }
+
+    @Test("RF Survey Report Markdown and JSON Export")
+    func testRFSurveyReportGeneration() async {
+        let engine = WiFiEngine()
+        let link = WiFiCurrentLink(
+            interfaceName: "en0",
+            macAddress: "de:06:f4:f1:6e:35",
+            ssid: "HQ-Production",
+            bssid: "00:00:0C:12:34:56",
+            vendorName: "Cisco Systems",
+            rssi: -42,
+            noise: -88,
+            transmitRate: 1200.0,
+            mcsIndex: 11,
+            channel: 149,
+            band: .ghz5,
+            channelWidth: .mhz80,
+            phyMode: .ax,
+            security: "WPA3 Enterprise",
+            countryCode: "US",
+            dhcpServer: "192.168.1.1"
+        )
+
+        let networks = [
+            NearbyAP(ssid: "HQ-Guest", bssid: "00:00:0C:99:88:77", vendorName: "Cisco Systems", channel: 149, band: .ghz5, channelWidth: .mhz80, rssi: -65, noise: -88, security: "WPA2", phyMode: "802.11ax", isCurrentAssociation: false)
+        ]
+
+        let report = await engine.generateSurveyReport(currentLink: link, networks: networks)
+        let md = report.toMarkdown()
+        let json = report.toJSON()
+
+        #expect(md.contains("NexWave Wi-Fi Studio RF Survey Report"))
+        #expect(md.contains("HQ-Production"))
+        #expect(md.contains("Cisco Systems"))
+        #expect(md.contains("Algorithmic Channel Recommendations"))
+
+        #expect(json.contains("\"ssid\" : \"HQ-Production\""))
+        #expect(json.contains("\"vendorName\" : \"Cisco Systems\""))
+    }
 }
+

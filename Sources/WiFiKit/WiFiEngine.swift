@@ -1,5 +1,6 @@
 import Foundation
 import CoreWLAN
+import DeviceKit
 
 public actor WiFiEngine {
     public static let shared = WiFiEngine()
@@ -76,15 +77,19 @@ public actor WiFiEngine {
         let bssid = systemSummary.bssid.isEmpty ? (wlan.bssid() ?? "00:00:00:00:00:00") : systemSummary.bssid
         let security = systemSummary.security.isEmpty ? "WPA2/WPA3 Personal" : systemSummary.security
         let dhcpServer = systemSummary.dhcpServer
+        let vendor = OUIResolver.resolve(mac: bssid)
 
         // Check for roaming event
         let now = Date()
         if let prevBSSID = previousBSSID, !bssid.isEmpty, bssid != "00:00:00:00:00:00", bssid != prevBSSID {
+            let prevVendor = OUIResolver.resolve(mac: prevBSSID)
             let event = WiFiRoamingEvent(
                 timestamp: now,
                 ssid: ssid,
                 previousBSSID: prevBSSID,
+                previousVendor: prevVendor,
                 newBSSID: bssid,
+                newVendor: vendor,
                 previousRSSI: previousRSSI,
                 newRSSI: rawRSSI,
                 previousChannel: previousChannel,
@@ -111,6 +116,7 @@ public actor WiFiEngine {
             macAddress: macAddress,
             ssid: ssid,
             bssid: bssid,
+            vendorName: vendor,
             rssi: rawRSSI,
             noise: rawNoise,
             transmitRate: rawTxRate,
@@ -180,10 +186,13 @@ public actor WiFiEngine {
             let effectiveWidth = chInfo?.width ?? pNet.channelWidth
 
             let isAssoc = !currentBSSID.isEmpty && (pNet.bssid.lowercased() == currentBSSID.lowercased() || pNet.isCurrentAssociation)
+            let effectiveBSSID = isAssoc && !currentBSSID.isEmpty ? currentBSSID : pNet.bssid
+            let vendor = OUIResolver.resolve(mac: effectiveBSSID)
 
             let ap = NearbyAP(
                 ssid: pNet.ssid,
-                bssid: pNet.bssid,
+                bssid: effectiveBSSID,
+                vendorName: vendor,
                 channel: pNet.channel,
                 band: effectiveBand,
                 channelWidth: effectiveWidth,
@@ -199,9 +208,11 @@ public actor WiFiEngine {
         // Fallback: If system_profiler returned empty, generate synthetic entries from CoreWLAN scanned channels
         if networks.isEmpty && !scannedChannels.isEmpty {
             for (ch, data) in scannedChannels {
+                let genBSSID = String(format: "02:00:00:00:%02X:%02X", ch, abs(data.rssi))
                 let ap = NearbyAP(
                     ssid: "Local AP (Ch \(ch))",
-                    bssid: String(format: "02:00:00:00:%02X:%02X", ch, abs(data.rssi)),
+                    bssid: genBSSID,
+                    vendorName: OUIResolver.resolve(mac: genBSSID),
                     channel: ch,
                     band: data.band,
                     channelWidth: data.width,
@@ -244,6 +255,209 @@ public actor WiFiEngine {
             }
             return $0.channel < $1.channel
         }
+    }
+
+    /// Algorithmic RF Channel Recommendation Engine
+    public func recommendOptimalChannels(from networks: [NearbyAP], currentChannel: Int = 0) -> [WiFiChannelRecommendation] {
+        var recommendations: [WiFiChannelRecommendation] = []
+
+        // 1. 2.4 GHz Optimization (Non-overlapping standard channels: 1, 6, 11)
+        let candidates24 = [1, 6, 11]
+        var best24Ch = 1
+        var best24Score = -1
+        var best24Count = 0
+        var best24Reason = ""
+
+        let aps24 = networks.filter { $0.band == .ghz2_4 }
+
+        for ch in candidates24 {
+            let directCount = aps24.filter { $0.channel == ch }.count
+            let adjacentCount = aps24.filter { abs($0.channel - ch) <= 2 && $0.channel != ch }.count
+
+            var penalty = directCount * 25 + adjacentCount * 12
+            for ap in aps24 where abs(ap.channel - ch) <= 2 {
+                let sig = ap.rssi ?? -85
+                if sig > -60 { penalty += 15 }
+                else if sig > -75 { penalty += 8 }
+            }
+
+            let score = max(10, 100 - penalty)
+            if score > best24Score {
+                best24Score = score
+                best24Ch = ch
+                best24Count = directCount
+                if directCount == 0 && adjacentCount == 0 {
+                    best24Reason = "Cleanest 2.4 GHz channel; zero competing or adjacent BSSIDs."
+                } else if directCount == 0 {
+                    best24Reason = "No co-channel APs on Ch \(ch); minimal adjacent channel bleed."
+                } else {
+                    best24Reason = "\(directCount) co-channel AP(s); lowest overall interference floor."
+                }
+            }
+        }
+
+        recommendations.append(
+            WiFiChannelRecommendation(
+                band: .ghz2_4,
+                recommendedChannel: best24Ch,
+                channelWidth: "20 MHz",
+                contendingAPCount: best24Count,
+                cleanlinessScore: best24Score,
+                reason: best24Reason
+            )
+        )
+
+        // 2. 5 GHz Optimization
+        // 80 MHz bonded channel candidate primary anchors
+        let candidates5 = [
+            (anchor: 36, block: [36, 40, 44, 48], isDFS: false, label: "UNII-1"),
+            (anchor: 52, block: [52, 56, 60, 64], isDFS: true, label: "UNII-2 DFS"),
+            (anchor: 100, block: [100, 104, 108, 112], isDFS: true, label: "UNII-2e DFS"),
+            (anchor: 149, block: [149, 153, 157, 161], isDFS: false, label: "UNII-3")
+        ]
+
+        let aps5 = networks.filter { $0.band == .ghz5 }
+        var best5Ch = 149
+        var best5Score = -1
+        var best5Count = 0
+        var best5Reason = ""
+
+        for block in candidates5 {
+            let contending = aps5.filter { block.block.contains($0.channel) }
+            var penalty = contending.count * 20
+            for ap in contending {
+                let sig = ap.rssi ?? -85
+                if sig > -60 { penalty += 18 }
+                else if sig > -75 { penalty += 10 }
+            }
+
+            let score = max(10, 100 - penalty)
+            if score > best5Score {
+                best5Score = score
+                best5Ch = block.anchor
+                best5Count = contending.count
+                if contending.isEmpty {
+                    best5Reason = "Zero co-channel contention on \(block.label) 80 MHz bonded spectrum."
+                } else {
+                    best5Reason = "\(contending.count) competing AP(s) in \(block.label); optimal SNR margin."
+                }
+            }
+        }
+
+        recommendations.append(
+            WiFiChannelRecommendation(
+                band: .ghz5,
+                recommendedChannel: best5Ch,
+                channelWidth: "80 MHz",
+                contendingAPCount: best5Count,
+                cleanlinessScore: best5Score,
+                reason: best5Reason
+            )
+        )
+
+        // 3. 6 GHz Optimization (Wi-Fi 6E / Wi-Fi 7)
+        // Preferred Scanning Channels (PSC)
+        let candidate6 = [37, 69, 101, 133]
+        let aps6 = networks.filter { $0.band == .ghz6 }
+        var best6Ch = 37
+        var best6Count = 0
+        var best6Score = 100
+        var best6Reason = "Uncontested Preferred Scanning Channel (PSC) for 6 GHz Wi-Fi 6E/7."
+
+        for ch in candidate6 {
+            let count = aps6.filter { abs($0.channel - ch) <= 8 }.count
+            if count == 0 {
+                best6Ch = ch
+                best6Count = 0
+                best6Score = 100
+                best6Reason = "Pristine 160 MHz PSC spectrum block with zero competing BSSIDs."
+                break
+            } else if count < best6Count || best6Score == 100 {
+                best6Ch = ch
+                best6Count = count
+                best6Score = max(20, 100 - count * 20)
+                best6Reason = "\(count) active Wi-Fi 6E/7 AP(s) detected."
+            }
+        }
+
+        recommendations.append(
+            WiFiChannelRecommendation(
+                band: .ghz6,
+                recommendedChannel: best6Ch,
+                channelWidth: "160 MHz",
+                contendingAPCount: best6Count,
+                cleanlinessScore: best6Score,
+                reason: best6Reason
+            )
+        )
+
+        return recommendations
+    }
+
+    /// Evaluates co-channel interference on the active link
+    public func evaluateCoChannelContention(currentLink: WiFiCurrentLink, networks: [NearbyAP]) -> WiFiCoChannelWarning {
+        let competing = networks.filter { ap in
+            ap.channel == currentLink.channel &&
+            !ap.isCurrentAssociation &&
+            ap.bssid.lowercased() != currentLink.bssid.lowercased()
+        }
+
+        let count = competing.count
+        if count == 0 {
+            return WiFiCoChannelWarning(
+                channel: currentLink.channel,
+                band: currentLink.band,
+                contendingAPCount: 0,
+                severity: .clean,
+                advisory: "Zero co-channel contention detected on Channel \(currentLink.channel). Client has uncontested airtime."
+            )
+        } else if count == 1 {
+            let ap = competing[0]
+            let sig = ap.rssi != nil ? "(\(ap.rssi!) dBm)" : ""
+            return WiFiCoChannelWarning(
+                channel: currentLink.channel,
+                band: currentLink.band,
+                contendingAPCount: 1,
+                severity: .low,
+                advisory: "1 competing AP '\(ap.ssid)' \(sig) sharing Channel \(currentLink.channel). Negligible impact on line-rate throughput."
+            )
+        } else if count <= 3 {
+            return WiFiCoChannelWarning(
+                channel: currentLink.channel,
+                band: currentLink.band,
+                contendingAPCount: count,
+                severity: .moderate,
+                advisory: "\(count) competing APs on Channel \(currentLink.channel). Clear Channel Assessment (CCA) deferrals may induce slight jitter."
+            )
+        } else {
+            return WiFiCoChannelWarning(
+                channel: currentLink.channel,
+                band: currentLink.band,
+                contendingAPCount: count,
+                severity: .severe,
+                advisory: "Heavy co-channel contention (\(count) APs) on Channel \(currentLink.channel). Significant airtime contention and throughput backoff are likely."
+            )
+        }
+    }
+
+    /// Generates a comprehensive RF Site Survey Report
+    public func generateSurveyReport(
+        currentLink: WiFiCurrentLink?,
+        networks: [NearbyAP]
+    ) -> WiFiRFSurveyReport {
+        let currentCh = currentLink?.channel ?? 0
+        let recs = recommendOptimalChannels(from: networks, currentChannel: currentCh)
+        let warning = currentLink != nil ? evaluateCoChannelContention(currentLink: currentLink!, networks: networks) : nil
+        let cong = calculateChannelCongestion(from: networks, currentChannel: currentCh)
+
+        return WiFiRFSurveyReport(
+            currentLink: currentLink,
+            recommendations: recs,
+            coChannelWarning: warning,
+            congestion: cong,
+            nearbyAPs: networks,
+            roamingEvents: roamingHistory
+        )
     }
 
     // MARK: - Private Telemetry Helpers
@@ -351,10 +565,12 @@ public actor WiFiEngine {
             if line.contains("Other Local Wi-Fi Networks:") {
                 // Save current if any
                 if isCurrentNetwork && !currentSSID.isEmpty {
+                    let bssid = previousBSSID ?? "Associated AP"
                     networks.append(
                         NearbyAP(
                             ssid: currentSSID,
-                            bssid: "Associated AP",
+                            bssid: bssid,
+                            vendorName: OUIResolver.resolve(mac: bssid),
                             channel: currentChannel,
                             band: currentBand,
                             channelWidth: currentWidth,
@@ -378,10 +594,12 @@ public actor WiFiEngine {
             if (isOtherNetworks || isCurrentNetwork) && trimmed.hasSuffix(":") && !isKnownKey && trimmed != "Current Network Information:" && trimmed != "Other Local Wi-Fi Networks:" {
                 // New network block
                 if !currentSSID.isEmpty && currentChannel > 0 {
+                    let bssid = String(format: "00:AP:%02X:%02X", currentChannel, networks.count + 1)
                     networks.append(
                         NearbyAP(
                             ssid: currentSSID,
-                            bssid: String(format: "00:AP:%02X:%02X", currentChannel, networks.count + 1),
+                            bssid: bssid,
+                            vendorName: OUIResolver.resolve(mac: bssid),
                             channel: currentChannel,
                             band: currentBand,
                             channelWidth: currentWidth,
@@ -447,10 +665,12 @@ public actor WiFiEngine {
         }
 
         if !currentSSID.isEmpty {
+            let bssid = isAssoc ? (previousBSSID ?? "Associated AP") : String(format: "00:AP:%02X:%02X", currentChannel, networks.count + 1)
             networks.append(
                 NearbyAP(
                     ssid: currentSSID,
-                    bssid: String(format: "00:AP:%02X:%02X", currentChannel, networks.count + 1),
+                    bssid: bssid,
+                    vendorName: OUIResolver.resolve(mac: bssid),
                     channel: currentChannel,
                     band: currentBand,
                     channelWidth: currentWidth,

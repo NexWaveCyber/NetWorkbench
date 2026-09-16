@@ -133,7 +133,66 @@ public enum OUIResolver {
 
         // VirtualBox / QEMU
         "080027": "Oracle VirtualBox",
-        "525400": "QEMU / KVM Virtual NIC"
+        "525400": "QEMU / KVM Virtual NIC",
+
+        // Aruba Networks / HPE
+        "000B86": "Aruba Networks",
+        "001A1E": "Aruba Networks",
+        "00246C": "Aruba Networks",
+        "20A6CD": "Aruba Networks",
+        "40E3D6": "Aruba Networks",
+        "94B40F": "Aruba Networks",
+        "D8C7C8": "Aruba Networks",
+        "F05C19": "Aruba Networks",
+
+        // Cisco Meraki
+        "00180A": "Cisco Meraki",
+        "3456FE": "Cisco Meraki",
+        "0C8DDB": "Cisco Meraki",
+        "E0553D": "Cisco Meraki",
+
+        // Ruckus Wireless (CommScope)
+        "001D2D": "Ruckus Wireless",
+        "002482": "Ruckus Wireless",
+        "589396": "Ruckus Wireless",
+        "8CEF80": "Ruckus Wireless",
+        "C4108A": "Ruckus Wireless",
+
+        // Amazon / eero
+        "50F5DA": "eero",
+        "B0A737": "eero",
+        "44650D": "Amazon Technologies",
+        "6837E9": "Amazon Technologies",
+
+        // Netgear
+        "00095B": "Netgear",
+        "00146C": "Netgear",
+        "001F33": "Netgear",
+        "20E52A": "Netgear",
+        "288088": "Netgear",
+        "841B5E": "Netgear",
+
+        // TP-Link
+        "50C7BF": "TP-Link",
+        "EC086B": "TP-Link",
+        "6038E0": "TP-Link",
+        "74DA38": "TP-Link",
+        "984827": "TP-Link",
+
+        // Google / Nest
+        "001A11": "Google",
+        "30FD38": "Google",
+        "F4F5DB": "Google",
+        "546009": "Google",
+
+        // ASUS
+        "001E8C": "ASUS",
+        "04D9F5": "ASUS",
+        "10BF48": "ASUS",
+        "2C4D54": "ASUS",
+
+        // Mist Systems (Juniper)
+        "5C5B35": "Mist Systems"
     ]
 
     /// Resolves a MAC address (e.g. `00:1c:73:a1:b2:c3` or `0-1c-73-a1-b2-c3`) to its hardware vendor name.
