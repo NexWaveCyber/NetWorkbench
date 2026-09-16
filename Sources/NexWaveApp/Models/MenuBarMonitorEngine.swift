@@ -2,6 +2,7 @@ import SwiftUI
 import Foundation
 import WiFiKit
 import Darwin
+import SystemConfiguration
 
 public enum NetworkHealthStatus: String, Sendable {
     case optimal = "Optimal"
@@ -24,7 +25,8 @@ public final class MenuBarMonitorEngine: @unchecked Sendable {
     public var activeInterface: String = "en0"
     public var localIP: String = "127.0.0.1"
     public var defaultGateway: String = "127.0.0.1"
-    public var dnsServer: String = "1.1.1.1"
+    public var dnsServer: String = ""
+    public var allDnsServers: [String] = []
     public var gatewayLatencyMs: Double? = nil
     public var internetLatencyMs: Double? = nil
     public var publicIP: String = "Resolving..."
@@ -33,6 +35,25 @@ public final class MenuBarMonitorEngine: @unchecked Sendable {
     public var gatewaySamples: [Double] = []
     public var healthStatus: NetworkHealthStatus = .optimal
     public var lastFlushTimestamp: Date? = nil
+
+    public var dnsResolverName: String {
+        guard !dnsServer.isEmpty else { return "Unassigned" }
+        if dnsServer.starts(with: "1.1.1.") || dnsServer.starts(with: "1.0.0.") {
+            return "Cloudflare"
+        } else if dnsServer.starts(with: "8.8.8.") || dnsServer.starts(with: "8.8.4.") {
+            return "Google DNS"
+        } else if dnsServer.starts(with: "9.9.9.") || dnsServer.starts(with: "149.112.112.") {
+            return "Quad9"
+        } else if dnsServer.starts(with: "208.67.222.") || dnsServer.starts(with: "208.67.220.") {
+            return "OpenDNS"
+        } else if !defaultGateway.isEmpty && dnsServer == defaultGateway {
+            return "Router DNS"
+        } else if dnsServer.contains(":") {
+            return "IPv6 DNS"
+        } else {
+            return "System DNS"
+        }
+    }
 
     private var monitorTask: Task<Void, Never>? = nil
     private var lastPublicIPCheck: Date = .distantPast
@@ -51,8 +72,9 @@ public final class MenuBarMonitorEngine: @unchecked Sendable {
             self.localIP = ip
         }
         let dns = parseSystemDNS()
-        if !dns.isEmpty {
-            self.dnsServer = dns
+        if !dns.primary.isEmpty {
+            self.dnsServer = dns.primary
+            self.allDnsServers = dns.all
         }
     }
 
@@ -90,8 +112,9 @@ public final class MenuBarMonitorEngine: @unchecked Sendable {
 
         // 3. Query system DNS
         let dns = parseSystemDNS()
-        if !dns.isEmpty {
-            self.dnsServer = dns
+        if !dns.primary.isEmpty {
+            self.dnsServer = dns.primary
+            self.allDnsServers = dns.all
         }
 
         // 4. Ping local default gateway
@@ -297,26 +320,36 @@ public final class MenuBarMonitorEngine: @unchecked Sendable {
         return "127.0.0.1"
     }
 
-    public func parseSystemDNS() -> String {
+    public func parseSystemDNS() -> (primary: String, all: [String]) {
+        // 1. Authoritative macOS SystemConfiguration SCDynamicStore query (in-memory configd state)
+        if let store = SCDynamicStoreCreate(nil, "NexWaveDNS" as CFString, nil, nil),
+           let dnsDict = SCDynamicStoreCopyValue(store, "State:/Network/Global/DNS" as CFString) as? [String: Any],
+           let servers = dnsDict["ServerAddresses"] as? [String], !servers.isEmpty {
+            let ipv4s = servers.filter { !$0.contains(":") }
+            let primary = ipv4s.first ?? servers.first ?? ""
+            return (primary, servers)
+        }
+
+        // 2. /etc/resolv.conf fallback
         if let content = try? String(contentsOfFile: "/etc/resolv.conf", encoding: .utf8) {
+            var servers: [String] = []
             for line in content.components(separatedBy: .newlines) {
                 let trimmed = line.trimmingCharacters(in: .whitespaces)
                 if trimmed.starts(with: "nameserver ") {
                     let ns = trimmed.replacingOccurrences(of: "nameserver ", with: "").trimmingCharacters(in: .whitespaces)
-                    if !ns.isEmpty && !ns.contains(":") { // Prefer clean IPv4
-                        return ns
+                    if !ns.isEmpty && !servers.contains(ns) {
+                        servers.append(ns)
                     }
                 }
             }
-            for line in content.components(separatedBy: .newlines) {
-                let trimmed = line.trimmingCharacters(in: .whitespaces)
-                if trimmed.starts(with: "nameserver ") {
-                    let ns = trimmed.replacingOccurrences(of: "nameserver ", with: "").trimmingCharacters(in: .whitespaces)
-                    if !ns.isEmpty { return ns }
-                }
+            if !servers.isEmpty {
+                let ipv4s = servers.filter { !$0.contains(":") }
+                let primary = ipv4s.first ?? servers.first ?? ""
+                return (primary, servers)
             }
         }
-        return "1.1.1.1"
+
+        return ("", [])
     }
 
     public func parsePingLatency(output: String) -> Double? {

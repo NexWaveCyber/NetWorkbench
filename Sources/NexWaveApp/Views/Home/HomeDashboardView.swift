@@ -216,11 +216,12 @@ public struct HomeDashboardView: View {
             )
             kpiCard(
                 label: "SYSTEM RESOLVER",
-                val: monitor.dnsServer,
+                val: monitor.dnsServer.isEmpty ? "Unassigned" : monitor.dnsServer,
                 icon: "arrow.triangle.branch",
-                badge: "Active DNS",
+                badge: monitor.dnsResolverName,
                 badgeColor: Theme.signalEmerald,
-                copyValue: monitor.dnsServer
+                copyValue: monitor.dnsServer.isEmpty ? nil : monitor.dnsServer,
+                helpText: monitor.allDnsServers.isEmpty ? "No active DNS servers detected" : "Configured DNS Resolvers:\n" + monitor.allDnsServers.joined(separator: "\n")
             )
         }
     }
@@ -246,7 +247,8 @@ public struct HomeDashboardView: View {
         icon: String,
         badge: String? = nil,
         badgeColor: Color? = nil,
-        copyValue: String? = nil
+        copyValue: String? = nil,
+        helpText: String? = nil
     ) -> some View {
         HStack(spacing: 10) {
             ZStack {
@@ -300,6 +302,7 @@ public struct HomeDashboardView: View {
         .padding(12)
         .frame(maxWidth: .infinity)
         .engineeringCard(padding: 0, cornerRadius: 10, hasHoverEffect: true)
+        .help(helpText ?? label)
     }
 
     // MARK: - Active Investigations Card
