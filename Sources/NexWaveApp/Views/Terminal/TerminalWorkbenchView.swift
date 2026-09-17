@@ -20,9 +20,72 @@ public struct TerminalWorkbenchView: View {
     @State private var remoteUploadPath: String = "/tmp/"
     @State private var isTransferringFile: Bool = false
     @State private var transferStatusMessage: String? = nil
-    @State private var fontSize: CGFloat = 12
+    // Global & Persisted Terminal Display Preferences
+    @AppStorage("terminal_font_size") private var globalFontSize: Double = 12.0
+    @AppStorage("terminal_font_family") private var globalFontFamily: String = "SF Mono (System)"
+    @AppStorage("terminal_theme") private var globalThemeName: String = TerminalTheme.obsidian.rawValue
+    @AppStorage("terminal_cursor_style") private var globalCursorStyle: String = TerminalCursorStyle.block.rawValue
+    @AppStorage("terminal_cursor_blink") private var globalCursorBlink: Bool = true
+    @AppStorage("terminal_line_spacing") private var globalLineSpacing: Double = 2.0
+    @AppStorage("terminal_max_buffer") private var globalMaxBuffer: Int = 5000
+
     @State private var autoScroll: Bool = true
-    @State private var selectedTheme: TerminalTheme = .obsidian
+    @State private var showTerminalSettingsSheet: Bool = false
+    @State private var settingsTargetSessionId: UUID? = nil
+    @State private var settingsScope: Int = 0 // 0: Global Defaults, 1: Active Tab Override
+
+    private var targetSettingsSession: TerminalSession? {
+        if let id = settingsTargetSessionId {
+            return state.terminalManager.sessions.first(where: { $0.id == id }) ?? activeSession
+        }
+        return activeSession
+    }
+
+    private func effectiveFontSize(for session: TerminalSession) -> CGFloat {
+        session.fontSizeOverride ?? CGFloat(globalFontSize)
+    }
+
+    private func effectiveFontFamily(for session: TerminalSession) -> String {
+        session.fontFamilyOverride ?? globalFontFamily
+    }
+
+    private func effectiveTheme(for session: TerminalSession) -> TerminalTheme {
+        if let ov = session.themeOverride { return ov }
+        return TerminalTheme(rawValue: globalThemeName) ?? .obsidian
+    }
+
+    private func effectiveCursorStyle(for session: TerminalSession) -> TerminalCursorStyle {
+        if let ov = session.cursorStyleOverride { return ov }
+        return TerminalCursorStyle(rawValue: globalCursorStyle) ?? .block
+    }
+
+    private var selectedTheme: TerminalTheme {
+        get {
+            if let s = activeSession { return effectiveTheme(for: s) }
+            return TerminalTheme(rawValue: globalThemeName) ?? .obsidian
+        }
+        nonmutating set {
+            if let s = activeSession, s.themeOverride != nil {
+                s.themeOverride = newValue
+            } else {
+                globalThemeName = newValue.rawValue
+            }
+        }
+    }
+
+    private var fontSize: CGFloat {
+        get {
+            if let s = activeSession { return effectiveFontSize(for: s) }
+            return CGFloat(globalFontSize)
+        }
+        nonmutating set {
+            if let s = activeSession, s.fontSizeOverride != nil {
+                s.fontSizeOverride = newValue
+            } else {
+                globalFontSize = Double(newValue)
+            }
+        }
+    }
     @State private var isSearching: Bool = false
     @State private var searchQuery: String = ""
     @State private var focusedPane: Int = 0 // 0: Primary, 1: Secondary, 2: Pane 3, 3: Pane 4
@@ -160,6 +223,9 @@ public struct TerminalWorkbenchView: View {
         }
         .sheet(isPresented: $showFileTransferSheet) {
             fileTransferModal
+        }
+        .sheet(isPresented: $showTerminalSettingsSheet) {
+            terminalSettingsModal
         }
         .overlay(alignment: .top) {
             if let toast = copyToastMessage {
@@ -445,6 +511,20 @@ public struct TerminalWorkbenchView: View {
                         .font(.system(size: 10.5))
                 }
                 .menuStyle(.borderedButton)
+
+                // Fonts & Appearance Settings Modal
+                Button(action: {
+                    settingsTargetSessionId = activeSession?.id
+                    showTerminalSettingsSheet = true
+                }) {
+                    HStack(spacing: 4) {
+                        Image(systemName: "slider.horizontal.3")
+                        Text("Fonts & Settings")
+                    }
+                    .font(.system(size: 10.5, weight: .semibold))
+                }
+                .buttonStyle(.bordered)
+                .help("Configure Font Family, Size, Cursor Style, Line Spacing, and Colors (Global Defaults or Tab Override)")
 
                 // Timestamps Toggle
                 Button(action: {
@@ -806,6 +886,10 @@ public struct TerminalWorkbenchView: View {
     private func terminalPane(session: TerminalSession, paneIndex: Int) -> some View {
         let isFocused = (focusedPane == paneIndex)
         let displayedLines = searchQuery.isEmpty ? session.lines : session.searchLines(query: searchQuery)
+        let sessionFontSize = effectiveFontSize(for: session)
+        let sessionFontFamily = effectiveFontFamily(for: session)
+        let sessionTheme = effectiveTheme(for: session)
+        let sessionCursor = effectiveCursorStyle(for: session)
 
         return VStack(spacing: 0) {
             // Pane Header Strip (in split mode)
@@ -840,27 +924,30 @@ public struct TerminalWorkbenchView: View {
             GeometryReader { geo in
                 ScrollViewReader { proxy in
                     ScrollView {
-                        LazyVStack(alignment: .leading, spacing: 2) {
+                        LazyVStack(alignment: .leading, spacing: CGFloat(globalLineSpacing)) {
                             let showLiveCursor = searchQuery.isEmpty
                             ForEach(displayedLines) { line in
                                 HStack(alignment: .top, spacing: 0) {
                                     // Optional microsecond timestamp
                                     if session.showTimestamps {
                                         Text(timestampString(for: line.timestamp))
-                                            .font(Theme.monoText(max(8, fontSize - 2)))
+                                            .font(Theme.terminalFont(family: sessionFontFamily, size: max(8, sessionFontSize - 2)))
                                             .foregroundColor(Color.secondary.opacity(0.6))
                                             .frame(width: 75, alignment: .leading)
                                             .padding(.trailing, 6)
                                     }
 
-                                    renderTerminalLine(line)
+                                    renderTerminalLine(line, session: session)
 
                                     // If this is the active open line, show cursor inline right at the insertion point
                                     if showLiveCursor && line.id == displayedLines.last?.id && session.isLastLineOpen {
                                         BlinkingCursorView(
                                             isFocused: isFocused,
-                                            color: Color(hex: selectedTheme.promptColorHex),
-                                            fontSize: fontSize
+                                            color: Color(hex: sessionTheme.promptColorHex),
+                                            fontSize: sessionFontSize,
+                                            fontFamily: sessionFontFamily,
+                                            style: sessionCursor,
+                                            shouldBlink: globalCursorBlink
                                         )
                                     }
                                 }
@@ -874,8 +961,11 @@ public struct TerminalWorkbenchView: View {
                                     }
                                     BlinkingCursorView(
                                         isFocused: isFocused,
-                                        color: Color(hex: selectedTheme.promptColorHex),
-                                        fontSize: fontSize
+                                        color: Color(hex: sessionTheme.promptColorHex),
+                                        fontSize: sessionFontSize,
+                                        fontFamily: sessionFontFamily,
+                                        style: sessionCursor,
+                                        shouldBlink: globalCursorBlink
                                     )
                                 }
                             }
@@ -894,7 +984,7 @@ public struct TerminalWorkbenchView: View {
                         .padding(12)
                         .frame(maxWidth: .infinity, alignment: .leading)
                     }
-                    .background(Color(hex: selectedTheme.backgroundColorHex))
+                    .background(Color(hex: sessionTheme.backgroundColorHex))
                     .onChange(of: session.lines.count) { _, _ in
                         if autoScroll {
                             proxy.scrollTo("bottomAnchor_\(paneIndex)", anchor: .bottom)
@@ -930,22 +1020,22 @@ public struct TerminalWorkbenchView: View {
             let askingPassword = isPasswordPrompt(session)
             HStack(spacing: 8) {
                 Text(askingPassword ? "PASSWORD :" : "\(session.title) #")
-                    .font(Theme.monoText(11, weight: .bold))
-                    .foregroundStyle(askingPassword ? Theme.pulseCrimson : Color(hex: selectedTheme.promptColorHex))
+                    .font(Theme.terminalFont(family: sessionFontFamily, size: 11, weight: .bold))
+                    .foregroundStyle(askingPassword ? Theme.pulseCrimson : Color(hex: sessionTheme.promptColorHex))
 
                 if askingPassword {
                     SecureField("Remote host password / passphrase (press Enter to send)...", text: $inputCommand)
-                        .font(Theme.monoText(12))
+                        .font(Theme.terminalFont(family: sessionFontFamily, size: sessionFontSize))
                         .textFieldStyle(.plain)
-                        .tint(Color(hex: selectedTheme.promptColorHex))
+                        .tint(Color(hex: sessionTheme.promptColorHex))
                         .onSubmit {
                             submitCommand(to: session)
                         }
                 } else {
                     TextField("Enter command (or click terminal canvas to type directly)...", text: $inputCommand)
-                        .font(Theme.monoText(12))
+                        .font(Theme.terminalFont(family: sessionFontFamily, size: sessionFontSize))
                         .textFieldStyle(.plain)
-                        .tint(Color(hex: selectedTheme.promptColorHex))
+                        .tint(Color(hex: sessionTheme.promptColorHex))
                         .onSubmit {
                             submitCommand(to: session)
                         }
@@ -1640,14 +1730,18 @@ public struct TerminalWorkbenchView: View {
 
     private func updatePTYDimensions() {
         guard let session = activeSession else { return }
-        let cols = max(80, Int(1000.0 / (fontSize * 0.60)))
-        let rows = max(24, Int(600.0 / (fontSize * 1.35)))
+        let fSize = effectiveFontSize(for: session)
+        let charWidth = max(1.0, fSize * 0.60)
+        let charHeight = max(1.0, fSize * 1.35 + CGFloat(globalLineSpacing))
+        let cols = max(80, Int(1000.0 / charWidth))
+        let rows = max(24, Int(600.0 / charHeight))
         session.resize(cols: cols, rows: rows)
     }
 
     private func updatePTYDimensions(for session: TerminalSession, size: CGSize) {
-        let charWidth = max(1.0, fontSize * 0.60)
-        let charHeight = max(1.0, fontSize * 1.35)
+        let fSize = effectiveFontSize(for: session)
+        let charWidth = max(1.0, fSize * 0.60)
+        let charHeight = max(1.0, fSize * 1.35 + CGFloat(globalLineSpacing))
         let cols = max(40, Int(size.width / charWidth))
         let rows = max(10, Int(size.height / charHeight))
         session.resize(cols: cols, rows: rows)
@@ -2306,33 +2400,42 @@ public struct TerminalWorkbenchView: View {
     // MARK: - AttributedString & Line Rendering Engine
 
     @ViewBuilder
-    private func renderTerminalLine(_ line: TerminalLine) -> some View {
+    private func renderTerminalLine(_ line: TerminalLine, session: TerminalSession) -> some View {
+        let theme = effectiveTheme(for: session)
+        let fSize = effectiveFontSize(for: session)
+        let fFamily = effectiveFontFamily(for: session)
+
         if line.isCommandInput {
             HStack(spacing: 6) {
                 Text(">")
-                    .font(Theme.monoText(fontSize, weight: .bold))
-                    .foregroundStyle(Color(hex: selectedTheme.promptColorHex))
+                    .font(Theme.terminalFont(family: fFamily, size: fSize, weight: .bold))
+                    .foregroundStyle(Color(hex: theme.promptColorHex))
                 Text(line.text)
-                    .font(Theme.monoText(fontSize, weight: .semibold))
-                    .foregroundStyle(Color(hex: selectedTheme.foregroundColorHex))
+                    .font(Theme.terminalFont(family: fFamily, size: fSize, weight: .semibold))
+                    .foregroundStyle(Color(hex: theme.foregroundColorHex))
             }
             .padding(.vertical, 1)
         } else {
-            Text(makeAttributedString(for: line))
+            Text(makeAttributedString(for: line, session: session))
                 .textSelection(.enabled)
         }
     }
 
-    private func makeAttributedString(for line: TerminalLine) -> AttributedString {
+    private func makeAttributedString(for line: TerminalLine, session: TerminalSession) -> AttributedString {
         var result = AttributedString()
-        let defaultFg = Color(hex: selectedTheme.foregroundColorHex)
+        let theme = effectiveTheme(for: session)
+        let fSize = effectiveFontSize(for: session)
+        let fFamily = effectiveFontFamily(for: session)
+        let defaultFg = Color(hex: theme.foregroundColorHex)
 
         for span in line.spans {
             var attrSpan = AttributedString(span.text)
-            attrSpan.font = Theme.monoText(fontSize, weight: span.style.isBold ? .bold : (span.style.isDim ? .light : .regular))
-            if span.style.isItalic {
-                attrSpan.font = attrSpan.font?.italic()
-            }
+            attrSpan.font = Theme.terminalFont(
+                family: fFamily,
+                size: fSize,
+                weight: span.style.isBold ? .bold : (span.style.isDim ? .light : .regular),
+                isItalic: span.style.isItalic
+            )
             if span.style.isUnderline {
                 attrSpan.underlineStyle = .single
             }
@@ -2355,7 +2458,7 @@ public struct TerminalWorkbenchView: View {
             if span.style.isInverse {
                 let prevFg = attrSpan.foregroundColor ?? defaultFg
                 let prevBg = attrSpan.backgroundColor ?? Color.clear
-                attrSpan.foregroundColor = prevBg == Color.clear ? Color(hex: selectedTheme.backgroundColorHex) : prevBg
+                attrSpan.foregroundColor = prevBg == Color.clear ? Color(hex: theme.backgroundColorHex) : prevBg
                 attrSpan.backgroundColor = prevFg
             }
 
@@ -2394,6 +2497,14 @@ public struct TerminalWorkbenchView: View {
             state.terminalManager.secondarySessionId = session.id
         }) {
             Label("Split Down", systemImage: "rectangle.split.1x2")
+        }
+        Divider()
+        Button(action: {
+            settingsTargetSessionId = session.id
+            settingsScope = 1
+            showTerminalSettingsSheet = true
+        }) {
+            Label("Fonts, Theme & Settings...", systemImage: "slider.horizontal.3")
         }
         Divider()
         Button(action: {
@@ -2441,6 +2552,16 @@ public struct TerminalWorkbenchView: View {
             session.connect()
         }) {
             Label("Restart Session", systemImage: "arrow.clockwise")
+        }
+
+        Divider()
+
+        Button(action: {
+            settingsTargetSessionId = session.id
+            settingsScope = 1
+            showTerminalSettingsSheet = true
+        }) {
+            Label("Fonts, Theme & Cursor Settings...", systemImage: "slider.horizontal.3")
         }
 
         Divider()
@@ -2728,6 +2849,485 @@ public struct TerminalWorkbenchView: View {
             }
         }
     }
+
+    // MARK: - Terminal Typography & Session Customization Modal
+
+    private var terminalSettingsModal: some View {
+        let currentScopeIsTab = (settingsScope == 1 && targetSettingsSession != nil)
+        let activeTab = targetSettingsSession
+
+        // Effective values for bindings and live preview
+        let currentFontFamily = currentScopeIsTab ? (activeTab?.fontFamilyOverride ?? globalFontFamily) : globalFontFamily
+        let currentFontSize = currentScopeIsTab ? (activeTab?.fontSizeOverride ?? CGFloat(globalFontSize)) : CGFloat(globalFontSize)
+        let currentTheme = currentScopeIsTab ? (activeTab?.themeOverride ?? (TerminalTheme(rawValue: globalThemeName) ?? .obsidian)) : (TerminalTheme(rawValue: globalThemeName) ?? .obsidian)
+        let currentCursor = currentScopeIsTab ? (activeTab?.cursorStyleOverride ?? (TerminalCursorStyle(rawValue: globalCursorStyle) ?? .block)) : (TerminalCursorStyle(rawValue: globalCursorStyle) ?? .block)
+
+        let fontFamilyBinding = Binding<String>(
+            get: { currentFontFamily },
+            set: { newFamily in
+                if currentScopeIsTab {
+                    activeTab?.fontFamilyOverride = newFamily
+                } else {
+                    globalFontFamily = newFamily
+                }
+            }
+        )
+
+        let fontSizeBinding = Binding<Double>(
+            get: { Double(currentFontSize) },
+            set: { newSize in
+                if currentScopeIsTab {
+                    activeTab?.fontSizeOverride = CGFloat(newSize)
+                    if let s = activeTab { updatePTYDimensions(for: s, size: CGSize(width: 800, height: 500)) }
+                } else {
+                    globalFontSize = newSize
+                    updatePTYDimensions()
+                }
+            }
+        )
+
+        let themeBinding = Binding<TerminalTheme>(
+            get: { currentTheme },
+            set: { newTheme in
+                if currentScopeIsTab {
+                    activeTab?.themeOverride = newTheme
+                } else {
+                    globalThemeName = newTheme.rawValue
+                }
+            }
+        )
+
+        let cursorStyleBinding = Binding<TerminalCursorStyle>(
+            get: { currentCursor },
+            set: { newCursor in
+                if currentScopeIsTab {
+                    activeTab?.cursorStyleOverride = newCursor
+                } else {
+                    globalCursorStyle = newCursor.rawValue
+                }
+            }
+        )
+
+        return VStack(spacing: 0) {
+            // Modal Header
+            HStack(spacing: 12) {
+                ZStack {
+                    Circle()
+                        .fill(Theme.cyanPulse.opacity(0.15))
+                        .frame(width: 36, height: 36)
+                    Image(systemName: "slider.horizontal.3")
+                        .font(.system(size: 17, weight: .bold))
+                        .foregroundStyle(Theme.cyanPulse)
+                }
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Terminal Display & Session Settings")
+                        .font(.system(size: 15, weight: .bold))
+                    Text("Configure monospace font family, size, line spacing, themes, and cursor styling")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                }
+
+                Spacer()
+
+                Button("Done") {
+                    showTerminalSettingsSheet = false
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(Theme.cyanPulse)
+                .foregroundStyle(Color.black)
+                .controlSize(.small)
+            }
+            .padding(16)
+            .background(Theme.cardBackground)
+
+            Divider().overlay(Theme.borderLight)
+
+            // Scope Selector Strip
+            HStack(spacing: 12) {
+                Picker("Target Scope", selection: $settingsScope) {
+                    Text("Global Defaults (All Tabs)").tag(0)
+                    if let tab = activeTab {
+                        Text("Active Tab: \(tab.title)").tag(1)
+                    }
+                }
+                .pickerStyle(.segmented)
+
+                if currentScopeIsTab, let tab = activeTab {
+                    let hasOverrides = tab.fontSizeOverride != nil || tab.fontFamilyOverride != nil || tab.themeOverride != nil || tab.cursorStyleOverride != nil
+                    if hasOverrides {
+                        Button(action: {
+                            tab.fontSizeOverride = nil
+                            tab.fontFamilyOverride = nil
+                            tab.themeOverride = nil
+                            tab.cursorStyleOverride = nil
+                        }) {
+                            HStack(spacing: 4) {
+                                Image(systemName: "arrow.counterclockwise")
+                                Text("Reset to Global")
+                            }
+                            .font(.system(size: 10.5, weight: .semibold))
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                        .help("Clear tab-specific overrides and revert to global preferences")
+                    }
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 10)
+            .background(Theme.surfaceBackground)
+
+            Divider().overlay(Theme.borderLight)
+
+            // Main Settings Scrollable Body
+            ScrollView {
+                VStack(alignment: .leading, spacing: 18) {
+                    // Section 1: Typography & Font Engine
+                    VStack(alignment: .leading, spacing: 12) {
+                        Label("TYPOGRAPHY & MONOSPACE ENGINE", systemImage: "textformat")
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundStyle(Theme.neonCyan)
+
+                        VStack(spacing: 10) {
+                            // Font Family Picker
+                            HStack {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("Monospace Font Family")
+                                        .font(.system(size: 12, weight: .semibold))
+                                    Text("Apple system monospace, macOS classic, or developer fonts")
+                                        .font(.system(size: 10))
+                                        .foregroundStyle(.secondary)
+                                }
+                                Spacer()
+                                Picker("", selection: fontFamilyBinding) {
+                                    ForEach(TerminalFontFamily.allCases) { f in
+                                        Text(f.rawValue).tag(f.rawValue)
+                                    }
+                                }
+                                .frame(width: 200)
+                            }
+
+                            Divider().overlay(Theme.borderLight)
+
+                            // Font Size Slider & Stepper
+                            HStack {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("Font Size")
+                                        .font(.system(size: 12, weight: .semibold))
+                                    Text("Scales viewport columns/rows and PTY terminal grid")
+                                        .font(.system(size: 10))
+                                        .foregroundStyle(.secondary)
+                                }
+                                Spacer()
+                                HStack(spacing: 10) {
+                                    Slider(value: fontSizeBinding, in: 9...28, step: 1)
+                                        .frame(width: 120)
+                                    Text("\(Int(currentFontSize)) pt")
+                                        .font(Theme.monoText(12, weight: .bold))
+                                        .frame(width: 36, alignment: .trailing)
+                                    Stepper("", value: fontSizeBinding, in: 9...28, step: 1)
+                                        .labelsHidden()
+                                }
+                            }
+
+                            // Quick Preset Size Pills
+                            HStack(spacing: 6) {
+                                Text("Quick Presets:")
+                                    .font(.system(size: 10.5))
+                                    .foregroundStyle(.secondary)
+                                ForEach([10, 11, 12, 13, 14, 16, 18, 20], id: \.self) { sz in
+                                    Button(action: { fontSizeBinding.wrappedValue = Double(sz) }) {
+                                        Text("\(sz)pt")
+                                            .font(Theme.monoText(10, weight: Int(currentFontSize) == sz ? .bold : .regular))
+                                            .padding(.horizontal, 7)
+                                            .padding(.vertical, 3)
+                                            .background(Int(currentFontSize) == sz ? Theme.neonCyan.opacity(0.2) : Theme.cardBackground)
+                                            .foregroundStyle(Int(currentFontSize) == sz ? Theme.neonCyan : .primary)
+                                            .clipShape(RoundedRectangle(cornerRadius: 5))
+                                            .overlay(
+                                                RoundedRectangle(cornerRadius: 5)
+                                                    .stroke(Int(currentFontSize) == sz ? Theme.neonCyan.opacity(0.8) : Theme.borderLight, lineWidth: 1)
+                                            )
+                                    }
+                                    .buttonStyle(.plain)
+                                }
+                            }
+
+                            Divider().overlay(Theme.borderLight)
+
+                            // Line Spacing
+                            HStack {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("Line Spacing")
+                                        .font(.system(size: 12, weight: .semibold))
+                                    Text("Vertical breathing room between terminal output lines")
+                                        .font(.system(size: 10))
+                                        .foregroundStyle(.secondary)
+                                }
+                                Spacer()
+                                Picker("", selection: $globalLineSpacing) {
+                                    Text("Compact (0pt)").tag(0.0)
+                                    Text("Standard (2pt)").tag(2.0)
+                                    Text("Relaxed (4pt)").tag(4.0)
+                                    Text("Spacious (6pt)").tag(6.0)
+                                }
+                                .frame(width: 170)
+                            }
+                        }
+                        .padding(12)
+                        .background(Theme.cardBackground)
+                        .cornerRadius(8)
+                        .overlay(RoundedRectangle(cornerRadius: 8).stroke(Theme.borderLight, lineWidth: 1))
+                    }
+
+                    // Section 2: Cursor & Interactive Styling
+                    VStack(alignment: .leading, spacing: 12) {
+                        Label("CURSOR APPEARANCE & ANIMATION", systemImage: "terminal")
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundStyle(Theme.solarAmber)
+
+                        VStack(spacing: 10) {
+                            HStack {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("Cursor Style")
+                                        .font(.system(size: 12, weight: .semibold))
+                                    Text("Choose block glyph, vertical beam, or classic underline")
+                                        .font(.system(size: 10))
+                                        .foregroundStyle(.secondary)
+                                }
+                                Spacer()
+                                Picker("", selection: cursorStyleBinding) {
+                                    ForEach(TerminalCursorStyle.allCases) { c in
+                                        Text(c.rawValue).tag(c)
+                                    }
+                                }
+                                .pickerStyle(.segmented)
+                                .frame(width: 220)
+                            }
+
+                            Divider().overlay(Theme.borderLight)
+
+                            HStack {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("Blinking Cursor")
+                                        .font(.system(size: 12, weight: .semibold))
+                                    Text("Pulse cursor cadence at 530ms interval during interactive input")
+                                        .font(.system(size: 10))
+                                        .foregroundStyle(.secondary)
+                                }
+                                Spacer()
+                                Toggle("", isOn: $globalCursorBlink)
+                                    .toggleStyle(.switch)
+                                    .controlSize(.small)
+                            }
+                        }
+                        .padding(12)
+                        .background(Theme.cardBackground)
+                        .cornerRadius(8)
+                        .overlay(RoundedRectangle(cornerRadius: 8).stroke(Theme.borderLight, lineWidth: 1))
+                    }
+
+                    // Section 3: Color Themes & Schemes
+                    VStack(alignment: .leading, spacing: 12) {
+                        Label("COLOR SCHEME & PALETTE", systemImage: "paintpalette.fill")
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundStyle(Theme.emeraldHealthy)
+
+                        LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
+                            ForEach(TerminalTheme.allCases) { theme in
+                                let isSelected = currentTheme == theme
+                                Button(action: { themeBinding.wrappedValue = theme }) {
+                                    HStack(spacing: 10) {
+                                        // Preview swatch dots
+                                        HStack(spacing: 3) {
+                                            Circle()
+                                                .fill(Color(hex: theme.backgroundColorHex))
+                                                .frame(width: 14, height: 14)
+                                                .overlay(Circle().stroke(Color.white.opacity(0.3), lineWidth: 1))
+                                            Circle()
+                                                .fill(Color(hex: theme.foregroundColorHex))
+                                                .frame(width: 14, height: 14)
+                                            Circle()
+                                                .fill(Color(hex: theme.promptColorHex))
+                                                .frame(width: 14, height: 14)
+                                        }
+
+                                        Text(theme.rawValue)
+                                            .font(.system(size: 11, weight: isSelected ? .bold : .medium))
+                                            .foregroundStyle(isSelected ? Theme.neonCyan : .primary)
+
+                                        Spacer()
+
+                                        if isSelected {
+                                            Image(systemName: "checkmark.circle.fill")
+                                                .foregroundStyle(Theme.neonCyan)
+                                                .font(.system(size: 12))
+                                        }
+                                    }
+                                    .padding(.horizontal, 10)
+                                    .padding(.vertical, 8)
+                                    .background(Color(hex: theme.backgroundColorHex).opacity(0.6))
+                                    .cornerRadius(6)
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 6)
+                                            .stroke(isSelected ? Theme.neonCyan : Theme.borderLight, lineWidth: isSelected ? 1.5 : 1)
+                                    )
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                    }
+
+                    // Section 4: Scrollback Depth & Timestamp Prefixes
+                    VStack(alignment: .leading, spacing: 12) {
+                        Label("BUFFER & OUTPUT LOGGING", systemImage: "clock.arrow.circlepath")
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundStyle(Theme.cyanPulse)
+
+                        VStack(spacing: 10) {
+                            HStack {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("Scrollback History Limit")
+                                        .font(.system(size: 12, weight: .semibold))
+                                    Text("Maximum lines retained per session buffer in RAM")
+                                        .font(.system(size: 10))
+                                        .foregroundStyle(.secondary)
+                                }
+                                Spacer()
+                                Picker("", selection: $globalMaxBuffer) {
+                                    Text("1,000 lines").tag(1000)
+                                    Text("5,000 lines").tag(5000)
+                                    Text("10,000 lines").tag(10000)
+                                    Text("50,000 lines").tag(50000)
+                                }
+                                .frame(width: 150)
+                            }
+
+                            if let tab = activeTab {
+                                Divider().overlay(Theme.borderLight)
+
+                                HStack {
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text("Prefix Millisecond Timestamps")
+                                            .font(.system(size: 12, weight: .semibold))
+                                        Text("Display [HH:mm:ss.SSS] alongside each terminal line")
+                                            .font(.system(size: 10))
+                                            .foregroundStyle(.secondary)
+                                    }
+                                    Spacer()
+                                    Toggle("", isOn: Binding(
+                                        get: { tab.showTimestamps },
+                                        set: { tab.showTimestamps = $0 }
+                                    ))
+                                    .toggleStyle(.switch)
+                                    .controlSize(.small)
+                                }
+                            }
+                        }
+                        .padding(12)
+                        .background(Theme.cardBackground)
+                        .cornerRadius(8)
+                        .overlay(RoundedRectangle(cornerRadius: 8).stroke(Theme.borderLight, lineWidth: 1))
+                    }
+
+                    // Section 5: Live Interactive Terminal Preview
+                    VStack(alignment: .leading, spacing: 10) {
+                        HStack {
+                            Label("LIVE TERMINAL PREVIEW", systemImage: "play.tv.fill")
+                                .font(.system(size: 11, weight: .bold))
+                                .foregroundStyle(Theme.neonCyan)
+                            Spacer()
+                            Text("\(currentFontFamily) @ \(Int(currentFontSize))pt — \(currentTheme.rawValue)")
+                                .font(Theme.monoText(10))
+                                .foregroundStyle(.secondary)
+                        }
+
+                        // Terminal Window Mockup
+                        VStack(alignment: .leading, spacing: 0) {
+                            // Top Window Controls
+                            HStack(spacing: 6) {
+                                Circle().fill(Color(hex: "#FF5F56")).frame(width: 10, height: 10)
+                                Circle().fill(Color(hex: "#FFBD2E")).frame(width: 10, height: 10)
+                                Circle().fill(Color(hex: "#27C93F")).frame(width: 10, height: 10)
+                                Spacer()
+                                Text("cisco-catalyst-core-01 — ssh -p 22 admin@10.0.10.1")
+                                    .font(.system(size: 10, weight: .medium, design: .monospaced))
+                                    .foregroundStyle(Color.secondary.opacity(0.8))
+                                Spacer()
+                            }
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 6)
+                            .background(Color.black.opacity(0.4))
+
+                            // Terminal Body
+                            VStack(alignment: .leading, spacing: CGFloat(globalLineSpacing)) {
+                                HStack(spacing: 4) {
+                                    Text("switch-core-01#")
+                                        .font(Theme.terminalFont(family: currentFontFamily, size: currentFontSize, weight: .bold))
+                                        .foregroundStyle(Color(hex: currentTheme.promptColorHex))
+                                    Text("show ip interface brief")
+                                        .font(Theme.terminalFont(family: currentFontFamily, size: currentFontSize, weight: .semibold))
+                                        .foregroundStyle(Color(hex: currentTheme.foregroundColorHex))
+                                }
+
+                                Text("Interface              IP-Address      OK? Status                Protocol")
+                                    .font(Theme.terminalFont(family: currentFontFamily, size: currentFontSize, weight: .bold))
+                                    .foregroundStyle(Color(hex: currentTheme.foregroundColorHex).opacity(0.85))
+
+                                Text("GigabitEthernet0/0/0   192.168.10.1    YES up                    up")
+                                    .font(Theme.terminalFont(family: currentFontFamily, size: currentFontSize))
+                                    .foregroundStyle(Color(hex: currentTheme.foregroundColorHex))
+
+                                Text("GigabitEthernet0/0/1   10.0.0.2        YES up                    up")
+                                    .font(Theme.terminalFont(family: currentFontFamily, size: currentFontSize))
+                                    .foregroundStyle(Color(hex: currentTheme.foregroundColorHex))
+
+                                Text("Loopback0              172.16.0.1      YES up                    up")
+                                    .font(Theme.terminalFont(family: currentFontFamily, size: currentFontSize))
+                                    .foregroundStyle(Color(hex: currentTheme.foregroundColorHex))
+
+                                HStack(spacing: 4) {
+                                    Text("switch-core-01#")
+                                        .font(Theme.terminalFont(family: currentFontFamily, size: currentFontSize, weight: .bold))
+                                        .foregroundStyle(Color(hex: currentTheme.promptColorHex))
+                                    Text("ping 8.8.8.8")
+                                        .font(Theme.terminalFont(family: currentFontFamily, size: currentFontSize))
+                                        .foregroundStyle(Color(hex: currentTheme.foregroundColorHex))
+                                }
+
+                                Text("Sending 5, 100-byte ICMP Echos to 8.8.8.8, timeout is 2 seconds:\n!!!!!\nSuccess rate is 100 percent (5/5), round-trip min/avg/max = 1/2/4 ms")
+                                    .font(Theme.terminalFont(family: currentFontFamily, size: currentFontSize))
+                                    .foregroundStyle(Color(hex: currentTheme.foregroundColorHex))
+
+                                HStack(spacing: 0) {
+                                    Text("switch-core-01# ")
+                                        .font(Theme.terminalFont(family: currentFontFamily, size: currentFontSize, weight: .bold))
+                                        .foregroundStyle(Color(hex: currentTheme.promptColorHex))
+                                    BlinkingCursorView(
+                                        isFocused: true,
+                                        color: Color(hex: currentTheme.promptColorHex),
+                                        fontSize: currentFontSize,
+                                        fontFamily: currentFontFamily,
+                                        style: currentCursor,
+                                        shouldBlink: globalCursorBlink
+                                    )
+                                }
+                            }
+                            .padding(12)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(Color(hex: currentTheme.backgroundColorHex))
+                        }
+                        .cornerRadius(8)
+                        .overlay(RoundedRectangle(cornerRadius: 8).stroke(Theme.borderLight, lineWidth: 1))
+                    }
+                }
+                .padding(16)
+            }
+        }
+        .frame(width: 650, height: 600)
+        .background(Theme.surfaceBackground)
+    }
 }
 
 private struct InlinePasswordBar: View {
@@ -2766,15 +3366,22 @@ private struct BlinkingCursorView: View {
     let isFocused: Bool
     let color: Color
     let fontSize: CGFloat
+    var fontFamily: String = "SF Mono (System)"
+    var style: TerminalCursorStyle = .block
+    var shouldBlink: Bool = true
 
     var body: some View {
-        TimelineView(.periodic(from: .now, by: 0.53)) { timeline in
-            let isVisible = Int(timeline.date.timeIntervalSinceReferenceDate / 0.53) % 2 == 0
-            Text("▋")
-                .font(Theme.monoText(fontSize, weight: .bold))
-                .foregroundStyle(isFocused ? color : color.opacity(0.35))
-                .opacity(isFocused ? (isVisible ? 1.0 : 0.0) : 0.4)
+        TimelineView(.periodic(from: .now, by: 0.53)) { (timeline: TimelineViewDefaultContext) in
+            cursorContent(timeline: timeline)
         }
+    }
+
+    private func cursorContent(timeline: TimelineViewDefaultContext) -> some View {
+        let isVisible = !shouldBlink || (Int(timeline.date.timeIntervalSinceReferenceDate / 0.53) % 2 == 0)
+        return Text(style.cursorGlyph)
+            .font(Theme.terminalFont(family: fontFamily, size: fontSize, weight: .bold))
+            .foregroundStyle(isFocused ? color : color.opacity(0.35))
+            .opacity(isFocused ? (isVisible ? 1.0 : 0.0) : 0.4)
     }
 }
 

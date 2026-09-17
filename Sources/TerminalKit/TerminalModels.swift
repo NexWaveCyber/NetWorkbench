@@ -260,48 +260,119 @@ public struct TerminalLine: Identifiable, Sendable, Hashable {
 /// Curated high-contrast terminal color themes
 public enum TerminalTheme: String, CaseIterable, Identifiable, Sendable, Codable {
     case obsidian = "Obsidian Cyber"
+    case synthwave = "Synthwave Neon"
     case solarizedDark = "Solarized Dark"
     case monokaiPro = "Monokai Pro"
     case matrix = "Classic Matrix"
+    case phosphorGreen = "Phosphor Green"
+    case highContrast = "High Contrast"
+    case cleanLight = "Clean Light"
 
     public var id: String { rawValue }
 
     public var backgroundColorHex: String {
         switch self {
         case .obsidian: return "#0A0E14"
+        case .synthwave: return "#1A102F"
         case .solarizedDark: return "#002B36"
         case .monokaiPro: return "#2D2A2E"
         case .matrix: return "#051008"
+        case .phosphorGreen: return "#001100"
+        case .highContrast: return "#000000"
+        case .cleanLight: return "#F8F9FA"
         }
     }
 
     public var foregroundColorHex: String {
         switch self {
         case .obsidian: return "#B3C7D8"
+        case .synthwave: return "#F92AAD"
         case .solarizedDark: return "#839496"
         case .monokaiPro: return "#FCFCFA"
         case .matrix: return "#00FF66"
+        case .phosphorGreen: return "#33FF33"
+        case .highContrast: return "#FFFFFF"
+        case .cleanLight: return "#1E1E1E"
         }
     }
 
     public var promptColorHex: String {
         switch self {
         case .obsidian: return "#00E5FF"
+        case .synthwave: return "#05D9E8"
         case .solarizedDark: return "#268BD2"
         case .monokaiPro: return "#FFD866"
         case .matrix: return "#33FF33"
+        case .phosphorGreen: return "#66FF66"
+        case .highContrast: return "#FFFF00"
+        case .cleanLight: return "#0066CC"
         }
     }
 
     public var selectionColorHex: String {
         switch self {
         case .obsidian: return "#1F334D"
+        case .synthwave: return "#3B2164"
         case .solarizedDark: return "#073642"
         case .monokaiPro: return "#403E41"
         case .matrix: return "#003B14"
+        case .phosphorGreen: return "#003300"
+        case .highContrast: return "#333333"
+        case .cleanLight: return "#B4D5FE"
         }
     }
 }
+
+/// Terminal cursor display styles
+public enum TerminalCursorStyle: String, CaseIterable, Identifiable, Sendable, Codable {
+    case block = "Block (▋)"
+    case beam = "Beam (❘)"
+    case underline = "Underline (_)"
+
+    public var id: String { rawValue }
+
+    public var glyph: String {
+        switch self {
+        case .block: return "▋"
+        case .beam: return "❘"
+        case .underline: return "_"
+        }
+    }
+
+    public var cursorGlyph: String { glyph }
+}
+
+/// Curated developer monospace font families
+public enum TerminalFontFamily: String, CaseIterable, Identifiable, Sendable, Codable {
+    case system = "SF Mono (System)"
+    case menlo = "Menlo"
+    case monaco = "Monaco"
+    case courierNew = "Courier New"
+    case courier = "Courier"
+    case andaleMono = "Andale Mono"
+    case ptMono = "PT Mono"
+    case jetBrainsMono = "JetBrains Mono"
+    case firaCode = "Fira Code"
+    case sourceCodePro = "Source Code Pro"
+
+    public var id: String { rawValue }
+
+    public var fontName: String {
+        switch self {
+        case .system: return "SF Mono"
+        case .menlo: return "Menlo"
+        case .monaco: return "Monaco"
+        case .courierNew: return "Courier New"
+        case .courier: return "Courier"
+        case .andaleMono: return "Andale Mono"
+        case .ptMono: return "PT Mono"
+        case .jetBrainsMono: return "JetBrains Mono"
+        case .firaCode: return "Fira Code"
+        case .sourceCodePro: return "Source Code Pro"
+        }
+    }
+}
+
 
 /// Split mode for multi-pane terminal views
 public enum TerminalSplitMode: String, Sendable, CaseIterable, Identifiable, Codable {

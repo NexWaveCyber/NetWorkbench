@@ -13,6 +13,10 @@ public final class TerminalSession: Identifiable, @unchecked Sendable {
     public var logFilePath: URL? = nil
     public var showTimestamps: Bool = false
     public var syntaxHighlightConfig: TerminalSyntaxHighlightConfig = TerminalSyntaxHighlightConfig()
+    public var fontSizeOverride: CGFloat? = nil
+    public var fontFamilyOverride: String? = nil
+    public var themeOverride: TerminalTheme? = nil
+    public var cursorStyleOverride: TerminalCursorStyle? = nil
 
     public var maxBufferedLines: Int = 5000
     private var ptyRunner: PTYProcessRunner?

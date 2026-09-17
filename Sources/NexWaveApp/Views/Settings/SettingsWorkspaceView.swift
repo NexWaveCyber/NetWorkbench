@@ -19,6 +19,12 @@ public struct SettingsWorkspaceView: View {
     @AppStorage("maxPacketBufferSize") private var maxPacketBufferSize: Int = 2000
     @AppStorage("defaultSSHUser") private var defaultSSHUser: String = "admin"
     @AppStorage("defaultSerialBaud") private var defaultSerialBaud: Int = 9600
+    @AppStorage("terminal_font_size") private var terminalFontSize: Double = 12.0
+    @AppStorage("terminal_font_family") private var terminalFontFamily: String = "SF Mono (System)"
+    @AppStorage("terminal_theme") private var terminalTheme: String = TerminalTheme.obsidian.rawValue
+    @AppStorage("terminal_cursor_style") private var terminalCursorStyle: String = TerminalCursorStyle.block.rawValue
+    @AppStorage("terminal_cursor_blink") private var terminalCursorBlink: Bool = true
+    @AppStorage("terminal_line_spacing") private var terminalLineSpacing: Double = 2.0
 
     @State private var showingClearHistoryAlert: Bool = false
     @State private var showingFlushDNSAlert: Bool = false
@@ -343,6 +349,66 @@ public struct SettingsWorkspaceView: View {
             sectionHeader(title: "TERMINAL & SERIAL BRIDGE", icon: "terminal.fill")
 
             VStack(spacing: 10) {
+                HStack {
+                    Text("Monospace Font Family")
+                        .font(.system(size: 12))
+                    Spacer()
+                    Picker("", selection: $terminalFontFamily) {
+                        ForEach(TerminalFontFamily.allCases) { f in
+                            Text(f.rawValue).tag(f.rawValue)
+                        }
+                    }
+                    .frame(width: 170)
+                }
+
+                Divider().overlay(Theme.borderLight)
+
+                HStack {
+                    Text("Default Font Size")
+                        .font(.system(size: 12))
+                    Spacer()
+                    Text("\(Int(terminalFontSize)) pt")
+                        .font(Theme.monoText(11, weight: .bold))
+                    Stepper("", value: $terminalFontSize, in: 9...24, step: 1)
+                        .labelsHidden()
+                }
+
+                Divider().overlay(Theme.borderLight)
+
+                HStack {
+                    Text("Default Color Theme")
+                        .font(.system(size: 12))
+                    Spacer()
+                    Picker("", selection: $terminalTheme) {
+                        ForEach(TerminalTheme.allCases) { t in
+                            Text(t.rawValue).tag(t.rawValue)
+                        }
+                    }
+                    .frame(width: 170)
+                }
+
+                Divider().overlay(Theme.borderLight)
+
+                HStack {
+                    Text("Cursor Style & Blinking")
+                        .font(.system(size: 12))
+                    Spacer()
+                    HStack(spacing: 8) {
+                        Picker("", selection: $terminalCursorStyle) {
+                            ForEach(TerminalCursorStyle.allCases) { c in
+                                Text(c.rawValue).tag(c.rawValue)
+                            }
+                        }
+                        .frame(width: 130)
+
+                        Toggle("Blink", isOn: $terminalCursorBlink)
+                            .toggleStyle(.switch)
+                            .controlSize(.mini)
+                    }
+                }
+
+                Divider().overlay(Theme.borderLight)
+
                 HStack {
                     Text("Default SSH Username")
                         .font(.system(size: 12))

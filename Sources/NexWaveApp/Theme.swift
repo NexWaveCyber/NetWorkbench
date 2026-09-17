@@ -1,4 +1,6 @@
 import SwiftUI
+import AppKit
+import TerminalKit
 
 /// Design tokens and semantic styling for NexWave Network Workbench.
 /// Combines Apple macOS HIG precision with high-tech engineering workstation aesthetics.
@@ -117,6 +119,21 @@ public enum Theme {
     // MARK: - Typography Styles
     public static func monoText(_ size: CGFloat, weight: Font.Weight = .regular) -> Font {
         .system(size: size, weight: weight, design: .monospaced)
+    }
+
+    public static func terminalFont(family: String, size: CGFloat, weight: Font.Weight = .regular, isItalic: Bool = false) -> Font {
+        let cleanFamily = family.trimmingCharacters(in: .whitespacesAndNewlines)
+        if cleanFamily.isEmpty || cleanFamily == "SF Mono (System)" || cleanFamily == "SF Mono" || cleanFamily == "System Monospaced" {
+            var f = Font.system(size: size, weight: weight, design: .monospaced)
+            if isItalic { f = f.italic() }
+            return f
+        } else {
+            let resolvedName = TerminalFontFamily(rawValue: cleanFamily)?.fontName ?? cleanFamily
+            var f = Font.custom(resolvedName, size: size)
+            if weight == .bold { f = f.bold() }
+            if isItalic { f = f.italic() }
+            return f
+        }
     }
 }
 
