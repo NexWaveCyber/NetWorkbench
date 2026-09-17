@@ -165,16 +165,21 @@ public final class TerminalSession: Identifiable, @unchecked Sendable {
             runner.onTermination = { [weak self] code in
                 DispatchQueue.main.async {
                     self?.status = .terminated(exitCode: code)
+                    self?.appendOutput("\n[Telnet session disconnected (exit code: \(code))]\n")
                 }
             }
 
             do {
-                let telnetURL = URL(fileURLWithPath: "/usr/bin/nc")
-                try runner.launch(executableURL: telnetURL, arguments: [host, "\(port)"])
+                try runner.launchTelnet(host: host, port: port)
                 self.status = .connected
-                appendOutput("[Connected to \(host):\(port) via raw TCP/Telnet]\n")
+                let hasTelnetBin = FileManager.default.fileExists(atPath: "/opt/homebrew/bin/telnet")
+                    || FileManager.default.fileExists(atPath: "/usr/local/bin/telnet")
+                    || FileManager.default.fileExists(atPath: "/usr/bin/telnet")
+                let driver = hasTelnetBin ? "Standard Telnet (RFC 854)" : "Raw TCP Stream Engine"
+                appendOutput("[Connected to \(host):\(port) via \(driver)]\n")
             } catch {
                 self.status = .error(error.localizedDescription)
+                appendOutput("[Telnet connection error: \(error.localizedDescription)]\n")
             }
 
         case .localShell:

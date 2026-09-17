@@ -31,10 +31,6 @@ public final class TerminalManager: @unchecked Sendable {
         loadFolders()
         loadProfiles()
         loadMacros()
-
-        // Pre-seed with a local macOS shell session
-        let defaultShell = openLocalShell()
-        self.activeSessionId = defaultShell.id
     }
 
     public var activeSession: TerminalSession? {
@@ -160,6 +156,21 @@ public final class TerminalManager: @unchecked Sendable {
         return session
     }
 
+    /// Open an interactive Telnet / Raw TCP network terminal session
+    @discardableResult
+    public func openTelnetSession(host: String, port: Int = 23, autoConnect: Bool = true) -> TerminalSession {
+        let session = TerminalSession(
+            title: "telnet:\(host):\(port)",
+            connectionType: .telnet(host: host, port: port)
+        )
+        sessions.append(session)
+        activeSessionId = session.id
+        if autoConnect {
+            session.connect()
+        }
+        return session
+    }
+
     /// Open a local macOS shell session
     @discardableResult
     public func openLocalShell() -> TerminalSession {
@@ -186,6 +197,8 @@ public final class TerminalManager: @unchecked Sendable {
         case "serial":
             let path = profile.serialPath.isEmpty ? (availableSerialPorts.first?.devicePath ?? "/dev/cu.usbserial-001") : profile.serialPath
             return openSerialSession(devicePath: path, baudRate: profile.serialBaud)
+        case "telnet":
+            return openTelnetSession(host: profile.host, port: profile.port)
         case "simulation":
             return openSimulatedSession(preset: profile.vendorPreset.isEmpty ? "Catalyst 9300 Core" : profile.vendorPreset)
         case "localshell", "shell", "local":
@@ -226,11 +239,6 @@ public final class TerminalManager: @unchecked Sendable {
         }
         if pane4SessionId == id {
             pane4SessionId = nil
-        }
-
-        if sessions.isEmpty {
-            let def = openLocalShell()
-            activeSessionId = def.id
         }
     }
 
@@ -324,7 +332,7 @@ public final class TerminalManager: @unchecked Sendable {
     public func saveActiveSessionAsProfile(
         session: TerminalSession,
         name: String,
-        folderId: UUID?,
+        folderId: UUID? = nil,
         tags: [String] = [],
         notes: String = ""
     ) -> TerminalProfile {
@@ -368,9 +376,10 @@ public final class TerminalManager: @unchecked Sendable {
             connType = "simulation"
             badgeColor = "#3B82F6"
         case .telnet(let h, let p):
-            connType = "ssh"
+            connType = "telnet"
             host = h
             port = p
+            badgeColor = "#06B6D4"
         }
 
         let profile = TerminalProfile(
@@ -618,6 +627,21 @@ public final class TerminalManager: @unchecked Sendable {
                     at: 0
                 )
             }
+            if !self.savedProfiles.contains(where: { $0.connectionType.lowercased() == "telnet" }) {
+                self.savedProfiles.append(
+                    TerminalProfile(
+                        name: "EVE-NG Lab Switch (Telnet)",
+                        folder: "Lab Rack",
+                        host: "192.168.1.100",
+                        port: 32769,
+                        username: "",
+                        connectionType: "telnet",
+                        badgeColorHex: "#06B6D4",
+                        tags: ["Lab", "EVE-NG", "GNS3", "Telnet"],
+                        notes: "Virtual lab router/switch console exposed over Telnet port 32769"
+                    )
+                )
+            }
         } else {
             // Enterprise default templates (100% Real Network Endpoints)
             self.savedProfiles = [
@@ -673,6 +697,17 @@ public final class TerminalManager: @unchecked Sendable {
                     badgeColorHex: "#8B5CF6",
                     tags: ["zsh", "Local"],
                     notes: "Local POSIX zsh terminal with full environment"
+                ),
+                TerminalProfile(
+                    name: "EVE-NG Lab Switch (Telnet)",
+                    folder: "Lab Rack",
+                    host: "192.168.1.100",
+                    port: 32769,
+                    username: "",
+                    connectionType: "telnet",
+                    badgeColorHex: "#06B6D4",
+                    tags: ["Lab", "EVE-NG", "GNS3", "Telnet"],
+                    notes: "Virtual lab router/switch console exposed over Telnet port 32769"
                 )
             ]
             persistProfiles()

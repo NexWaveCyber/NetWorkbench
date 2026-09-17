@@ -1234,6 +1234,73 @@ struct TerminalTests {
             }
         }
     }
+
+    @Test("Telnet Session lifecycle, profile persistence, and template verification")
+    func testTelnetSessionLifecycleAndProfilePersistence() {
+        let manager = TerminalManager()
+
+        // 1. Verify default EVE-NG Telnet template is present
+        let telnetTemplate = manager.savedProfiles.first { $0.connectionType.lowercased() == "telnet" }
+        #expect(telnetTemplate != nil)
+        #expect(telnetTemplate?.port == 32769 || telnetTemplate?.port == 23)
+
+        // 2. Open a Telnet session without auto-connecting socket in unit test
+        let telnetSession = manager.openTelnetSession(host: "10.200.1.50", port: 32769, autoConnect: false)
+        #expect(manager.sessions.contains(where: { $0.id == telnetSession.id }))
+        #expect(manager.activeSessionId == telnetSession.id)
+        if case .telnet(let host, let port) = telnetSession.connectionType {
+            #expect(host == "10.200.1.50")
+            #expect(port == 32769)
+        } else {
+            Issue.record("Expected .telnet connection type")
+        }
+
+        // 3. Save active Telnet session as a saved profile
+        let savedProfile = manager.saveActiveSessionAsProfile(
+            session: telnetSession,
+            name: "Core Switch EVE-NG",
+            tags: ["Virtual", "Lab", "Telnet"],
+            notes: "EVE-NG port 32769 router console"
+        )
+        #expect(savedProfile.connectionType == "telnet")
+        #expect(savedProfile.host == "10.200.1.50")
+        #expect(savedProfile.port == 32769)
+        #expect(manager.savedProfiles.contains(where: { $0.id == savedProfile.id }))
+
+        // 4. Duplicate Telnet profile
+        let duplicate = manager.duplicateProfile(id: savedProfile.id)
+        #expect(duplicate != nil)
+        #expect(duplicate?.connectionType == "telnet")
+        #expect(duplicate?.port == 32769)
+
+        // Cleanup
+        manager.deleteProfile(id: savedProfile.id)
+        if let dupId = duplicate?.id {
+            manager.deleteProfile(id: dupId)
+        }
+        manager.closeSession(id: telnetSession.id)
+    }
+
+    @Test("Terminal Manager initializes with empty session state and does not auto-resurrect shell")
+    func testTerminalManagerEmptyInitialStateAndNoAutoShell() {
+        let manager = TerminalManager()
+
+        // Verify initial state is completely empty (no unwanted shell)
+        #expect(manager.sessions.isEmpty)
+        #expect(manager.activeSessionId == nil)
+        #expect(manager.activeSession == nil)
+
+        // User explicitly opens a local shell on demand
+        let userShell = manager.openLocalShell()
+        #expect(manager.sessions.count == 1)
+        #expect(manager.activeSessionId == userShell.id)
+
+        // User closes the shell: workbench must return to empty state without auto-spawning
+        manager.closeSession(id: userShell.id)
+        #expect(manager.sessions.isEmpty)
+        #expect(manager.activeSessionId == nil)
+        #expect(manager.activeSession == nil)
+    }
 }
 
 

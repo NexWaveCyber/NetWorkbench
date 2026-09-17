@@ -104,7 +104,7 @@ public struct TerminalWorkbenchView: View {
     @State private var scriptTotalLines: Int = 0
 
     // New Session Form States
-    @State private var newSessionType: Int = 0 // 0: SSH, 1: Serial, 2: Simulation, 3: Local Shell
+    @State private var newSessionType: Int = 0 // 0: SSH, 1: Telnet / TCP, 2: Serial, 3: Simulation, 4: Local Shell
     @State private var sshHost: String = "170.75.170.64"
     @State private var sshPort: String = "22"
     @State private var sshUser: String = "ubuntu"
@@ -115,6 +115,10 @@ public struct TerminalWorkbenchView: View {
     @State private var sshJumpPort: String = "22"
     @State private var sshJumpUser: String = "admin"
     @State private var sshEnableLegacyCiphers: Bool = false
+
+    // Telnet / Raw TCP Form States
+    @State private var telnetHost: String = "192.168.1.100"
+    @State private var telnetPort: String = "23"
 
     @State private var selectedSerialPort: String = ""
     @State private var selectedBaudRate: Int = 9600
@@ -1343,35 +1347,222 @@ public struct TerminalWorkbenchView: View {
     }
 
     private var emptySessionPlaceholder: some View {
-        VStack(spacing: 16) {
-            Spacer()
-            Image(systemName: "terminal")
-                .font(.system(size: 48))
-                .foregroundStyle(.secondary.opacity(0.4))
-            Text("No Active Terminal Session")
-                .font(.system(size: 16, weight: .bold))
-                .foregroundStyle(.secondary)
-            Text("Open an SSH session, connect a USB serial console cable, launch a simulated router, or pick from the Profile Vault.")
-                .font(.system(size: 12))
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-                .frame(maxWidth: 380)
+        ScrollView {
+            VStack(spacing: 24) {
+                // Hero Header
+                VStack(spacing: 8) {
+                    ZStack {
+                        Circle()
+                            .fill(
+                                RadialGradient(
+                                    colors: [Theme.neonCyan.opacity(0.25), Color.clear],
+                                    center: .center,
+                                    startRadius: 5,
+                                    endRadius: 45
+                                )
+                            )
+                            .frame(width: 80, height: 80)
 
-            HStack(spacing: 12) {
-                Button(action: { showNewSessionSheet = true }) {
-                    Label("New Terminal Session", systemImage: "plus")
-                }
-                .buttonStyle(.borderedProminent)
-                .tint(Theme.cyanPulse)
-                .foregroundStyle(Color.black)
+                        Image(systemName: "terminal")
+                            .font(.system(size: 38, weight: .semibold))
+                            .foregroundStyle(Theme.neonCyan)
+                    }
 
-                Button(action: { showProfileVaultSheet = true }) {
-                    Label("Open Profile Vault", systemImage: "books.vertical.fill")
+                    Text("Terminal & Network Console")
+                        .font(.system(size: 20, weight: .bold))
+                        .foregroundStyle(.primary)
+
+                    Text("Select a connection protocol, pick a saved session, or launch an interactive shell.")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
                 }
-                .buttonStyle(.bordered)
+                .padding(.top, 24)
+
+                // 4 Quick Connection Protocol Cards
+                LazyVGrid(columns: [GridItem(.flexible(), spacing: 14), GridItem(.flexible(), spacing: 14)], spacing: 14) {
+                    // Card 1: SSH Remote Terminal
+                    launchpadProtocolCard(
+                        title: "SSH Remote Shell",
+                        badge: "PORT 22",
+                        icon: "lock.shield.fill",
+                        iconColor: Theme.emeraldHealthy,
+                        description: "Connect to cloud Linux servers, network appliances, and BSD hosts with SSHv2 keypairs or credentials.",
+                        actionTitle: "Connect SSH",
+                        action: {
+                            newSessionType = 0
+                            showNewSessionSheet = true
+                        }
+                    )
+
+                    // Card 2: Telnet / Raw TCP Lab Console
+                    launchpadProtocolCard(
+                        title: "Telnet / Raw TCP",
+                        badge: "RFC 854",
+                        icon: "network",
+                        iconColor: Color(hex: "#06B6D4"),
+                        description: "Direct connection to Cisco routers, EVE-NG, GNS3 virtual topologies, and hardware terminal servers.",
+                        actionTitle: "Connect Telnet",
+                        action: {
+                            newSessionType = 1
+                            showNewSessionSheet = true
+                        }
+                    )
+
+                    // Card 3: USB Serial Console
+                    launchpadProtocolCard(
+                        title: "Hardware Serial Console",
+                        badge: "RS-232 / UART",
+                        icon: "cable.connector",
+                        iconColor: Theme.solarAmber,
+                        description: "Direct hardware console connection via USB-to-Serial adapters (/dev/cu.*) with custom baud and parity.",
+                        actionTitle: "Connect Serial",
+                        action: {
+                            newSessionType = 2
+                            showNewSessionSheet = true
+                        }
+                    )
+
+                    // Card 4: Local macOS Shell
+                    launchpadProtocolCard(
+                        title: "Local Shell (zsh)",
+                        badge: "macOS POSIX",
+                        icon: "terminal.fill",
+                        iconColor: Theme.quantumViolet,
+                        description: "Interactive macOS /bin/zsh terminal session with complete environment variables, POSIX PTY, and CLI tools.",
+                        actionTitle: "Launch Local Shell",
+                        action: {
+                            state.terminalManager.openLocalShell()
+                        }
+                    )
+                }
+                .frame(maxWidth: 680)
+
+                // Quick Launch from Saved Sessions (if any exist)
+                if !state.terminalManager.savedProfiles.isEmpty {
+                    VStack(alignment: .leading, spacing: 10) {
+                        HStack {
+                            Label("Saved Sessions Quick Launch", systemImage: "star.fill")
+                                .font(Theme.monoText(11, weight: .bold))
+                                .foregroundStyle(.secondary)
+                            Spacer()
+                            Button("View All (\(state.terminalManager.savedProfiles.count))...") {
+                                showProfileVaultSheet = true
+                            }
+                            .font(.system(size: 11))
+                            .buttonStyle(.plain)
+                            .foregroundStyle(Theme.neonCyan)
+                        }
+
+                        LazyVGrid(columns: [GridItem(.flexible(), spacing: 8), GridItem(.flexible(), spacing: 8)], spacing: 8) {
+                            ForEach(state.terminalManager.savedProfiles.prefix(4)) { profile in
+                                Button(action: {
+                                    state.terminalManager.launchProfile(profile)
+                                }) {
+                                    HStack(spacing: 8) {
+                                        protocolBadgeView(type: profile.connectionType)
+                                        VStack(alignment: .leading, spacing: 2) {
+                                            Text(profile.name)
+                                                .font(Theme.monoText(11, weight: .semibold))
+                                                .foregroundStyle(.primary)
+                                                .lineLimit(1)
+                                            Text(sessionSubtitle(for: profile))
+                                                .font(.system(size: 9))
+                                                .foregroundStyle(.secondary)
+                                                .lineLimit(1)
+                                        }
+                                        Spacer()
+                                        Image(systemName: "chevron.right")
+                                            .font(.system(size: 9, weight: .bold))
+                                            .foregroundStyle(.secondary.opacity(0.6))
+                                    }
+                                    .padding(8)
+                                    .background(Theme.cardBackground.opacity(0.8))
+                                    .clipShape(RoundedRectangle(cornerRadius: 6))
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 6)
+                                            .stroke(Theme.borderLight.opacity(0.5), lineWidth: 0.75)
+                                    )
+                                }
+                                .buttonStyle(FolderTreeRowButtonStyle())
+                            }
+                        }
+                    }
+                    .frame(maxWidth: 680)
+                    .padding(.top, 8)
+                }
+
+                Spacer(minLength: 24)
             }
-            Spacer()
+            .padding(.horizontal, 24)
+            .frame(maxWidth: .infinity)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color(hex: selectedTheme.backgroundColorHex).opacity(0.96))
+    }
+
+    private func launchpadProtocolCard(
+        title: String,
+        badge: String,
+        icon: String,
+        iconColor: Color,
+        description: String,
+        actionTitle: String,
+        action: @escaping () -> Void
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Image(systemName: icon)
+                    .font(.system(size: 16))
+                    .foregroundStyle(iconColor)
+                    .frame(width: 28, height: 28)
+                    .background(iconColor.opacity(0.12))
+                    .clipShape(RoundedRectangle(cornerRadius: 6))
+
+                Text(title)
+                    .font(Theme.monoText(11, weight: .bold))
+                    .foregroundStyle(.primary)
+
+                Spacer()
+
+                Text(badge)
+                    .font(.system(size: 8, weight: .bold))
+                    .padding(.horizontal, 5)
+                    .padding(.vertical, 2)
+                    .background(iconColor.opacity(0.15))
+                    .foregroundStyle(iconColor)
+                    .clipShape(Capsule())
+            }
+
+            Text(description)
+                .font(.system(size: 10))
+                .foregroundStyle(.secondary)
+                .lineLimit(3)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Spacer(minLength: 4)
+
+            Button(action: action) {
+                HStack {
+                    Text(actionTitle)
+                        .font(Theme.monoText(10, weight: .bold))
+                    Spacer()
+                    Image(systemName: "arrow.right")
+                        .font(.system(size: 9, weight: .bold))
+                }
+                .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.bordered)
+            .tint(iconColor)
+        }
+        .padding(12)
+        .frame(minHeight: 140)
+        .background(Theme.cardBackground)
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(Theme.borderLight.opacity(0.75), lineWidth: 0.75)
+        )
     }
 
     // MARK: - New Session Modal
@@ -1388,9 +1579,10 @@ public struct TerminalWorkbenchView: View {
 
             Picker("Connection Mode", selection: $newSessionType) {
                 Text("SSH").tag(0)
-                Text("USB Serial Console").tag(1)
-                Text("Simulated CLI").tag(2)
-                Text("Local Shell").tag(3)
+                Text("Telnet / TCP").tag(1)
+                Text("USB Serial").tag(2)
+                Text("Simulated CLI").tag(3)
+                Text("Local Shell").tag(4)
             }
             .pickerStyle(.segmented)
 
@@ -1498,6 +1690,64 @@ public struct TerminalWorkbenchView: View {
                     }
 
                 } else if newSessionType == 1 {
+                    // Telnet / Raw TCP Form
+                    VStack(alignment: .leading, spacing: 10) {
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("TARGET HOST IP OR HOSTNAME")
+                                .font(Theme.monoText(10, weight: .bold))
+                                .foregroundStyle(.secondary)
+                            TextField("192.168.1.100", text: $telnetHost)
+                                .textFieldStyle(.roundedBorder)
+                        }
+
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("TCP PORT")
+                                .font(Theme.monoText(10, weight: .bold))
+                                .foregroundStyle(.secondary)
+                            HStack(spacing: 8) {
+                                TextField("23", text: $telnetPort)
+                                    .textFieldStyle(.roundedBorder)
+                                    .frame(width: 90)
+
+                                // Quick Port Preset Pills
+                                Button("23 (Standard)") {
+                                    telnetPort = "23"
+                                }
+                                .font(.system(size: 9))
+                                .buttonStyle(.bordered)
+
+                                Button("32769 (EVE/GNS3)") {
+                                    telnetPort = "32769"
+                                }
+                                .font(.system(size: 9))
+                                .buttonStyle(.bordered)
+
+                                Button("7000 (Console)") {
+                                    telnetPort = "7000"
+                                }
+                                .font(.system(size: 9))
+                                .buttonStyle(.bordered)
+                            }
+                        }
+
+                        VStack(alignment: .leading, spacing: 4) {
+                            HStack(spacing: 4) {
+                                Image(systemName: "info.circle.fill")
+                                    .foregroundStyle(Theme.neonCyan)
+                                Text("Virtual Labs & Out-of-Band Console Support")
+                                    .font(Theme.monoText(10, weight: .bold))
+                                    .foregroundStyle(Theme.neonCyan)
+                            }
+                            Text("Connects directly to virtual router consoles in EVE-NG / GNS3, physical serial terminal servers (Opengear/Digi), or legacy network hardware. Uses native RFC 854 Telnet or raw TCP socket streaming.")
+                                .font(.system(size: 11))
+                                .foregroundStyle(.secondary)
+                        }
+                        .padding(8)
+                        .background(Theme.neonCyan.opacity(0.08))
+                        .clipShape(RoundedRectangle(cornerRadius: 6))
+                    }
+
+                } else if newSessionType == 2 {
                     // Direct POSIX USB Serial Form
                     VStack(alignment: .leading, spacing: 6) {
                         HStack {
@@ -1562,7 +1812,7 @@ public struct TerminalWorkbenchView: View {
                         }
                     }
 
-                } else if newSessionType == 2 {
+                } else if newSessionType == 3 {
                     // Multi-Vendor Simulated CLI
                     VStack(alignment: .leading, spacing: 6) {
                         Text("SIMULATED NETWORK VENDOR & HARDWARE")
@@ -1755,6 +2005,7 @@ public struct TerminalWorkbenchView: View {
                             .foregroundStyle(.secondary)
                         Picker("", selection: $editingProfileConnectionType) {
                             Text("SSHv2").tag("ssh")
+                            Text("Telnet / TCP").tag("telnet")
                             Text("POSIX USB Serial").tag("serial")
                             Text("Local Shell").tag("localshell")
                         }
@@ -1831,7 +2082,30 @@ public struct TerminalWorkbenchView: View {
                         Toggle("Enable Legacy SSH Ciphers (Cisco IOS 12/15, 3DES, DH-group1)", isOn: $editingProfileEnableLegacyCiphers)
                             .font(.system(size: 11))
 
-                    } else if editingProfileConnectionType == "serial" {
+                    } else if editingProfileConnectionType == "telnet" {
+                        // Telnet Host & Port
+                        HStack(spacing: 12) {
+                            VStack(alignment: .leading, spacing: 6) {
+                                Text("HOST IP / FQDN")
+                                    .font(Theme.monoText(10, weight: .bold))
+                                    .foregroundStyle(.secondary)
+                                TextField("192.168.1.100", text: $editingProfileHost)
+                                    .textFieldStyle(.roundedBorder)
+                            }
+
+                            VStack(alignment: .leading, spacing: 6) {
+                                Text("PORT")
+                                    .font(Theme.monoText(10, weight: .bold))
+                                    .foregroundStyle(.secondary)
+                                TextField("23", text: $editingProfilePort)
+                                    .textFieldStyle(.roundedBorder)
+                            }
+                            .frame(width: 80)
+                        }
+
+                        Text("Direct Telnet / Raw TCP stream (RFC 854 / Netcat). Ideal for EVE-NG, GNS3, and out-of-band console servers.")
+                            .font(.system(size: 11))
+                            .foregroundStyle(.secondary)
                         // Serial port settings
                         VStack(alignment: .leading, spacing: 6) {
                             Text("SERIAL DEVICE PATH (/dev/cu.*)")
@@ -2352,6 +2626,20 @@ public struct TerminalWorkbenchView: View {
                 enableLegacyCiphers: sshEnableLegacyCiphers
             )
         case 1:
+            var targetHost = telnetHost.trimmingCharacters(in: .whitespacesAndNewlines)
+            var targetPort = Int(telnetPort) ?? 23
+            if targetHost.contains(":") {
+                let parts = targetHost.components(separatedBy: ":")
+                targetHost = parts[0]
+                if let p = Int(parts[1]) {
+                    targetPort = p
+                }
+            }
+            if targetHost.isEmpty {
+                targetHost = "127.0.0.1"
+            }
+            state.terminalManager.openTelnetSession(host: targetHost, port: targetPort)
+        case 2:
             let path = selectedSerialPort.isEmpty ? "/dev/cu.usbserial-001" : selectedSerialPort
             state.terminalManager.openSerialSession(
                 devicePath: path,
@@ -2361,7 +2649,7 @@ public struct TerminalWorkbenchView: View {
                 stopBits: selectedStopBits,
                 flowControl: selectedFlowControl
             )
-        case 2:
+        case 3:
             state.terminalManager.openSimulatedSession(preset: selectedSimPreset)
         default:
             state.terminalManager.openLocalShell()
@@ -2631,7 +2919,7 @@ public struct TerminalWorkbenchView: View {
 
             // Protocol Chips
             HStack(spacing: 4) {
-                ForEach(["ALL", "SSH", "SERIAL", "LOCAL"], id: \.self) { proto in
+                ForEach(["ALL", "SSH", "TELNET", "SERIAL", "LOCAL"], id: \.self) { proto in
                     let isSelected = selectedProtocolFilter == proto
                     Button(action: { selectedProtocolFilter = proto }) {
                         Text(proto)
@@ -2704,6 +2992,8 @@ public struct TerminalWorkbenchView: View {
                 switch selectedProtocolFilter {
                 case "SSH":
                     if p.connectionType.lowercased() != "ssh" { return false }
+                case "TELNET":
+                    if p.connectionType.lowercased() != "telnet" { return false }
                 case "SERIAL":
                     if p.connectionType.lowercased() != "serial" { return false }
                 case "LOCAL":
@@ -3116,6 +3406,8 @@ public struct TerminalWorkbenchView: View {
             let cmd: String
             if profile.connectionType.lowercased() == "ssh" {
                 cmd = "ssh -p \(profile.port) \(profile.username)@\(profile.host)"
+            } else if profile.connectionType.lowercased() == "telnet" {
+                cmd = "nc \(profile.host) \(profile.port)"
             } else if profile.connectionType.lowercased() == "serial" {
                 cmd = "screen \(profile.serialPath) \(profile.serialBaud)"
             } else {
@@ -3159,6 +3451,14 @@ public struct TerminalWorkbenchView: View {
                 .padding(.vertical, 2)
                 .background(Color(hex: "#10B981").opacity(0.2))
                 .foregroundStyle(Color(hex: "#10B981"))
+                .clipShape(RoundedRectangle(cornerRadius: 3))
+        case "telnet":
+            Text("TEL")
+                .font(.system(size: 8, weight: .bold))
+                .padding(.horizontal, 4)
+                .padding(.vertical, 2)
+                .background(Color(hex: "#06B6D4").opacity(0.2))
+                .foregroundStyle(Color(hex: "#06B6D4"))
                 .clipShape(RoundedRectangle(cornerRadius: 3))
         case "serial":
             Text("SER")
@@ -3242,6 +3542,8 @@ public struct TerminalWorkbenchView: View {
 
     private func sessionSubtitle(for profile: TerminalProfile) -> String {
         switch profile.connectionType.lowercased() {
+        case "telnet":
+            return "telnet://\(profile.host):\(profile.port)"
         case "serial":
             let path = profile.serialPath.components(separatedBy: "/").last ?? profile.serialPath
             return path.isEmpty ? "/dev/cu.usbserial (\(profile.serialBaud))" : "\(path) (\(profile.serialBaud))"
@@ -3278,6 +3580,21 @@ public struct TerminalWorkbenchView: View {
     private func performQuickConnect() {
         let input = quickConnectInput.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !input.isEmpty else { return }
+
+        // Telnet URL or prefix check
+        if input.lowercased().hasPrefix("telnet://") || input.lowercased().hasPrefix("telnet:") {
+            let stripped = input.replacingOccurrences(of: "telnet://", with: "").replacingOccurrences(of: "telnet:", with: "")
+            var tHost = stripped
+            var tPort = 23
+            if tHost.contains(":") {
+                let p = tHost.components(separatedBy: ":")
+                tHost = p[0]
+                tPort = Int(p[1]) ?? 23
+            }
+            state.terminalManager.openTelnetSession(host: tHost, port: tPort)
+            quickConnectInput = ""
+            return
+        }
 
         var user = "ubuntu"
         var host = input

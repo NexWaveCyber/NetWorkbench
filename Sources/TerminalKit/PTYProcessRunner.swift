@@ -202,6 +202,25 @@ public final class PTYProcessRunner: @unchecked Sendable {
         try launch(executableURL: shellURL, arguments: ["-l"])
     }
 
+    /// Launch Telnet or Raw TCP session attached to the pseudo-terminal.
+    /// Prefers Homebrew or system telnet if installed; falls back to /usr/bin/nc for raw TCP socket streaming.
+    public func launchTelnet(host: String, port: Int = 23) throws {
+        let fm = FileManager.default
+        let candidates = [
+            "/opt/homebrew/bin/telnet",
+            "/usr/local/bin/telnet",
+            "/usr/bin/telnet"
+        ]
+
+        if let telnetPath = candidates.first(where: { fm.fileExists(atPath: $0) }) {
+            try launch(executableURL: URL(fileURLWithPath: telnetPath), arguments: [host, "\(port)"])
+        } else {
+            // Netcat fallback for zero-dependency raw TCP socket streaming
+            let ncURL = URL(fileURLWithPath: "/usr/bin/nc")
+            try launch(executableURL: ncURL, arguments: [host, "\(port)"])
+        }
+    }
+
     /// Synchronize PTY window dimensions (columns and rows)
     public func resize(cols: Int, rows: Int) {
         guard masterFd >= 0 else { return }
