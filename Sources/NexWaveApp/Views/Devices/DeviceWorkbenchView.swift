@@ -392,7 +392,7 @@ public struct DeviceWorkbenchView: View {
             .background(Theme.cardBackground)
             .clipShape(RoundedRectangle(cornerRadius: 12))
         } else {
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 380, maximum: 520), spacing: 16)], spacing: 16) {
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 400, maximum: 540), spacing: 16)], spacing: 16) {
                 ForEach(filteredDevices) { device in
                     deviceCard(device)
                 }
@@ -553,136 +553,158 @@ public struct DeviceWorkbenchView: View {
             Divider()
                 .background(Theme.borderLight)
 
-            // Action Buttons
-            HStack(spacing: 6) {
-                Button(action: {
-                    state.targetInput = device.ipAddress
-                    state.updateTargetClassification(device.ipAddress)
-                    state.selectedWorkspace = .diagnose
-                    if let target = state.classifiedTarget {
-                        Task {
-                            await state.runDiagnosis(target: target)
+            // Action Buttons Deck
+            VStack(spacing: 8) {
+                // Row 1: Telemetry & Diagnostics
+                HStack(spacing: 8) {
+                    Button(action: {
+                        state.targetInput = device.ipAddress
+                        state.updateTargetClassification(device.ipAddress)
+                        state.selectedWorkspace = .diagnose
+                        if let target = state.classifiedTarget {
+                            Task {
+                                await state.runDiagnosis(target: target)
+                            }
                         }
+                    }) {
+                        HStack(spacing: 5) {
+                            Image(systemName: "stethoscope")
+                                .font(.system(size: 11))
+                            Text("Diagnose")
+                                .font(.system(size: 11, weight: .semibold))
+                                .lineLimit(1)
+                                .fixedSize()
+                        }
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 5)
+                        .background(Theme.electricAzure.opacity(0.12))
+                        .foregroundStyle(Theme.electricAzure)
+                        .clipShape(RoundedRectangle(cornerRadius: 6))
                     }
-                }) {
-                    HStack(spacing: 4) {
-                        Image(systemName: "stethoscope")
+                    .buttonStyle(.plain)
+                    .help("Run diagnostic suite on \(device.ipAddress)")
+
+                    Button(action: {
+                        selectedDeviceForAudit = device
+                    }) {
+                        HStack(spacing: 5) {
+                            Image(systemName: "gauge.with.needle")
+                                .font(.system(size: 11))
+                            Text("Audit")
+                                .font(.system(size: 11, weight: .semibold))
+                                .lineLimit(1)
+                                .fixedSize()
+                        }
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 5)
+                        .background(Theme.signalEmerald.opacity(0.12))
+                        .foregroundStyle(Theme.signalEmerald)
+                        .clipShape(RoundedRectangle(cornerRadius: 6))
+                    }
+                    .buttonStyle(.plain)
+                    .help("Audit live telemetry vs recorded performance baseline")
+
+                    Button(action: {
+                        state.addDeviceToTimeline(device: device)
+                    }) {
+                        HStack(spacing: 5) {
+                            Image(systemName: "waveform.path.ecg")
+                                .font(.system(size: 11))
+                            Text("Monitor")
+                                .font(.system(size: 11, weight: .semibold))
+                                .lineLimit(1)
+                                .fixedSize()
+                        }
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 5)
+                        .background(Theme.solarAmber.opacity(0.12))
+                        .foregroundStyle(Theme.solarAmber)
+                        .clipShape(RoundedRectangle(cornerRadius: 6))
+                    }
+                    .buttonStyle(.plain)
+                    .help("Add device to Timeline Monitor for SLA tracking")
+
+                    Spacer()
+                }
+
+                // Row 2: Management Tools & Baseline
+                HStack(spacing: 8) {
+                    Button(action: {
+                        state.jumpToSNMPStudio(device: device)
+                    }) {
+                        HStack(spacing: 5) {
+                            Image(systemName: "chart.bar.xaxis")
+                                .font(.system(size: 11))
+                            Text("SNMP")
+                                .font(.system(size: 11, weight: .semibold))
+                                .lineLimit(1)
+                                .fixedSize()
+                        }
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 5)
+                        .background(Theme.neonCyan.opacity(0.12))
+                        .foregroundStyle(Theme.neonCyan)
+                        .clipShape(RoundedRectangle(cornerRadius: 6))
+                    }
+                    .buttonStyle(.plain)
+                    .help("Open SNMP Studio pre-populated for this device")
+
+                    Button(action: {
+                        selectedDeviceForBaseline = device
+                    }) {
+                        HStack(spacing: 5) {
+                            Image(systemName: "chart.line.uptrend.xyaxis")
+                                .font(.system(size: 11))
+                            Text("Baseline")
+                                .font(.system(size: 11, weight: .semibold))
+                                .lineLimit(1)
+                                .fixedSize()
+                        }
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 5)
+                        .background(Color.primary.opacity(0.06))
+                        .foregroundStyle(.primary)
+                        .clipShape(RoundedRectangle(cornerRadius: 6))
+                    }
+                    .buttonStyle(.plain)
+                    .help("View or capture performance baselines")
+
+                    Button(action: {
+                        state.terminalManager.openSSHSession(host: device.ipAddress)
+                        state.selectedWorkspace = .terminal
+                    }) {
+                        HStack(spacing: 5) {
+                            Image(systemName: "terminal.fill")
+                                .font(.system(size: 11))
+                            Text("SSH")
+                                .font(.system(size: 11, weight: .semibold))
+                                .lineLimit(1)
+                                .fixedSize()
+                        }
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 5)
+                        .background(Theme.quantumViolet.opacity(0.12))
+                        .foregroundStyle(Theme.quantumViolet)
+                        .clipShape(RoundedRectangle(cornerRadius: 6))
+                    }
+                    .buttonStyle(.plain)
+                    .help("Open Direct SSH Terminal Session")
+
+                    Spacer()
+
+                    Button(action: {
+                        state.deleteDevice(id: device.id)
+                    }) {
+                        Image(systemName: "trash")
                             .font(.system(size: 11))
-                        Text("Diagnose")
-                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(.secondary)
+                            .padding(6)
+                            .background(Color.primary.opacity(0.04))
+                            .clipShape(Circle())
                     }
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 5)
-                    .background(Theme.electricAzure.opacity(0.12))
-                    .foregroundStyle(Theme.electricAzure)
-                    .clipShape(RoundedRectangle(cornerRadius: 6))
+                    .buttonStyle(.plain)
+                    .help("Delete Device from Inventory")
                 }
-                .buttonStyle(.plain)
-
-                Button(action: {
-                    selectedDeviceForAudit = device
-                }) {
-                    HStack(spacing: 4) {
-                        Image(systemName: "gauge.with.needle")
-                            .font(.system(size: 11))
-                        Text("Audit")
-                            .font(.system(size: 11, weight: .semibold))
-                    }
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 5)
-                    .background(Theme.signalEmerald.opacity(0.12))
-                    .foregroundStyle(Theme.signalEmerald)
-                    .clipShape(RoundedRectangle(cornerRadius: 6))
-                }
-                .buttonStyle(.plain)
-                .help("Audit live telemetry vs recorded performance baseline")
-
-                Button(action: {
-                    state.addDeviceToTimeline(device: device)
-                }) {
-                    HStack(spacing: 4) {
-                        Image(systemName: "waveform.path.ecg")
-                            .font(.system(size: 11))
-                        Text("Monitor")
-                            .font(.system(size: 11, weight: .semibold))
-                    }
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 5)
-                    .background(Theme.solarAmber.opacity(0.12))
-                    .foregroundStyle(Theme.solarAmber)
-                    .clipShape(RoundedRectangle(cornerRadius: 6))
-                }
-                .buttonStyle(.plain)
-                .help("Add device to Timeline Monitor for SLA tracking")
-
-                Button(action: {
-                    state.jumpToSNMPStudio(device: device)
-                }) {
-                    HStack(spacing: 4) {
-                        Image(systemName: "chart.bar.xaxis")
-                            .font(.system(size: 11))
-                        Text("SNMP")
-                            .font(.system(size: 11, weight: .semibold))
-                    }
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 5)
-                    .background(Theme.neonCyan.opacity(0.12))
-                    .foregroundStyle(Theme.neonCyan)
-                    .clipShape(RoundedRectangle(cornerRadius: 6))
-                }
-                .buttonStyle(.plain)
-                .help("Open SNMP Studio pre-populated for this device")
-
-                Button(action: {
-                    selectedDeviceForBaseline = device
-                }) {
-                    HStack(spacing: 4) {
-                        Image(systemName: "chart.line.uptrend.xyaxis")
-                            .font(.system(size: 11))
-                        Text("Baseline")
-                            .font(.system(size: 11, weight: .semibold))
-                    }
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 5)
-                    .background(Color.primary.opacity(0.06))
-                    .clipShape(RoundedRectangle(cornerRadius: 6))
-                }
-                .buttonStyle(.plain)
-                .help("View or capture performance baselines")
-
-                Button(action: {
-                    state.terminalManager.openSSHSession(host: device.ipAddress)
-                    state.selectedWorkspace = .terminal
-                }) {
-                    HStack(spacing: 4) {
-                        Image(systemName: "terminal.fill")
-                            .font(.system(size: 11))
-                        Text("SSH")
-                            .font(.system(size: 11, weight: .semibold))
-                    }
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 5)
-                    .background(Theme.quantumViolet.opacity(0.12))
-                    .foregroundStyle(Theme.quantumViolet)
-                    .clipShape(RoundedRectangle(cornerRadius: 6))
-                }
-                .buttonStyle(.plain)
-                .help("Open Direct SSH Terminal Session")
-
-                Spacer()
-
-                Button(action: {
-                    state.deleteDevice(id: device.id)
-                }) {
-                    Image(systemName: "trash")
-                        .font(.system(size: 11))
-                        .foregroundStyle(.secondary)
-                        .padding(6)
-                        .background(Color.primary.opacity(0.04))
-                        .clipShape(Circle())
-                }
-                .buttonStyle(.plain)
-                .help("Delete Device from Inventory")
             }
         }
         .padding(16)
