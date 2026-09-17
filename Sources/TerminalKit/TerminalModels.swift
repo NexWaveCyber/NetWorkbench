@@ -384,11 +384,35 @@ public enum TerminalSplitMode: String, Sendable, CaseIterable, Identifiable, Cod
     public var id: String { rawValue }
 }
 
+/// Hierarchical folder for organizing saved connection sessions (MobaXterm / Royal TS style)
+public struct SessionFolder: Identifiable, Sendable, Hashable, Codable {
+    public let id: UUID
+    public var name: String
+    public var parentId: UUID?
+    public var isExpanded: Bool
+    public var iconColorHex: String?
+
+    public init(
+        id: UUID = UUID(),
+        name: String,
+        parentId: UUID? = nil,
+        isExpanded: Bool = true,
+        iconColorHex: String? = "#F59E0B"
+    ) {
+        self.id = id
+        self.name = name
+        self.parentId = parentId
+        self.isExpanded = isExpanded
+        self.iconColorHex = iconColorHex
+    }
+}
+
 /// Persistent connection profile bookmark
 public struct TerminalProfile: Identifiable, Sendable, Hashable, Codable {
     public let id: UUID
     public var name: String
     public var folder: String
+    public var folderId: UUID?
     public var host: String
     public var port: Int
     public var username: String
@@ -403,11 +427,15 @@ public struct TerminalProfile: Identifiable, Sendable, Hashable, Codable {
     public var jumpUser: String?
     public var jumpPort: Int?
     public var enableLegacyCiphers: Bool
+    public var tags: [String]
+    public var notes: String
+    public var lastConnected: Date?
 
     public init(
         id: UUID = UUID(),
         name: String,
         folder: String = "General",
+        folderId: UUID? = nil,
         host: String = "",
         port: Int = 22,
         username: String = "admin",
@@ -421,11 +449,15 @@ public struct TerminalProfile: Identifiable, Sendable, Hashable, Codable {
         jumpHost: String? = nil,
         jumpUser: String? = nil,
         jumpPort: Int? = 22,
-        enableLegacyCiphers: Bool = false
+        enableLegacyCiphers: Bool = false,
+        tags: [String] = [],
+        notes: String = "",
+        lastConnected: Date? = nil
     ) {
         self.id = id
         self.name = name
         self.folder = folder
+        self.folderId = folderId
         self.host = host
         self.port = port
         self.username = username
@@ -440,6 +472,40 @@ public struct TerminalProfile: Identifiable, Sendable, Hashable, Codable {
         self.jumpUser = jumpUser
         self.jumpPort = jumpPort
         self.enableLegacyCiphers = enableLegacyCiphers
+        self.tags = tags
+        self.notes = notes
+        self.lastConnected = lastConnected
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case id, name, folder, folderId, host, port, username, identityFile, connectionType
+        case serialBaud, serialPath, vendorPreset, autoConnect, badgeColorHex
+        case jumpHost, jumpUser, jumpPort, enableLegacyCiphers, tags, notes, lastConnected
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.id = try container.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
+        self.name = try container.decodeIfPresent(String.self, forKey: .name) ?? "Untitled Session"
+        self.folder = try container.decodeIfPresent(String.self, forKey: .folder) ?? "General"
+        self.folderId = try container.decodeIfPresent(UUID.self, forKey: .folderId)
+        self.host = try container.decodeIfPresent(String.self, forKey: .host) ?? ""
+        self.port = try container.decodeIfPresent(Int.self, forKey: .port) ?? 22
+        self.username = try container.decodeIfPresent(String.self, forKey: .username) ?? "admin"
+        self.identityFile = try container.decodeIfPresent(String.self, forKey: .identityFile)
+        self.connectionType = try container.decodeIfPresent(String.self, forKey: .connectionType) ?? "ssh"
+        self.serialBaud = try container.decodeIfPresent(Int.self, forKey: .serialBaud) ?? 9600
+        self.serialPath = try container.decodeIfPresent(String.self, forKey: .serialPath) ?? ""
+        self.vendorPreset = try container.decodeIfPresent(String.self, forKey: .vendorPreset) ?? ""
+        self.autoConnect = try container.decodeIfPresent(Bool.self, forKey: .autoConnect) ?? false
+        self.badgeColorHex = try container.decodeIfPresent(String.self, forKey: .badgeColorHex) ?? "#00E5FF"
+        self.jumpHost = try container.decodeIfPresent(String.self, forKey: .jumpHost)
+        self.jumpUser = try container.decodeIfPresent(String.self, forKey: .jumpUser)
+        self.jumpPort = try container.decodeIfPresent(Int.self, forKey: .jumpPort)
+        self.enableLegacyCiphers = try container.decodeIfPresent(Bool.self, forKey: .enableLegacyCiphers) ?? false
+        self.tags = try container.decodeIfPresent([String].self, forKey: .tags) ?? []
+        self.notes = try container.decodeIfPresent(String.self, forKey: .notes) ?? ""
+        self.lastConnected = try container.decodeIfPresent(Date.self, forKey: .lastConnected)
     }
 }
 
@@ -548,22 +614,176 @@ public struct SSHTunnelConfig: Identifiable, Sendable, Hashable, Codable {
 public struct TerminalSyntaxHighlightConfig: Sendable, Hashable, Codable {
     public var isEnabled: Bool
     public var highlightIPs: Bool
+    public var highlightIPv6: Bool
+    public var highlightCIDR: Bool
     public var highlightMACs: Bool
+    public var highlightInterfaces: Bool
     public var highlightErrors: Bool
     public var highlightSuccess: Bool
 
     public init(
         isEnabled: Bool = true,
         highlightIPs: Bool = true,
+        highlightIPv6: Bool = true,
+        highlightCIDR: Bool = true,
         highlightMACs: Bool = true,
+        highlightInterfaces: Bool = true,
         highlightErrors: Bool = true,
         highlightSuccess: Bool = true
     ) {
         self.isEnabled = isEnabled
         self.highlightIPs = highlightIPs
+        self.highlightIPv6 = highlightIPv6
+        self.highlightCIDR = highlightCIDR
         self.highlightMACs = highlightMACs
+        self.highlightInterfaces = highlightInterfaces
         self.highlightErrors = highlightErrors
         self.highlightSuccess = highlightSuccess
+    }
+}
+
+// MARK: - Remote SFTP / SCP File Explorer Models
+
+/// Represents a remote or local file or folder item for visual dual-pane file management
+public struct RemoteFileItem: Identifiable, Sendable, Hashable {
+    public let id: String
+    public let name: String
+    public let path: String
+    public let isDirectory: Bool
+    public let size: Int64
+    public let permissions: String
+    public let modifiedDate: String
+    public let isSymlink: Bool
+
+    public init(
+        name: String,
+        path: String,
+        isDirectory: Bool,
+        size: Int64 = 0,
+        permissions: String = "",
+        modifiedDate: String = "",
+        isSymlink: Bool = false
+    ) {
+        self.id = path
+        self.name = name
+        self.path = path
+        self.isDirectory = isDirectory
+        self.size = size
+        self.permissions = permissions
+        self.modifiedDate = modifiedDate
+        self.isSymlink = isSymlink
+    }
+
+    public var iconName: String {
+        if isDirectory { return "folder.fill" }
+        let ext = (name as NSString).pathExtension.lowercased()
+        switch ext {
+        case "conf", "cfg", "config", "ini", "yaml", "yml", "json", "rsc":
+            return "gearshape.fill"
+        case "log", "txt":
+            return "doc.text.fill"
+        case "sh", "py", "bash", "zsh":
+            return "terminal.fill"
+        case "tar", "gz", "zip", "tgz":
+            return "archivebox.fill"
+        case "bin", "iso", "img":
+            return "memorychip.fill"
+        case "key", "pem", "pub", "crt":
+            return "key.fill"
+        default:
+            return "doc.fill"
+        }
+    }
+
+    public var formattedSize: String {
+        if isDirectory { return "--" }
+        if size < 1024 { return "\(size) B" }
+        if size < 1024 * 1024 { return String(format: "%.1f KB", Double(size) / 1024.0) }
+        return String(format: "%.1f MB", Double(size) / (1024.0 * 1024.0))
+    }
+}
+
+// MARK: - Asciinema v2 Recording Models
+
+/// Header object for standard Asciinema v2 session recording files (.cast)
+public struct AsciinemaCastHeader: Codable, Sendable {
+    public let version: Int
+    public let width: Int
+    public let height: Int
+    public let timestamp: Int
+    public let title: String
+    public let env: [String: String]
+
+    public init(
+        width: Int = 80,
+        height: Int = 24,
+        timestamp: Int = Int(Date().timeIntervalSince1970),
+        title: String = "NexWave Terminal Session"
+    ) {
+        self.version = 2
+        self.width = width
+        self.height = height
+        self.timestamp = timestamp
+        self.title = title
+        self.env = ["TERM": "xterm-256color", "SHELL": "/bin/zsh"]
+    }
+}
+
+// MARK: - SSH Known Hosts Models
+
+/// Parsed entry from user's ~/.ssh/known_hosts file
+public struct KnownHostEntry: Identifiable, Sendable, Hashable {
+    public let id: String
+    public let host: String
+    public let keyType: String
+    public let keySnippet: String
+    public let rawLine: String
+    public let lineNumber: Int
+    public let isHashed: Bool
+
+    public init(
+        host: String,
+        keyType: String,
+        keySnippet: String,
+        rawLine: String,
+        lineNumber: Int,
+        isHashed: Bool = false
+    ) {
+        self.id = "\(lineNumber)_\(host)"
+        self.host = host
+        self.keyType = keyType
+        self.keySnippet = keySnippet
+        self.rawLine = rawLine
+        self.lineNumber = lineNumber
+        self.isHashed = isHashed
+    }
+}
+
+// MARK: - Hardware Serial Modem Status Signals
+
+/// Status of hardware serial modem control lines (RS-232 / UART)
+public struct SerialModemStatus: Sendable, Hashable {
+    public var dtr: Bool
+    public var rts: Bool
+    public var cts: Bool
+    public var dsr: Bool
+    public var dcd: Bool
+    public var ri: Bool
+
+    public init(
+        dtr: Bool = false,
+        rts: Bool = false,
+        cts: Bool = false,
+        dsr: Bool = false,
+        dcd: Bool = false,
+        ri: Bool = false
+    ) {
+        self.dtr = dtr
+        self.rts = rts
+        self.cts = cts
+        self.dsr = dsr
+        self.dcd = dcd
+        self.ri = ri
     }
 }
 

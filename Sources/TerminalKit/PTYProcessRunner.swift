@@ -237,6 +237,51 @@ public final class PTYProcessRunner: @unchecked Sendable {
         _ = Darwin.write(masterFd, &byte, 1)
     }
 
+    /// Query modem control line status flags (DTR, RTS, CTS, DSR, CD, RI) via TIOCMGET
+    public func queryModemStatus() -> SerialModemStatus? {
+        guard masterFd >= 0 else { return nil }
+        var status: Int32 = 0
+        let res = ioctl(masterFd, TIOCMGET, &status)
+        guard res == 0 else { return nil }
+
+        let dtr = (status & Int32(TIOCM_DTR)) != 0
+        let rts = (status & Int32(TIOCM_RTS)) != 0
+        let cts = (status & Int32(TIOCM_CTS)) != 0
+        let dsr = (status & Int32(TIOCM_DSR)) != 0
+        let cd = (status & Int32(TIOCM_CD)) != 0
+        let ri = (status & Int32(TIOCM_RI)) != 0
+
+        return SerialModemStatus(dtr: dtr, rts: rts, cts: cts, dsr: dsr, dcd: cd, ri: ri)
+    }
+
+    /// Set or clear DTR / RTS hardware modem control lines
+    public func setModemSignal(dtr: Bool? = nil, rts: Bool? = nil) {
+        guard masterFd >= 0 else { return }
+        var setBits: Int32 = 0
+        var clrBits: Int32 = 0
+
+        if let dtr = dtr {
+            if dtr { setBits |= Int32(TIOCM_DTR) } else { clrBits |= Int32(TIOCM_DTR) }
+        }
+        if let rts = rts {
+            if rts { setBits |= Int32(TIOCM_RTS) } else { clrBits |= Int32(TIOCM_RTS) }
+        }
+
+        if setBits != 0 {
+            _ = ioctl(masterFd, TIOCMBIS, &setBits)
+        }
+        if clrBits != 0 {
+            _ = ioctl(masterFd, TIOCMBIC, &clrBits)
+        }
+    }
+
+    /// Send raw hex byte sequence (e.g. for custom protocol or escape injections)
+    public func sendHexBytes(_ bytes: [UInt8]) {
+        guard masterFd >= 0, !bytes.isEmpty else { return }
+        var raw = bytes
+        _ = Darwin.write(masterFd, &raw, raw.count)
+    }
+
     /// Terminate process and clean up descriptors asynchronously without blocking the caller
     public func terminate() {
         isRunning = false

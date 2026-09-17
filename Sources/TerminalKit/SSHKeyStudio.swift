@@ -64,10 +64,11 @@ public final class SSHKeyStudio: @unchecked Sendable {
         return keys.sorted { $0.name < $1.name }
     }
 
-    /// Generate modern, ultra-secure Ed25519 keypair
+    /// Generate modern, ultra-secure Ed25519 keypair with optional passphrase
     @discardableResult
     public func generateEd25519Key(
         filename: String = "id_ed25519",
+        passphrase: String = "",
         comment: String = "nexwave@mac",
         overwrite: Bool = false
     ) throws -> SSHKeyInfo {
@@ -98,7 +99,7 @@ public final class SSHKeyStudio: @unchecked Sendable {
         process.arguments = [
             "-t", "ed25519",
             "-f", privURL.path,
-            "-N", "", // Empty passphrase for non-interactive use
+            "-N", passphrase,
             "-C", comment
         ]
 
@@ -135,11 +136,12 @@ public final class SSHKeyStudio: @unchecked Sendable {
         )
     }
 
-    /// Generate enterprise RSA 4096-bit keypair
+    /// Generate enterprise RSA 4096-bit keypair with optional passphrase
     @discardableResult
     public func generateRSAKey(
         filename: String = "id_rsa",
         bits: Int = 4096,
+        passphrase: String = "",
         comment: String = "nexwave@mac",
         overwrite: Bool = false
     ) throws -> SSHKeyInfo {
@@ -170,7 +172,7 @@ public final class SSHKeyStudio: @unchecked Sendable {
             "-t", "rsa",
             "-b", "\(bits)",
             "-f", privURL.path,
-            "-N", "",
+            "-N", passphrase,
             "-C", comment
         ]
 
@@ -268,5 +270,67 @@ public final class SSHKeyStudio: @unchecked Sendable {
             return parts[1]
         }
         return raw
+    }
+
+    // MARK: - Known Hosts Management
+
+    /// Reads and parses all entries from ~/.ssh/known_hosts
+    public func loadKnownHosts() -> [KnownHostEntry] {
+        let knownHostsURL = sshDirURL.appendingPathComponent("known_hosts")
+        guard let content = try? String(contentsOf: knownHostsURL, encoding: .utf8) else {
+            return []
+        }
+
+        var entries: [KnownHostEntry] = []
+        let lines = content.components(separatedBy: .newlines)
+
+        for (index, line) in lines.enumerated() {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            guard !trimmed.isEmpty && !trimmed.hasPrefix("#") else { continue }
+
+            let parts = trimmed.components(separatedBy: .whitespaces).filter { !$0.isEmpty }
+            guard parts.count >= 2 else { continue }
+
+            let hostPart = parts[0]
+            let isHashed = hostPart.hasPrefix("|1|")
+            let host = isHashed ? "[Hashed Host: \(hostPart.prefix(12))...]" : hostPart
+
+            let keyType = parts.count >= 3 ? parts[1] : "unknown"
+            let key = parts.count >= 3 ? parts[2] : parts[1]
+            let snippet = key.count > 24 ? "\(key.prefix(12))...\(key.suffix(8))" : key
+
+            entries.append(KnownHostEntry(
+                host: host,
+                keyType: keyType,
+                keySnippet: snippet,
+                rawLine: trimmed,
+                lineNumber: index + 1,
+                isHashed: isHashed
+            ))
+        }
+
+        return entries
+    }
+
+    /// Removes a host from known_hosts using ssh-keygen -R to resolve host identification changed errors
+    public func removeKnownHost(target: String) throws {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/ssh-keygen")
+        process.arguments = ["-R", target]
+
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        process.standardError = pipe
+
+        try process.run()
+        process.waitUntilExit()
+
+        guard process.terminationStatus == 0 else {
+            let errData = pipe.fileHandleForReading.readDataToEndOfFile()
+            let errMsg = String(data: errData, encoding: .utf8) ?? "Failed to remove known host"
+            throw NSError(domain: "SSHKeyStudio", code: Int(process.terminationStatus), userInfo: [
+                NSLocalizedDescriptionKey: errMsg
+            ])
+        }
     }
 }

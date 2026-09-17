@@ -341,6 +341,127 @@ struct TerminalTests {
         #expect(!manager.savedProfiles.contains(where: { $0.id == customProfile.id }))
     }
 
+    @Test("Dynamic Folder Hierarchy supports nested subfolders, renaming, and colors")
+    func testDynamicFolderHierarchy() {
+        let manager = TerminalManager()
+        let rootFolder = manager.createFolder(name: "Production Spine", colorHex: "#10B981")
+        #expect(manager.folders.contains(where: { $0.id == rootFolder.id }))
+        #expect(rootFolder.name == "Production Spine")
+        #expect(rootFolder.iconColorHex == "#10B981")
+
+        // Create subfolder
+        let subfolder = manager.createFolder(name: "DC-East", parentId: rootFolder.id, colorHex: "#00E5FF")
+        #expect(subfolder.parentId == rootFolder.id)
+        #expect(manager.folders.contains(where: { $0.id == subfolder.id }))
+
+        // Rename folder
+        manager.renameFolder(id: subfolder.id, newName: "DC-East-Fabric")
+        let updatedSub = manager.folders.first(where: { $0.id == subfolder.id })
+        #expect(updatedSub?.name == "DC-East-Fabric")
+
+        // Change color
+        manager.setFolderColor(id: subfolder.id, colorHex: "#8B5CF6")
+        #expect(manager.folders.first(where: { $0.id == subfolder.id })?.iconColorHex == "#8B5CF6")
+
+        // Toggle expansion
+        let initialExpanded = subfolder.isExpanded
+        manager.toggleFolderExpansion(id: subfolder.id)
+        #expect(manager.folders.first(where: { $0.id == subfolder.id })?.isExpanded == !initialExpanded)
+
+        // Delete parent folder without deleting contents (reparenting)
+        manager.deleteFolder(id: rootFolder.id, deleteContents: false)
+        #expect(!manager.folders.contains(where: { $0.id == rootFolder.id }))
+        // Subfolder should now be promoted to root (parentId == nil)
+        let reparentedSub = manager.folders.first(where: { $0.id == subfolder.id })
+        #expect(reparentedSub?.parentId == nil)
+
+        // Cleanup
+        manager.deleteFolder(id: subfolder.id, deleteContents: true)
+    }
+
+    @Test("Profile duplicate, move between folders, and active session bookmarking")
+    func testProfileDuplicateMoveAndBookmark() {
+        let manager = TerminalManager()
+        let folderA = manager.createFolder(name: "Zone Alpha")
+        let folderB = manager.createFolder(name: "Zone Beta")
+
+        let profile = TerminalProfile(
+            name: "Router Alpha",
+            folder: folderA.name,
+            folderId: folderA.id,
+            host: "10.0.1.1",
+            connectionType: "ssh",
+            tags: ["Edge", "BGP"]
+        )
+        manager.saveProfile(profile)
+        #expect(manager.savedProfiles.contains(where: { $0.id == profile.id }))
+
+        // Duplicate
+        let duplicated = manager.duplicateProfile(id: profile.id)
+        #expect(duplicated != nil)
+        #expect(duplicated?.name == "Router Alpha (Copy)")
+        #expect(duplicated?.host == "10.0.1.1")
+        #expect(manager.savedProfiles.contains(where: { $0.id == duplicated?.id }))
+
+        // Move to folder B
+        manager.moveProfile(id: profile.id, toFolderId: folderB.id)
+        let moved = manager.savedProfiles.first(where: { $0.id == profile.id })
+        #expect(moved?.folderId == folderB.id)
+        #expect(moved?.folder == folderB.name)
+
+        // One-click save active session as profile
+        let liveSession = manager.openLocalShell()
+        let bookmarked = manager.saveActiveSessionAsProfile(
+            session: liveSession,
+            name: "My Quick Shell",
+            folderId: folderB.id,
+            tags: ["Quick", "Shell"],
+            notes: "Saved from active tab"
+        )
+        #expect(bookmarked.name == "My Quick Shell")
+        #expect(bookmarked.folderId == folderB.id)
+        #expect(bookmarked.tags == ["Quick", "Shell"])
+        #expect(manager.savedProfiles.contains(where: { $0.id == bookmarked.id }))
+
+        // Cleanup
+        manager.deleteProfile(id: profile.id)
+        if let dupId = duplicated?.id { manager.deleteProfile(id: dupId) }
+        manager.deleteProfile(id: bookmarked.id)
+        manager.deleteFolder(id: folderA.id, deleteContents: true)
+        manager.deleteFolder(id: folderB.id, deleteContents: true)
+        manager.closeSession(id: liveSession.id)
+    }
+
+    @Test("Session Library JSON export and import roundtrip preserves hierarchy")
+    func testSessionLibraryExportImport() throws {
+        let manager = TerminalManager()
+        let testFolder = manager.createFolder(name: "Export Test Vault", colorHex: "#3B82F6")
+        let testProfile = TerminalProfile(
+            name: "Export Gateway",
+            folder: testFolder.name,
+            folderId: testFolder.id,
+            host: "10.99.99.1",
+            connectionType: "ssh",
+            tags: ["ExportTest"]
+        )
+        manager.saveProfile(testProfile)
+
+        // Export JSON
+        let exportedData = manager.exportSessionLibrary()
+        #expect(exportedData != nil)
+        guard let data = exportedData else { return }
+
+        // Verify JSON can be decoded
+        let (fCount, pCount) = try manager.importSessionLibrary(from: data)
+        // Since they already exist, count added should be 0 without crashing or duplicates
+        #expect(fCount == 0)
+        #expect(pCount == 0)
+
+        // Cleanup
+        manager.deleteProfile(id: testProfile.id)
+        manager.deleteFolder(id: testFolder.id, deleteContents: true)
+    }
+
     @Test("Broadcast Mode broadcasts commands and breaks across all connected sessions")
     func testBroadcastDispatch() {
         let manager = TerminalManager()
@@ -835,6 +956,283 @@ struct TerminalTests {
         // Line timestamp initialization
         let line = TerminalLine(text: "System restarted at 10:00:00")
         #expect(line.timestamp.timeIntervalSinceNow < 1.0)
+    }
+
+    @Test("Asciinema Recorder writes v2 header and JSON lines events")
+    func testAsciinemaRecordingLifecycle() throws {
+        let recorder = AsciinemaRecorder()
+        #expect(!recorder.isRecording)
+        #expect(recorder.eventCount == 0)
+
+        recorder.start(cols: 100, rows: 30, title: "MikroTik Lab Session")
+        #expect(recorder.isRecording)
+
+        // Record terminal output chunks
+        recorder.recordOutput("[admin@MikroTik] > /ip address print\r\n")
+        recorder.recordOutput("Flags: X - disabled, I - invalid, D - dynamic\r\n")
+        recorder.recordOutput(" #   ADDRESS            NETWORK         INTERFACE\r\n")
+        recorder.recordOutput(" 0   192.168.88.1/24    192.168.88.0    ether1\r\n")
+
+        #expect(recorder.eventCount == 4)
+
+        let castURL = try recorder.exportToFile(filename: "test_session.cast")
+        #expect(!recorder.isRecording)
+
+        let content = try String(contentsOf: castURL, encoding: .utf8)
+        let lines = content.components(separatedBy: .newlines).filter { !$0.isEmpty }
+        #expect(lines.count == 5) // 1 header + 4 events
+
+        // Verify line 1 is valid JSON header
+        let headerData = lines[0].data(using: .utf8)!
+        let headerObj = try JSONSerialization.jsonObject(with: headerData) as? [String: Any]
+        #expect(headerObj?["version"] as? Int == 2)
+        #expect(headerObj?["width"] as? Int == 100)
+        #expect(headerObj?["height"] as? Int == 30)
+        #expect(headerObj?["title"] as? String == "MikroTik Lab Session")
+
+        // Verify line 2 is valid asciinema event tuple [time, "o", string]
+        let eventData = lines[1].data(using: .utf8)!
+        let eventArray = try JSONSerialization.jsonObject(with: eventData) as? [Any]
+        #expect(eventArray?.count == 3)
+        #expect(eventArray?[1] as? String == "o")
+        #expect((eventArray?[2] as? String)?.contains("[admin@MikroTik]") == true)
+
+        // Cleanup
+        try? FileManager.default.removeItem(at: castURL)
+    }
+
+    @Test("Remote File Browser Engine parses directory listings and navigates")
+    func testRemoteFileBrowserEngine() {
+        let engine = RemoteFileBrowserEngine()
+        #expect(!engine.currentLocalPath.isEmpty)
+        #expect(engine.currentRemotePath == "~")
+
+        // Test RemoteFileItem size formatting
+        let emptyItem = RemoteFileItem(name: "dir", path: "/dir", isDirectory: true)
+        #expect(emptyItem.formattedSize == "--")
+
+        let smallItem = RemoteFileItem(name: "small.txt", path: "/small.txt", isDirectory: false, size: 512)
+        #expect(smallItem.formattedSize == "512 B")
+
+        let kbItem = RemoteFileItem(name: "medium.txt", path: "/medium.txt", isDirectory: false, size: 2048)
+        #expect(kbItem.formattedSize == "2.0 KB")
+
+        let mbItem = RemoteFileItem(name: "large.bin", path: "/large.bin", isDirectory: false, size: 5242880)
+        #expect(mbItem.formattedSize == "5.0 MB")
+
+        // Test icon resolution
+        let folderItem = RemoteFileItem(name: "configs", path: "/home/ubuntu/configs", isDirectory: true)
+        #expect(folderItem.iconName == "folder.fill")
+
+        let confItem = RemoteFileItem(name: "router.rsc", path: "/home/ubuntu/router.rsc", isDirectory: false)
+        #expect(confItem.iconName == "gearshape.fill")
+
+        let logItem = RemoteFileItem(name: "syslog.log", path: "/var/log/syslog.log", isDirectory: false)
+        #expect(logItem.iconName == "doc.text.fill")
+
+        // Test parsing ls -la output
+        let mockLsOutput = """
+        total 32
+        drwxr-xr-x  4 ubuntu ubuntu  4096 Sep 17 10:00 .
+        drwxr-xr-x 10 root   root    4096 Sep 17 09:00 ..
+        drwxr-xr-x  2 ubuntu ubuntu  4096 Sep 17 10:05 scripts
+        -rw-r--r--  1 ubuntu ubuntu  1234 Sep 17 10:10 backup.rsc
+        -rwxr-xr-x  1 ubuntu ubuntu   450 Sep 17 10:15 deploy.sh
+        """
+        let parsed = engine.parseLsOutput(mockLsOutput, basePath: "/home/ubuntu")
+        #expect(parsed.items.count == 4)
+        #expect(parsed.items[0].name == "..")
+        #expect(parsed.items[1].name == "scripts")
+        #expect(parsed.items[1].isDirectory)
+        #expect(parsed.items[2].name == "backup.rsc")
+        #expect(!parsed.items[2].isDirectory)
+        #expect(parsed.items[2].size == 1234)
+        #expect(parsed.items[3].name == "deploy.sh")
+
+        // Test local navigation
+        let previousPath = engine.currentLocalPath
+        engine.navigateLocal(to: "/")
+        #expect(engine.currentLocalPath == "/")
+        engine.navigateLocal(to: previousPath)
+        #expect(engine.currentLocalPath == previousPath)
+    }
+
+    @Test("Simulated CLI supports MikroTik RouterOS personality and tab completion")
+    func testMikroTikRouterOSPersonality() {
+        let sim = SimulatedDeviceCLI(hostname: "MikroTik-CCR2004", vendor: .mikrotikRouterOS)
+        var outputs: [String] = []
+        sim.onOutput = { chunk in
+            outputs.append(chunk)
+        }
+
+        sim.start()
+        #expect(!outputs.isEmpty)
+        #expect(outputs[0].contains("RouterOS 7.12"))
+        #expect(sim.currentPrompt.contains("[admin@MikroTik-CCR2004] >"))
+
+        // Test /ip address print
+        sim.processInput("/ip address print")
+        let lastOutput = outputs.last ?? ""
+        #expect(lastOutput.contains("192.168.88.1/24"))
+        #expect(lastOutput.contains("ether1"))
+
+        // Test /interface print
+        sim.processInput("/interface print")
+        let ifOutput = outputs.last ?? ""
+        #expect(ifOutput.contains("sfp-sfpplus1"))
+        #expect(ifOutput.contains("ether1-wan"))
+
+        // Test /system resource print
+        sim.processInput("/system resource print")
+        let resOutput = outputs.last ?? ""
+        #expect(resOutput.contains("ARM64 4-core"))
+
+        // Test MikroTik tab completion
+        let auto1 = sim.autoComplete(input: "/ip ad")
+        #expect(auto1 == "/ip address print")
+
+        let auto2 = sim.autoComplete(input: "/int")
+        #expect(auto2 == "/interface print")
+
+        let auto3 = sim.autoComplete(input: "/pin")
+        #expect(auto3 == "/ping")
+
+        // Test Cisco tab completion
+        let cisco = SimulatedDeviceCLI(hostname: "cisco-core", vendor: .ciscoIOSXE)
+        #expect(cisco.autoComplete(input: "sh ip in") == "show ip interface brief")
+        #expect(cisco.autoComplete(input: "conf") == "configure terminal")
+    }
+
+    @Test("Terminal Syntax Highlighter handles IPv6, CIDR, interfaces, and HTTP codes")
+    func testExpandedSyntaxHighlighter() {
+        var cfg = TerminalSyntaxHighlightConfig()
+        cfg.highlightIPv6 = true
+        cfg.highlightCIDR = true
+        cfg.highlightInterfaces = true
+        cfg.highlightSuccess = true
+
+        let highlighter = TerminalKeywordHighlighter()
+        let sample = "Peer 2001:db8:85a3::8a2e:370:7334 via GigabitEthernet0/0/1 on subnet 10.0.0.0/24 responded 200 OK"
+        let inputLine = TerminalLine(text: sample)
+        let highlightedLine = highlighter.highlight(line: inputLine, config: cfg)
+
+        #expect(highlightedLine.text == sample)
+        #expect(highlightedLine.spans.count > 1)
+    }
+
+    @Test("SSH Known Hosts entry model parses and detects hashed hosts")
+    func testKnownHostsModel() {
+        let plain = KnownHostEntry(
+            host: "192.168.1.1",
+            keyType: "ssh-ed25519",
+            keySnippet: "AAAAC3NzaC1lZDI1NTE5...",
+            rawLine: "192.168.1.1 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5...",
+            lineNumber: 12,
+            isHashed: false
+        )
+        #expect(!plain.isHashed)
+        #expect(plain.id == "12_192.168.1.1")
+
+        let hashed = KnownHostEntry(
+            host: "[Hashed Host: |1|F83b...]",
+            keyType: "rsa-sha2-512",
+            keySnippet: "AAAAB3NzaC1yc2EA...",
+            rawLine: "|1|F83b== ssh-rsa AAAAB3...",
+            lineNumber: 45,
+            isHashed: true
+        )
+        #expect(hashed.isHashed)
+        #expect(hashed.lineNumber == 45)
+    }
+
+    @Test("SSH Tunnel Manager probes port latency and stores configurations")
+    func testSSHTunnelManagerProbing() {
+        let manager = SSHTunnelManager()
+
+        // Probing an inactive local port returns nil without hanging or crashing
+        let latency = manager.probeLocalPort(port: 59997, timeout: 0.1)
+        #expect(latency == nil || latency! > 0)
+
+        // Test tunnel creation
+        let newTunnel = SSHTunnelConfig(
+            name: "Test Lab Web GUI",
+            tunnelType: .localForward,
+            localPort: 8443,
+            destinationHost: "192.168.88.1",
+            destinationPort: 443,
+            sshHost: "10.0.0.50",
+            sshPort: 22,
+            sshUsername: "admin"
+        )
+        manager.saveTunnel(newTunnel)
+        #expect(manager.tunnels.contains(where: { $0.id == newTunnel.id }))
+
+        // Cleanup
+        manager.deleteTunnel(id: newTunnel.id)
+        #expect(!manager.tunnels.contains(where: { $0.id == newTunnel.id }))
+    }
+
+    @Test("Hardware Serial Modem Signal lines model stores and updates pin states")
+    func testSerialModemStatus() {
+        var status = SerialModemStatus()
+        #expect(!status.dtr)
+        #expect(!status.rts)
+        #expect(!status.cts)
+        #expect(!status.dsr)
+
+        status.dtr = true
+        status.rts = true
+        status.cts = true
+        #expect(status.dtr)
+        #expect(status.rts)
+        #expect(status.cts)
+        #expect(!status.dcd)
+    }
+
+    @Test("Rapid Enter presses preserve CLI prompt across all lines")
+    func testRapidEnterPreservesPrompts() {
+        let session = TerminalSession(title: "RapidEnter", connectionType: .simulation(presetName: "Lab Switch"))
+        session.clear()
+
+        // Test 1: Rapid enter sequence with simulated Cisco prompt
+        session.appendOutput("core-rtr01# ")
+        for _ in 1...10 {
+            session.appendOutput("\r\ncore-rtr01# ")
+        }
+        #expect(session.lines.count == 11)
+        for line in session.lines {
+            #expect(line.text == "core-rtr01# ")
+        }
+
+        // Test 2: Chunk-boundary split with zsh \r \r\r clearing sequence
+        let sessionChunkSplit = TerminalSession(title: "ChunkSplit", connectionType: .simulation(presetName: "Lab Switch"))
+        sessionChunkSplit.clear()
+        sessionChunkSplit.appendOutput("saeid@mac % ")
+        for _ in 1...10 {
+            sessionChunkSplit.appendOutput("\r\r\n%                                       \r \r\r")
+            sessionChunkSplit.appendOutput("saeid@mac % ")
+        }
+        #expect(sessionChunkSplit.lines.count == 11)
+        for line in sessionChunkSplit.lines {
+            #expect(line.text == "saeid@mac % ")
+            #expect(!line.text.hasPrefix(" "))
+        }
+
+        // Test 3: Test with real user log
+        let logPath = ("~/Library/Application Support/NexWave/TerminalLogs/Local_Shell__zsh__20260917_120116.log" as NSString).expandingTildeInPath
+        if let data = try? Data(contentsOf: URL(fileURLWithPath: logPath)),
+           let fullStr = String(data: data, encoding: .utf8) {
+            let sessionReal = TerminalSession(title: "RealLog", connectionType: .simulation(presetName: "Lab Switch"))
+            sessionReal.clear()
+            let linesInLog = fullStr.components(separatedBy: "\n")
+            let content = linesInLog.dropFirst(3).joined(separator: "\n")
+            sessionReal.appendOutput(content)
+
+            #expect(sessionReal.lines.count >= 20)
+            for line in sessionReal.lines {
+                #expect(!line.text.hasPrefix(" "))
+            }
+        }
     }
 }
 

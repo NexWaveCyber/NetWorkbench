@@ -23,12 +23,14 @@ public final class TerminalSession: Identifiable, @unchecked Sendable {
     }
 
     public var maxBufferedLines: Int = 5000
+    public let recorder: AsciinemaRecorder = AsciinemaRecorder()
     private var ptyRunner: PTYProcessRunner?
     private var simulatedCLI: SimulatedDeviceCLI?
     private let logQueue = DispatchQueue(label: "com.nexwave.terminal.logging", qos: .utility)
     public var isLastLineOpen: Bool = false
     private var activeANSIStyle: ANSIStyle = .default
     private var pendingCR: Bool = false
+    private static let crlfSequenceRegex = try! NSRegularExpression(pattern: "\\r+\\n")
 
     public init(
         id: UUID = UUID(),
@@ -300,6 +302,21 @@ public final class TerminalSession: Identifiable, @unchecked Sendable {
         ptyRunner?.sendBreak(durationMs: durationMs)
     }
 
+    /// Query hardware serial modem status lines (DTR, RTS, CTS, DSR, CD, RI)
+    public func queryModemStatus() -> SerialModemStatus? {
+        ptyRunner?.queryModemStatus()
+    }
+
+    /// Set or clear DTR / RTS hardware control lines
+    public func setModemSignal(dtr: Bool? = nil, rts: Bool? = nil) {
+        ptyRunner?.setModemSignal(dtr: dtr, rts: rts)
+    }
+
+    /// Inject raw hexadecimal byte sequence
+    public func sendHexBytes(_ bytes: [UInt8]) {
+        ptyRunner?.sendHexBytes(bytes)
+    }
+
     /// Inform PTY of updated column and row geometry
     public func resize(cols: Int, rows: Int) {
         ptyRunner?.resize(cols: cols, rows: rows)
@@ -348,21 +365,51 @@ public final class TerminalSession: Identifiable, @unchecked Sendable {
         return log
     }
 
+    // MARK: - Asciinema Session Recording
+
+    public var isRecording: Bool {
+        recorder.isRecording
+    }
+
+    public func startRecording(cols: Int = 80, rows: Int = 24) {
+        recorder.start(cols: cols, rows: rows, title: title)
+    }
+
+    public func stopRecording() -> String {
+        recorder.stop()
+    }
+
+    public func exportRecording() throws -> URL {
+        let safeName = title.replacingOccurrences(of: "[^a-zA-Z0-9_-]", with: "_", options: .regularExpression)
+        return try recorder.exportToFile(filename: "\(safeName)_\(Int(Date().timeIntervalSince1970)).cast")
+    }
+
     // MARK: - Output Buffering & Streaming ANSI Parser
 
     public func appendOutput(_ chunk: String) {
         // Continuous session logging
         writeToLogFile(chunk)
+        if recorder.isRecording {
+            recorder.recordOutput(chunk)
+        }
         guard !chunk.isEmpty else { return }
 
         var raw = chunk
 
+        var hadPendingCR = false
+
         // Handle CR split across chunk boundary: if previous chunk ended with \r
         if pendingCR {
             pendingCR = false
-            if raw.hasPrefix("\n") {
-                // The previous \r and this \n formed \r\n (a newline)
-                raw.removeFirst()
+            // Strip any additional \r that precedes a \n across the chunk boundary
+            var testRaw = raw
+            while testRaw.hasPrefix("\r") {
+                testRaw.removeFirst()
+            }
+            if testRaw.hasPrefix("\n") {
+                // The pending \r (and any further \r) followed by \n formed a newline!
+                testRaw.removeFirst()
+                raw = testRaw
                 if isLastLineOpen {
                     isLastLineOpen = false
                 } else {
@@ -370,30 +417,36 @@ public final class TerminalSession: Identifiable, @unchecked Sendable {
                 }
                 guard !raw.isEmpty else { return }
             } else {
-                // The previous \r was a standalone carriage return!
-                if isLastLineOpen && !lines.isEmpty {
-                    lines[lines.count - 1] = TerminalLine(
-                        id: lines[lines.count - 1].id,
-                        text: "",
-                        spans: [],
-                        isCommandInput: lines[lines.count - 1].isCommandInput,
-                        timestamp: lines[lines.count - 1].timestamp
-                    )
-                }
+                // Standalone carriage return across chunk boundary:
+                // The cursor returned to column 0 at the end of the previous chunk.
+                // The first line segment of this incoming chunk must overwrite from column 0!
+                hadPendingCR = true
             }
         }
 
-        // Check if current chunk ends with a standalone \r that might form \r\n in next chunk
-        if raw.hasSuffix("\r") {
-            pendingCR = true
+        // Check if current chunk ends with one or more trailing \r that might form \r+\n in next chunk
+        var trailingCR = 0
+        while raw.hasSuffix("\r") {
+            trailingCR += 1
             raw.removeLast()
+        }
+        if trailingCR > 0 {
+            pendingCR = true
             if raw.isEmpty { return }
         }
 
-        // Normalize \r\n to \n
-        let normalized = raw.replacingOccurrences(of: "\r\n", with: "\n")
-        let endsInNewline = normalized.hasSuffix("\n")
-        var rawComponents = normalized.components(separatedBy: "\n")
+        // Normalize any \r+\n sequence into a single \n newline.
+        // In network, PTY, and serial streams, any sequence of CRs followed by LF is a single line break.
+        if raw.contains("\r\n") || raw.contains("\r") {
+            raw = Self.crlfSequenceRegex.stringByReplacingMatches(
+                in: raw,
+                range: NSRange(location: 0, length: raw.utf16.count),
+                withTemplate: "\n"
+            )
+        }
+
+        let endsInNewline = raw.hasSuffix("\n")
+        var rawComponents = raw.components(separatedBy: "\n")
 
         if endsInNewline && !rawComponents.isEmpty && rawComponents.last == "" {
             rawComponents.removeLast()
@@ -411,7 +464,8 @@ public final class TerminalSession: Identifiable, @unchecked Sendable {
 
         for (index, rawComp) in rawComponents.enumerated() {
             let isTerminated = (index < rawComponents.count - 1) || endsInNewline
-            processLineSegment(rawComp, isTerminated: isTerminated)
+            let isFirstSegmentAfterPendingCR = (index == 0 && hadPendingCR)
+            processLineSegment(rawComp, isTerminated: isTerminated, isFirstSegmentAfterPendingCR: isFirstSegmentAfterPendingCR)
         }
 
         // Amortized trimming: trim excess in proportional batches to eliminate O(N) shifts on every line
@@ -421,14 +475,26 @@ public final class TerminalSession: Identifiable, @unchecked Sendable {
         }
     }
 
-    private func processLineSegment(_ rawComp: String, isTerminated: Bool) {
+    private func processLineSegment(_ rawComp: String, isTerminated: Bool, isFirstSegmentAfterPendingCR: Bool = false) {
         var comp = rawComp.replacingOccurrences(of: "\u{08} \u{08}", with: "\u{08}")
 
-        // Check for carriage return within or at start of segment
-        let isCarriageReturnReset = comp.hasPrefix("\r")
+        // Check for carriage return within segment or carried over from chunk boundary
+        let hasCR = comp.contains("\r") || isFirstSegmentAfterPendingCR
         if comp.contains("\r") {
+            // In terminal output, \r returns cursor to column 0.
+            // If the segment has text overwritten via multiple \r (e.g., "%   \r \r\rsaeid@mac % "),
+            // we resolve to the last non-empty segment, discarding pure-whitespace erase tokens before \r.
             let parts = comp.components(separatedBy: "\r")
-            comp = parts.last ?? ""
+            let nonEmpties = parts.filter { !$0.isEmpty }
+            if let last = nonEmpties.last {
+                if last.trimmingCharacters(in: .whitespaces).isEmpty && nonEmpties.count > 1 {
+                    comp = ""
+                } else {
+                    comp = last
+                }
+            } else {
+                comp = ""
+            }
         }
 
         let (leadingBackspaces, resolvedText) = resolveBackspaces(in: comp)
@@ -437,8 +503,13 @@ public final class TerminalSession: Identifiable, @unchecked Sendable {
             let lastIndex = lines.count - 1
             let existingLine = lines[lastIndex]
 
-            if isCarriageReturnReset {
-                // Standalone \r: overwrite line from column 0
+            // If existing line only contains erase/placeholder whitespace (e.g. " " from zsh \r \r),
+            // or if a carriage return occurred: overwrite from column 0!
+            let isExistingOnlyWhitespace = existingLine.text.trimmingCharacters(in: .whitespaces).isEmpty && !existingLine.text.isEmpty
+            let shouldOverwriteFromCol0 = hasCR || isExistingOnlyWhitespace
+
+            if shouldOverwriteFromCol0 && !resolvedText.isEmpty {
+                // Standalone \r or carriage return reset followed by new text: overwrite line from column 0
                 let (newSpans, updatedStyle) = ANSISGRParser.shared.parseSpans(from: resolvedText, initialStyle: .default)
                 self.activeANSIStyle = updatedStyle
                 let plainText = newSpans.map(\.text).joined()
@@ -452,6 +523,8 @@ public final class TerminalSession: Identifiable, @unchecked Sendable {
                 let highlighted = syntaxHighlightConfig.isEnabled ?
                     TerminalKeywordHighlighter.shared.highlight(line: updatedLine, config: syntaxHighlightConfig) : updatedLine
                 lines[lastIndex] = highlighted
+            } else if shouldOverwriteFromCol0 && resolvedText.isEmpty {
+                // Standalone \r without new text: cursor returns to column 0, leaving existing text intact
             } else {
                 var currentText = existingLine.text
                 var currentSpans = existingLine.spans
@@ -493,6 +566,10 @@ public final class TerminalSession: Identifiable, @unchecked Sendable {
             }
         } else {
             // New line
+            if resolvedText.isEmpty && !isTerminated && lines.isEmpty {
+                return
+            }
+
             let (spans, updatedStyle) = ANSISGRParser.shared.parseSpans(from: resolvedText, initialStyle: activeANSIStyle)
             self.activeANSIStyle = updatedStyle
             let plainText = spans.map(\.text).joined()

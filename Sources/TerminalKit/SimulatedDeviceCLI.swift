@@ -5,6 +5,7 @@ public enum SimulatedVendor: String, Sendable, CaseIterable, Identifiable, Codab
     case ciscoIOSXE = "Cisco IOS-XE (Catalyst 9300)"
     case aristaEOS = "Arista EOS (7050X Spine)"
     case juniperJunos = "Juniper Junos (EX4300)"
+    case mikrotikRouterOS = "MikroTik RouterOS (CCR2004)"
 
     public var id: String { rawValue }
 
@@ -14,6 +15,8 @@ public enum SimulatedVendor: String, Sendable, CaseIterable, Identifiable, Codab
             return .aristaEOS
         } else if lower.contains("juniper") || lower.contains("junos") || lower.contains("ex4300") {
             return .juniperJunos
+        } else if lower.contains("mikrotik") || lower.contains("routeros") || lower.contains("ccr") {
+            return .mikrotikRouterOS
         }
         return .ciscoIOSXE
     }
@@ -37,6 +40,7 @@ public final class SimulatedDeviceCLI: @unchecked Sendable {
             case .ciscoIOSXE: self.hostname = "nexwave-cat9300-core01"
             case .aristaEOS:   self.hostname = "nexwave-eos7050-spine01"
             case .juniperJunos: self.hostname = "nexwave-junos4300-dist01"
+            case .mikrotikRouterOS: self.hostname = "nexwave-ccr2004-gw01"
             }
         }
     }
@@ -71,6 +75,13 @@ public final class SimulatedDeviceCLI: @unchecked Sendable {
                 return "\(hierarchy)\nadmin@\(hostname)# "
             }
             return "admin@\(hostname)> "
+
+        case .mikrotikRouterOS:
+            if isConfigMode {
+                let ctx = subConfigContext.isEmpty ? "" : " \(subConfigContext)"
+                return "[admin@\(hostname)]\(ctx) > "
+            }
+            return "[admin@\(hostname)] > "
         }
     }
 
@@ -124,6 +135,27 @@ public final class SimulatedDeviceCLI: @unchecked Sendable {
             
             \(currentPrompt)
             """
+
+        case .mikrotikRouterOS:
+            banner = """
+            
+            \u{1B}[1;32m*-------------------------------------------------------------------*
+            * NexWave Network Workbench - MikroTik RouterOS Simulation Engine   *
+            * Platform: MikroTik Cloud Core Router CCR2004-16G-2S+ (RouterOS v7)*
+            * Hostname: \(hostname)                                          *
+            *-------------------------------------------------------------------*\u{1B}[0m
+            
+              MMM      MMM       KKK                          TTTTTTTTTTT      KKK
+              MMMM    MMMM       KKK                              TTT          KKK
+              MMM MMMM MMM  III  KKK  KKK  RRRRRR     OOOOOO      TTT    III   KKK  KKK
+              MMM  MM  MMM  III  KKKKK     RRR  RRR  OOO  OOO     TTT    III   KKKKK
+              MMM      MMM  III  KKK KKK   RRRRRR    OOO  OOO     TTT    III   KKK KKK
+              MMM      MMM  III  KKK  KKK  RRR  RRR   OOOOOO      TTT    III   KKK  KKK
+
+            MikroTik RouterOS 7.12 (c) 1999-2024       https://www.mikrotik.com/
+
+            \(currentPrompt)
+            """
         }
 
         onOutput?(banner)
@@ -146,6 +178,8 @@ public final class SimulatedDeviceCLI: @unchecked Sendable {
             response = processArista(cmd: cmd, raw: trimmed)
         case .juniperJunos:
             response = processJunos(cmd: cmd, raw: trimmed)
+        case .mikrotikRouterOS:
+            response = processMikrotik(cmd: cmd, raw: trimmed)
         }
 
         let outputBlock = response.isEmpty ? "\n\(currentPrompt)" : "\n\(response)\n\(currentPrompt)"
@@ -530,5 +564,164 @@ public final class SimulatedDeviceCLI: @unchecked Sendable {
         } else {
             return "unknown command: \(raw)"
         }
+    }
+
+    // MARK: - MikroTik RouterOS Engine
+
+    private func processMikrotik(cmd: String, raw: String) -> String {
+        if cmd == "?" || cmd == "help" {
+            return """
+            .. -- go up to previous menu level
+            /  -- go to root menu level
+            /ip address print      -- Print IP address configuration
+            /interface print       -- Print network interface status
+            /system identity print -- Print router system identity
+            /system resource print -- Print CPU, RAM, and uptime
+            /ping <target>         -- Send ICMP ping probes
+            /export                -- Export full RouterOS configuration script
+            /system backup save    -- Save binary configuration backup
+            """
+        }
+
+        if cmd == "/ip address print" || cmd == "ip address print" || cmd == "address print" {
+            return """
+            Flags: D - DYNAMIC
+            Columns: ADDRESS, NETWORK, INTERFACE
+            #   ADDRESS             NETWORK        INTERFACE
+            0   192.168.88.1/24     192.168.88.0   bridge-lan
+            1   10.200.1.50/24      10.200.1.0     sfp-sfpplus1
+            2 D 172.16.10.15/24     172.16.10.0    ether1-wan
+            """
+        }
+
+        if cmd == "/interface print" || cmd == "interface print" {
+            return """
+            Flags: R - RUNNING
+            Columns: NAME, TYPE, ACTUAL-MTU, MAC-ADDRESS
+            #   NAME           TYPE    ACTUAL-MTU  MAC-ADDRESS
+            0 R ether1-wan     ether   1500        48:8F:5A:11:22:01
+            1 R ether2         ether   1500        48:8F:5A:11:22:02
+            2 R ether3         ether   1500        48:8F:5A:11:22:03
+            3 R sfp-sfpplus1   ether   1500        48:8F:5A:11:22:10
+            4 R bridge-lan     bridge  1500        48:8F:5A:11:22:00
+            """
+        }
+
+        if cmd == "/system resource print" || cmd == "system resource print" {
+            return """
+                       uptime: 42w3d14h22m
+                      version: 7.12 (stable)
+                   build-time: 2024-01-15 11:24:08
+             factory-software: 7.6
+                  free-memory: 3840.4MiB
+                 total-memory: 4096.0MiB
+                          cpu: ARM64 4-core 1700MHz
+                    cpu-count: 4
+                    cpu-load: 3%
+              free-hdd-space: 112.5MiB
+             total-hdd-space: 128.0MiB
+            """
+        }
+
+        if cmd == "/system identity print" || cmd == "system identity print" {
+            return "name: \(hostname)"
+        }
+
+        if cmd.hasPrefix("/ping ") || cmd.hasPrefix("ping ") {
+            let target = cmd.components(separatedBy: " ").last ?? "8.8.8.8"
+            return """
+              SEQ HOST                                     SIZE TTL TIME  STATUS
+                0 \(target)                                   56  64 1.1ms
+                1 \(target)                                   56  64 1.2ms
+                2 \(target)                                   56  64 1.0ms
+                3 \(target)                                   56  64 1.3ms
+                sent=4 received=4 packet-loss=0% min-rtt=1.0ms avg-rtt=1.1ms max-rtt=1.3ms
+            """
+        }
+
+        if cmd == "/export" || cmd == "export" {
+            return """
+            # 2026-09-17 11:15:00 by RouterOS 7.12
+            # model = CCR2004-16G-2S+
+            /interface bridge add name=bridge-lan
+            /ip pool add name=dhcp ranges=192.168.88.10-192.168.88.254
+            /ip dhcp-server add address-pool=dhcp interface=bridge-lan name=defconf
+            /ip address add address=192.168.88.1/24 interface=bridge-lan network=192.168.88.0
+            /ip firewall nat add action=masquerade chain=srcnat out-interface=ether1-wan
+            """
+        }
+
+        if cmd.contains("backup save") {
+            return "Saving backup to \(hostname)_backup.backup... Done!"
+        }
+
+        return "syntax error (line 1 column 1)"
+    }
+
+    // MARK: - Tab Autocompletion Engine
+
+    /// Autocompletes partial command string (Tab keypress)
+    public func autoComplete(input: String) -> String {
+        let trimmed = input.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty else { return input }
+
+        let pool: [String]
+        switch vendor {
+        case .ciscoIOSXE, .aristaEOS:
+            pool = [
+                "show ip interface brief",
+                "show interfaces status",
+                "show running-config",
+                "show ip route",
+                "show vlan brief",
+                "show mac address-table",
+                "show cdp neighbors",
+                "show lldp neighbors",
+                "show version",
+                "configure terminal",
+                "interface GigabitEthernet1/0/1",
+                "write memory",
+                "copy running-config startup-config",
+                "ping",
+                "traceroute",
+                "reload",
+                "exit",
+                "end"
+            ]
+        case .juniperJunos:
+            pool = [
+                "show interfaces terse",
+                "show route",
+                "show configuration",
+                "show chassis hardware",
+                "show system uptime",
+                "configure",
+                "edit interfaces",
+                "commit",
+                "rollback",
+                "exit"
+            ]
+        case .mikrotikRouterOS:
+            pool = [
+                "/ip address print",
+                "/interface print",
+                "/system resource print",
+                "/system identity print",
+                "/ping",
+                "/export",
+                "/system backup save"
+            ]
+        }
+
+        var search = trimmed.lowercased()
+        if (vendor == .ciscoIOSXE || vendor == .aristaEOS) && search.hasPrefix("sh ") {
+            search = "show " + search.dropFirst(3)
+        }
+
+        if let match = pool.first(where: { $0.lowercased().hasPrefix(search) }) {
+            return match
+        }
+
+        return input
     }
 }

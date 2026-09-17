@@ -1,5 +1,8 @@
 import Foundation
 import Observation
+#if canImport(AppKit)
+import AppKit
+#endif
 
 /// Graphical SSH Port Forwarding and Tunnel Manager (MobaSSHTunnel equivalent)
 /// Manages background SSH tunnels (-L Local, -R Remote, -D Dynamic SOCKS5)
@@ -192,6 +195,63 @@ public final class SSHTunnelManager: @unchecked Sendable {
     private func persistTunnels() {
         if let data = try? JSONEncoder().encode(tunnels) {
             UserDefaults.standard.set(data, forKey: tunnelsStorageKey)
+        }
+    }
+
+    // MARK: - Port Latency & Browser Launching
+
+    /// Probes a local TCP port to measure whether it is actively listening and its response latency in milliseconds
+    public func probeLocalPort(port: Int, timeout: TimeInterval = 0.5) -> Double? {
+        let startTime = CFAbsoluteTimeGetCurrent()
+        let fd = Darwin.socket(AF_INET, SOCK_STREAM, 0)
+        guard fd >= 0 else { return nil }
+        defer { Darwin.close(fd) }
+
+        // Set non-blocking socket
+        let flags = Darwin.fcntl(fd, F_GETFL, 0)
+        _ = Darwin.fcntl(fd, F_SETFL, flags | O_NONBLOCK)
+
+        var addr = sockaddr_in()
+        addr.sin_family = sa_family_t(AF_INET)
+        addr.sin_port = in_port_t(port).bigEndian
+        addr.sin_addr.s_addr = inet_addr("127.0.0.1")
+
+        let connectRes = withUnsafePointer(to: &addr) {
+            $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
+                Darwin.connect(fd, $0, socklen_t(MemoryLayout<sockaddr_in>.size))
+            }
+        }
+
+        if connectRes == 0 {
+            let elapsed = (CFAbsoluteTimeGetCurrent() - startTime) * 1000.0
+            return max(0.1, elapsed)
+        }
+
+        if errno == EINPROGRESS {
+            var pfd = pollfd(fd: fd, events: Int16(POLLOUT), revents: 0)
+            let pollRes = Darwin.poll(&pfd, 1, Int32(timeout * 1000))
+            if pollRes > 0 && (pfd.revents & Int16(POLLOUT)) != 0 {
+                var err: Int32 = 0
+                var len = socklen_t(MemoryLayout<Int32>.size)
+                Darwin.getsockopt(fd, SOL_SOCKET, SO_ERROR, &err, &len)
+                if err == 0 {
+                    let elapsed = (CFAbsoluteTimeGetCurrent() - startTime) * 1000.0
+                    return max(0.1, elapsed)
+                }
+            }
+        }
+
+        return nil
+    }
+
+    /// Open local web tunnel in default macOS browser (e.g. http://localhost:8443)
+    public func launchWebBrowser(for tunnel: SSHTunnelConfig) {
+        guard tunnel.tunnelType == .localForward else { return }
+        let urlString = "http://localhost:\(tunnel.localPort)"
+        if let url = URL(string: urlString) {
+            #if canImport(AppKit)
+            NSWorkspace.shared.open(url)
+            #endif
         }
     }
 }
