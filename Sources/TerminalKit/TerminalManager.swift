@@ -29,9 +29,9 @@ public final class TerminalManager: @unchecked Sendable {
         loadProfiles()
         loadMacros()
 
-        // Pre-seed with a high-fidelity Cisco simulator session
-        let defaultSim = openSimulatedSession(preset: "Catalyst 9300 Core")
-        self.activeSessionId = defaultSim.id
+        // Pre-seed with a local macOS shell session
+        let defaultShell = openLocalShell()
+        self.activeSessionId = defaultShell.id
     }
 
     public var activeSession: TerminalSession? {
@@ -219,7 +219,7 @@ public final class TerminalManager: @unchecked Sendable {
         }
 
         if sessions.isEmpty {
-            let def = openSimulatedSession(preset: "Catalyst 9300 Core")
+            let def = openLocalShell()
             activeSessionId = def.id
         }
     }
