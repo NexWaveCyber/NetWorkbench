@@ -496,6 +496,73 @@ struct TerminalTests {
         #expect(manager.pane3Session?.id == s3.id)
         #expect(manager.pane4Session?.id == s4.id)
     }
+
+    @Test("Live Online SSH Handshake over PTY to GitHub")
+    func testLiveOnlineSSHGitHubHandshake() async throws {
+        let runner = PTYProcessRunner()
+        let receivedText = AsyncStream<String> { continuation in
+            runner.onOutput = { chunk in
+                continuation.yield(chunk)
+            }
+            runner.onTermination = { _ in
+                continuation.finish()
+            }
+        }
+
+        try runner.launchSSH(host: "github.com", port: 22, username: "git")
+
+        var combinedOutput = ""
+        let timeoutTask = Task {
+            try? await Task.sleep(nanoseconds: 5_000_000_000)
+            runner.terminate()
+        }
+
+        for await chunk in receivedText {
+            combinedOutput += chunk
+            if combinedOutput.contains("Permission denied") || combinedOutput.contains("github.com") {
+                break
+            }
+        }
+
+        timeoutTask.cancel()
+        runner.terminate()
+
+        #expect(combinedOutput.contains("Permission denied") || combinedOutput.contains("github.com"))
+    }
+
+    @Test("Live Online SSH Authentication Prompt over PTY from Ubuntu Server")
+    func testLiveOnlineSSHUserServerAuthPrompt() async throws {
+        let runner = PTYProcessRunner()
+        let receivedText = AsyncStream<String> { continuation in
+            runner.onOutput = { chunk in
+                continuation.yield(chunk)
+            }
+            runner.onTermination = { _ in
+                continuation.finish()
+            }
+        }
+
+        try runner.launchSSH(host: "185.81.99.104", port: 22, username: "root")
+
+        var combinedOutput = ""
+        let timeoutTask = Task {
+            try? await Task.sleep(nanoseconds: 15_000_000_000)
+            runner.terminate()
+        }
+
+        for await chunk in receivedText {
+            combinedOutput += chunk
+            if combinedOutput.contains("password:") || combinedOutput.contains("185.81.99.104") || combinedOutput.contains("Permission denied") {
+                break
+            }
+        }
+
+        timeoutTask.cancel()
+        runner.terminate()
+
+        #expect(!combinedOutput.isEmpty)
+        #expect(combinedOutput.contains("password:") || combinedOutput.contains("185.81.99.104") || combinedOutput.contains("Permission denied"))
+    }
 }
 
 

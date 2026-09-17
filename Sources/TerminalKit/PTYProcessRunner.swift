@@ -3,10 +3,9 @@ import Darwin
 
 /// Manages interactive execution of CLI tools (ssh, screen, zsh) attached to a native POSIX pseudo-terminal (PTY)
 public final class PTYProcessRunner: @unchecked Sendable {
-    private var process: Process?
+    private var childPid: pid_t = -1
+    private var processSource: DispatchSourceProcess?
     private var masterFd: Int32 = -1
-    private var slaveFd: Int32 = -1
-    private var masterHandle: FileHandle?
     private var readThread: Thread?
     private var isRunning: Bool = false
 
@@ -19,7 +18,7 @@ public final class PTYProcessRunner: @unchecked Sendable {
         terminate()
     }
 
-    /// Launch a process within an allocated PTY
+    /// Launch a process within an allocated PTY using native forkpty and login_tty
     public func launch(
         executableURL: URL,
         arguments: [String],
@@ -28,41 +27,43 @@ public final class PTYProcessRunner: @unchecked Sendable {
         terminate()
 
         var master: Int32 = 0
-        var slave: Int32 = 0
-
-        // Allocate master/slave pseudo-terminal pair
-        guard openpty(&master, &slave, nil, nil, nil) == 0 else {
+        let pid = forkpty(&master, nil, nil, nil)
+        guard pid >= 0 else {
             throw NSError(
                 domain: "PTYProcessRunner",
                 code: Int(errno),
-                userInfo: [NSLocalizedDescriptionKey: "Failed to allocate pseudo-terminal (errno: \(errno))"]
+                userInfo: [NSLocalizedDescriptionKey: "Failed to fork pseudo-terminal (errno: \(errno))"]
             )
         }
 
-        self.masterFd = master
-        self.slaveFd = slave
+        if pid == 0 {
+            // Child process: set environment and execute
+            for (key, val) in environment {
+                setenv(key, val, 1)
+            }
 
-        let slaveHandle = FileHandle(fileDescriptor: slave, closeOnDealloc: true)
-        let masterHandle = FileHandle(fileDescriptor: master, closeOnDealloc: true)
-        self.masterHandle = masterHandle
-
-        let proc = Process()
-        proc.executableURL = executableURL
-        proc.arguments = arguments
-        proc.environment = environment
-        proc.standardInput = slaveHandle
-        proc.standardOutput = slaveHandle
-        proc.standardError = slaveHandle
-
-        proc.terminationHandler = { [weak self] p in
-            let status = p.terminationStatus
-            self?.isRunning = false
-            self?.onTermination?(status)
+            let allArgs = [executableURL.path] + arguments
+            let cArgs = allArgs.map { strdup($0) } + [nil]
+            execv(executableURL.path, cArgs)
+            _exit(127)
         }
 
-        try proc.run()
-        self.process = proc
+        // Parent process
+        self.childPid = pid
+        self.masterFd = master
         self.isRunning = true
+
+        // Monitor child process exit via Grand Central Dispatch
+        let source = DispatchSource.makeProcessSource(identifier: pid, eventMask: .exit, queue: .global(qos: .utility))
+        source.setEventHandler { [weak self] in
+            var status: Int32 = 0
+            waitpid(pid, &status, WNOHANG)
+            let exitCode = (status >> 8) & 0xFF
+            self?.isRunning = false
+            self?.onTermination?(exitCode)
+        }
+        source.resume()
+        self.processSource = source
 
         // Start non-blocking asynchronous reader thread on master descriptor
         startReaderLoop(fd: master)
@@ -87,6 +88,11 @@ public final class PTYProcessRunner: @unchecked Sendable {
             "-o", "ServerAliveInterval=30",
             "-o", "ServerAliveCountMax=3"
         ]
+
+        // If user specified password without identity file, prioritize password auth to skip rejected key attempts
+        if password != nil && identityFile == nil {
+            args.append(contentsOf: ["-o", "PreferredAuthentications=password,keyboard-interactive"])
+        }
 
         // Legacy network hardware ciphers for older Cisco/Juniper/HP appliances
         if enableLegacyCiphers {
@@ -183,15 +189,15 @@ public final class PTYProcessRunner: @unchecked Sendable {
             tcsetattr(fd, TCSANOW, &t)
         }
 
+        self.childPid = -1
         self.masterFd = fd
-        self.slaveFd = -1
         self.isRunning = true
         startReaderLoop(fd: fd)
     }
 
     /// Launch local interactive shell (zsh)
     public func launchLocalShell() throws {
-        let shellURL = URL(fileURLWithPath: "/bin/zsh")
+        let shellURL = URL(fileURLWithPath: ProcessInfo.processInfo.environment["SHELL"] ?? "/bin/zsh")
         try launch(executableURL: shellURL, arguments: ["-l"])
     }
 
@@ -234,21 +240,27 @@ public final class PTYProcessRunner: @unchecked Sendable {
     public func terminate() {
         isRunning = false
         pendingPassword = nil
-        let proc = process
-        process = nil
+        let pid = childPid
+        childPid = -1
         let mFd = masterFd
-        let sFd = slaveFd
         masterFd = -1
-        slaveFd = -1
-        masterHandle = nil
+        processSource?.cancel()
+        processSource = nil
 
-        // Asynchronously terminate process and close file descriptors to prevent main-thread kernel lock
+        // Asynchronously terminate process and close file descriptor to prevent main-thread kernel lock
         DispatchQueue.global(qos: .utility).async {
-            if let p = proc, p.isRunning {
-                p.terminate()
+            if pid > 0 {
+                kill(pid, SIGTERM)
+                usleep(50_000)
+                var status: Int32 = 0
+                if waitpid(pid, &status, WNOHANG) == 0 {
+                    kill(pid, SIGKILL)
+                    waitpid(pid, &status, 0)
+                }
             }
-            if sFd >= 0 { Darwin.close(sFd) }
-            if mFd >= 0 { Darwin.close(mFd) }
+            if mFd >= 0 {
+                Darwin.close(mFd)
+            }
         }
     }
 
@@ -280,9 +292,7 @@ public final class PTYProcessRunner: @unchecked Sendable {
                                     }
                                 }
 
-                                DispatchQueue.main.async {
-                                    self.onOutput?(string)
-                                }
+                                self.onOutput?(string)
                             }
                         } else if bytesRead == 0 {
                             // EOF encountered

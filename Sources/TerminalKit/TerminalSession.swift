@@ -41,7 +41,13 @@ public final class TerminalSession: Identifiable, @unchecked Sendable {
             self.ptyRunner = runner
 
             runner.onOutput = { [weak self] chunk in
-                self?.appendOutput(chunk)
+                if Thread.isMainThread {
+                    self?.appendOutput(chunk)
+                } else {
+                    DispatchQueue.main.async {
+                        self?.appendOutput(chunk)
+                    }
+                }
             }
             runner.onTermination = { [weak self] code in
                 DispatchQueue.main.async {
@@ -78,7 +84,13 @@ public final class TerminalSession: Identifiable, @unchecked Sendable {
             self.ptyRunner = runner
 
             runner.onOutput = { [weak self] chunk in
-                self?.appendOutput(chunk)
+                if Thread.isMainThread {
+                    self?.appendOutput(chunk)
+                } else {
+                    DispatchQueue.main.async {
+                        self?.appendOutput(chunk)
+                    }
+                }
             }
             runner.onTermination = { [weak self] code in
                 DispatchQueue.main.async {
@@ -115,7 +127,13 @@ public final class TerminalSession: Identifiable, @unchecked Sendable {
             self.ptyRunner = runner
 
             runner.onOutput = { [weak self] chunk in
-                self?.appendOutput(chunk)
+                if Thread.isMainThread {
+                    self?.appendOutput(chunk)
+                } else {
+                    DispatchQueue.main.async {
+                        self?.appendOutput(chunk)
+                    }
+                }
             }
             runner.onTermination = { [weak self] code in
                 DispatchQueue.main.async {
@@ -137,7 +155,13 @@ public final class TerminalSession: Identifiable, @unchecked Sendable {
             self.ptyRunner = runner
 
             runner.onOutput = { [weak self] chunk in
-                self?.appendOutput(chunk)
+                if Thread.isMainThread {
+                    self?.appendOutput(chunk)
+                } else {
+                    DispatchQueue.main.async {
+                        self?.appendOutput(chunk)
+                    }
+                }
             }
             runner.onTermination = { [weak self] code in
                 DispatchQueue.main.async {
