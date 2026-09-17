@@ -7,7 +7,7 @@ public final class PTYProcessRunner: @unchecked Sendable {
     private var processSource: DispatchSourceProcess?
     private var masterFd: Int32 = -1
     private var readThread: Thread?
-    private var isRunning: Bool = false
+    public private(set) var isRunning: Bool = false
 
     public var onOutput: (@Sendable (String) -> Void)?
     public var onTermination: (@Sendable (Int32) -> Void)?

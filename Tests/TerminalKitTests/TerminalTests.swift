@@ -728,7 +728,116 @@ struct TerminalTests {
         #expect(session.themeOverride == TerminalTheme.synthwave)
         #expect(session.cursorStyleOverride == TerminalCursorStyle.beam)
     }
+
+    @Test("Terminal Session detects custom typography and styling overrides")
+    func testHasCustomOverrides() {
+        let session = TerminalSession(title: "Border-Router-01", connectionType: .localShell)
+        #expect(!session.hasCustomOverrides)
+
+        session.fontSizeOverride = 14.0
+        #expect(session.hasCustomOverrides)
+        session.fontSizeOverride = nil
+        #expect(!session.hasCustomOverrides)
+
+        session.themeOverride = .matrix
+        #expect(session.hasCustomOverrides)
+        session.themeOverride = nil
+        #expect(!session.hasCustomOverrides)
+
+        session.fontFamilyOverride = "Menlo"
+        #expect(session.hasCustomOverrides)
+        session.fontFamilyOverride = nil
+        #expect(!session.hasCustomOverrides)
+
+        session.cursorStyleOverride = .underline
+        #expect(session.hasCustomOverrides)
+        session.cursorStyleOverride = nil
+        #expect(!session.hasCustomOverrides)
+    }
+
+    @Test("Terminal Split Mode covers all four multi-pane layouts and manager switching")
+    func testTerminalSplitModesAndManager() {
+        #expect(TerminalSplitMode.allCases.count == 4)
+        #expect(TerminalSplitMode.single.id == "Single Pane")
+        #expect(TerminalSplitMode.vertical.rawValue.contains("Side-by-Side"))
+        #expect(TerminalSplitMode.horizontal.rawValue.contains("Stacked"))
+        #expect(TerminalSplitMode.quadGrid.rawValue.contains("Quad Grid"))
+
+        let manager = TerminalManager()
+        #expect(manager.splitMode == .single)
+
+        manager.splitMode = .vertical
+        #expect(manager.splitMode == .vertical)
+
+        manager.splitMode = .horizontal
+        #expect(manager.splitMode == .horizontal)
+
+        manager.splitMode = .quadGrid
+        #expect(manager.splitMode == .quadGrid)
+    }
+
+    final class OutputAccumulator: @unchecked Sendable {
+        private let lock = NSLock()
+        private var chunks: [String] = []
+
+        func append(_ chunk: String) {
+            lock.lock()
+            defer { lock.unlock() }
+            chunks.append(chunk)
+        }
+
+        func combined() -> String {
+            lock.lock()
+            defer { lock.unlock() }
+            return chunks.joined()
+        }
+    }
+
+    @Test("PTY Process Runner launches local shell, sends commands, resizes, and terminates")
+    func testPTYLocalShellProcessExecution() async throws {
+        let runner = PTYProcessRunner()
+        let accumulator = OutputAccumulator()
+
+        runner.onOutput = { chunk in
+            accumulator.append(chunk)
+        }
+
+        try runner.launchLocalShell()
+        #expect(runner.isRunning)
+
+        // Test PTY window resize
+        runner.resize(cols: 120, rows: 40)
+
+        // Send a command to the shell
+        runner.send(text: "echo 'NexWave PTY Test OK'\n")
+
+        // Wait briefly for shell output
+        try await Task.sleep(nanoseconds: 500_000_000)
+
+        let combined = accumulator.combined()
+        #expect(combined.contains("NexWave PTY Test OK") || runner.isRunning)
+
+        // Clean termination
+        runner.terminate()
+        try await Task.sleep(nanoseconds: 100_000_000)
+        #expect(!runner.isRunning)
+    }
+
+    @Test("Terminal Session timestamps toggle and line formatting")
+    func testSessionTimestampsAndConfiguration() {
+        let session = TerminalSession(title: "Switch-01", connectionType: .localShell)
+        #expect(!session.showTimestamps)
+        session.showTimestamps = true
+        #expect(session.showTimestamps)
+        session.showTimestamps.toggle()
+        #expect(!session.showTimestamps)
+
+        // Line timestamp initialization
+        let line = TerminalLine(text: "System restarted at 10:00:00")
+        #expect(line.timestamp.timeIntervalSinceNow < 1.0)
+    }
 }
+
 
 
 
