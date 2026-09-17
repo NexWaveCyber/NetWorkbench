@@ -211,7 +211,7 @@ public final class SSHKeyStudio: @unchecked Sendable {
         publicKeyPath: String,
         host: String,
         port: Int = 22,
-        username: String = "root"
+        username: String = "ubuntu"
     ) async throws -> String {
         let pubContent = (try? String(contentsOfFile: publicKeyPath, encoding: .utf8))?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         guard !pubContent.isEmpty else {

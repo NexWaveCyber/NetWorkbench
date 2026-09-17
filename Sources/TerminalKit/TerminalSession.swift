@@ -205,10 +205,17 @@ public final class TerminalSession: Identifiable, @unchecked Sendable {
     /// Indicates whether the session is actively prompting for a password or passphrase
     public var isAwaitingPasswordPrompt: Bool {
         guard simulatedCLI == nil else { return false }
-        guard let lastLine = lines.last?.text.trimmingCharacters(in: .whitespaces) else { return false }
-        let lower = lastLine.lowercased()
-        return (lower.hasSuffix("password:") || lower.hasSuffix("passphrase:") || lower.contains("'s password:"))
-            && !lower.contains("[verified]")
+        for line in lines.suffix(4).reversed() {
+            let trimmed = line.text.trimmingCharacters(in: .whitespacesAndNewlines)
+            if trimmed.isEmpty { continue }
+            let lower = trimmed.lowercased()
+            if lower.contains("[verified]") { return false }
+            if lower.hasSuffix("password:") || lower.hasSuffix("passphrase:") || lower.contains("'s password:") || lower.hasSuffix("password") {
+                return true
+            }
+            break
+        }
+        return false
     }
 
     /// Send a user input line or command to the session

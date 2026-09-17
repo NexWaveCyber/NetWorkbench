@@ -267,9 +267,32 @@ public final class TerminalManager: @unchecked Sendable {
         if let data = UserDefaults.standard.data(forKey: profilesStorageKey),
            let decoded = try? JSONDecoder().decode([TerminalProfile].self, from: data) {
             self.savedProfiles = decoded
+            if !self.savedProfiles.contains(where: { $0.host == "170.75.170.64" }) {
+                self.savedProfiles.insert(
+                    TerminalProfile(
+                        name: "Ubuntu Test VM",
+                        folder: "Cloud Servers",
+                        host: "170.75.170.64",
+                        port: 22,
+                        username: "ubuntu",
+                        connectionType: "ssh",
+                        badgeColorHex: "#10B981"
+                    ),
+                    at: 0
+                )
+            }
         } else {
             // Enterprise default templates
             self.savedProfiles = [
+                TerminalProfile(
+                    name: "Ubuntu Test VM",
+                    folder: "Cloud Servers",
+                    host: "170.75.170.64",
+                    port: 22,
+                    username: "ubuntu",
+                    connectionType: "ssh",
+                    badgeColorHex: "#10B981"
+                ),
                 TerminalProfile(
                     name: "Core Spine 01 (Cisco)",
                     folder: "Data Center",

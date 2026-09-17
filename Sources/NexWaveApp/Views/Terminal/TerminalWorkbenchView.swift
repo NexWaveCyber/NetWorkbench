@@ -35,9 +35,9 @@ public struct TerminalWorkbenchView: View {
 
     // New Session Form States
     @State private var newSessionType: Int = 0 // 0: SSH, 1: Serial, 2: Simulation, 3: Local Shell
-    @State private var sshHost: String = "192.168.1.1"
+    @State private var sshHost: String = "170.75.170.64"
     @State private var sshPort: String = "22"
-    @State private var sshUser: String = "admin"
+    @State private var sshUser: String = "ubuntu"
     @State private var sshPassword: String = ""
     @State private var sshKeyPath: String = ""
     @State private var sshEnableJumpHost: Bool = false
@@ -68,7 +68,7 @@ public struct TerminalWorkbenchView: View {
     @State private var selectedKeyForDeploy: String = ""
     @State private var deployHost: String = ""
     @State private var deployPort: String = "22"
-    @State private var deployUser: String = "root"
+    @State private var deployUser: String = "ubuntu"
     @State private var isDeployingKey: Bool = false
     @State private var deployStatusMsg: String? = nil
 
@@ -779,12 +779,7 @@ public struct TerminalWorkbenchView: View {
                                     // True streaming ANSI SGR rendered spans
                                     HStack(spacing: 0) {
                                         ForEach(line.spans) { span in
-                                            Text(span.text)
-                                                .font(Theme.monoText(fontSize, weight: span.style.isBold ? .bold : .regular))
-                                                .underline(span.style.isUnderline)
-                                                .italic(span.style.isItalic)
-                                                .foregroundStyle(colorForSpan(span.style))
-                                                .background(backgroundColorForSpan(span.style))
+                                            renderSpan(span)
                                         }
                                     }
                                     .textSelection(.enabled)
@@ -796,6 +791,13 @@ public struct TerminalWorkbenchView: View {
                             Text("▋")
                                 .font(Theme.monoText(fontSize, weight: .bold))
                                 .foregroundStyle(isFocused ? Color(hex: selectedTheme.promptColorHex) : Color.secondary.opacity(0.35))
+                        }
+
+                        // Inline interactive password prompt card
+                        if session.isAwaitingPasswordPrompt {
+                            InlinePasswordBar(inputCommand: $inputCommand) {
+                                submitCommand(to: session)
+                            }
                         }
 
                         Color.clear
@@ -816,13 +818,16 @@ public struct TerminalWorkbenchView: View {
             .focusable()
             .focusEffectDisabled()
             .focused($focusedPaneState, equals: paneIndex)
+            .onAppear {
+                focusedPaneState = paneIndex
+            }
             .onKeyPress { press in
                 handleDirectKeyPress(press, session: session)
             }
-            .onTapGesture {
+            .simultaneousGesture(TapGesture().onEnded {
                 focusedPane = paneIndex
                 focusedPaneState = paneIndex
-            }
+            })
 
             Divider().overlay(Theme.borderLight)
 
@@ -1368,10 +1373,11 @@ public struct TerminalWorkbenchView: View {
 
         switch press.key {
         case .return:
+            let terminator = session.isAwaitingPasswordPrompt ? "\n" : "\r"
             if state.terminalManager.isBroadcastEnabled {
-                state.terminalManager.broadcastText("\r")
+                state.terminalManager.broadcastText(terminator)
             } else {
-                session.sendRawString("\r")
+                session.sendRawString(terminator)
             }
             return .handled
         case .delete:
@@ -1434,16 +1440,41 @@ public struct TerminalWorkbenchView: View {
 
         switch newSessionType {
         case 0:
-            let portInt = Int(sshPort) ?? 22
+            var targetHost = sshHost.trimmingCharacters(in: .whitespacesAndNewlines)
+            var targetUser = sshUser.trimmingCharacters(in: .whitespacesAndNewlines)
+            var targetPort = Int(sshPort) ?? 22
+            var pass = sshPassword.isEmpty ? nil : sshPassword
+
+            if targetHost.contains("@") {
+                let parts = targetHost.components(separatedBy: "@")
+                targetUser = parts[0]
+                targetHost = parts[1]
+            }
+
+            if targetUser.contains(":") {
+                let uParts = targetUser.components(separatedBy: ":")
+                targetUser = uParts[0]
+                if pass == nil || pass?.isEmpty == true {
+                    pass = uParts[1]
+                }
+            }
+
+            if targetHost.contains(":") {
+                let parts = targetHost.components(separatedBy: ":")
+                targetHost = parts[0]
+                if let p = Int(parts[1]) {
+                    targetPort = p
+                }
+            }
+
             let key = sshKeyPath.isEmpty ? nil : sshKeyPath
-            let pass = sshPassword.isEmpty ? nil : sshPassword
             let jump: SSHJumpConfig? = (sshEnableJumpHost && !sshJumpHost.isEmpty) ?
                 SSHJumpConfig(host: sshJumpHost, port: Int(sshJumpPort) ?? 22, username: sshJumpUser) : nil
 
             state.terminalManager.openSSHSession(
-                host: sshHost,
-                port: portInt,
-                username: sshUser,
+                host: targetHost,
+                port: targetPort,
+                username: targetUser,
                 identityFile: key,
                 password: pass,
                 jumpHost: jump,
@@ -1530,6 +1561,16 @@ public struct TerminalWorkbenchView: View {
         return Color.clear
     }
 
+    @ViewBuilder
+    private func renderSpan(_ span: ANSISpan) -> some View {
+        Text(span.text)
+            .font(Theme.monoText(fontSize, weight: span.style.isBold ? .bold : .regular))
+            .underline(span.style.isUnderline)
+            .italic(span.style.isItalic)
+            .foregroundStyle(colorForSpan(span.style))
+            .background(backgroundColorForSpan(span.style))
+    }
+
     // MARK: - MobaXterm Collapsible Session Tree & Quick Connect Sidebar
 
     private var sessionTreeSidebar: some View {
@@ -1551,7 +1592,7 @@ public struct TerminalWorkbenchView: View {
                 }
 
                 HStack(spacing: 4) {
-                    TextField("root@185.81.99.104", text: $quickConnectInput)
+                    TextField("ubuntu@170.75.170.64", text: $quickConnectInput)
                         .textFieldStyle(.plain)
                         .font(Theme.monoText(11))
                         .onSubmit {
@@ -1693,14 +1734,21 @@ public struct TerminalWorkbenchView: View {
         let input = quickConnectInput.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !input.isEmpty else { return }
 
-        var user = "root"
+        var user = "ubuntu"
         var host = input
         var port = 22
+        var pass: String? = nil
 
         if host.contains("@") {
             let parts = host.components(separatedBy: "@")
             user = parts[0]
             host = parts[1]
+        }
+
+        if user.contains(":") {
+            let uParts = user.components(separatedBy: ":")
+            user = uParts[0]
+            pass = uParts[1]
         }
 
         if host.contains(":") {
@@ -1711,12 +1759,32 @@ public struct TerminalWorkbenchView: View {
             }
         }
 
-        state.terminalManager.openSSHSession(
-            host: host,
-            port: port,
-            username: user,
-            autoConnect: true
-        )
+        // Check if there is an existing session with this host and user to preserve credentials
+        if let existing = state.terminalManager.sessions.first(where: {
+            if case .ssh(let h, _, let u, _, _, _, _) = $0.connectionType {
+                return h == host && u == user
+            }
+            return false
+        }), case .ssh(_, _, _, let key, let savedPass, let jump, let legacy) = existing.connectionType {
+            state.terminalManager.openSSHSession(
+                host: host,
+                port: port,
+                username: user,
+                identityFile: key,
+                password: pass ?? savedPass,
+                jumpHost: jump,
+                enableLegacyCiphers: legacy,
+                autoConnect: true
+            )
+        } else {
+            state.terminalManager.openSSHSession(
+                host: host,
+                port: port,
+                username: user,
+                password: pass,
+                autoConnect: true
+            )
+        }
         quickConnectInput = ""
     }
 
@@ -2110,6 +2178,38 @@ public struct TerminalWorkbenchView: View {
         state.terminalManager.tunnelManager.saveTunnel(newTunnel)
         tunnelNameInput = ""
         tunnelSSHHostInput = ""
+    }
+}
+
+private struct InlinePasswordBar: View {
+    @Binding var inputCommand: String
+    var onSend: () -> Void
+    @FocusState private var isFieldFocused: Bool
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "lock.shield.fill")
+                .foregroundStyle(Theme.solarAmber)
+            SecureField("Enter password / passphrase...", text: $inputCommand)
+                .textFieldStyle(.roundedBorder)
+                .frame(width: 260)
+                .focused($isFieldFocused)
+                .onSubmit {
+                    onSend()
+                }
+            Button("Send") {
+                onSend()
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(Theme.solarAmber)
+        }
+        .padding(8)
+        .background(Theme.solarAmber.opacity(0.12))
+        .cornerRadius(8)
+        .padding(.top, 4)
+        .onAppear {
+            isFieldFocused = true
+        }
     }
 }
 
