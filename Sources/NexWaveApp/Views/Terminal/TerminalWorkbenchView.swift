@@ -12,12 +12,17 @@ public struct TerminalWorkbenchView: View {
     @State private var showNewSessionSheet: Bool = false
     @State private var showProfileVaultSheet: Bool = false
     @State private var showPacedPasteSheet: Bool = false
+    @State private var showSSHKeyStudioSheet: Bool = false
+    @State private var showSSHTunnelsSheet: Bool = false
     @State private var fontSize: CGFloat = 12
     @State private var autoScroll: Bool = true
     @State private var selectedTheme: TerminalTheme = .obsidian
     @State private var isSearching: Bool = false
     @State private var searchQuery: String = ""
-    @State private var focusedPane: Int = 0 // 0: Primary, 1: Secondary
+    @State private var focusedPane: Int = 0 // 0: Primary, 1: Secondary, 2: Pane 3, 3: Pane 4
+
+    // Quick Connect
+    @State private var quickConnectInput: String = ""
 
     // Paced Script Runner States
     @State private var scriptText: String = ""
@@ -34,6 +39,12 @@ public struct TerminalWorkbenchView: View {
     @State private var sshUser: String = "admin"
     @State private var sshPassword: String = ""
     @State private var sshKeyPath: String = ""
+    @State private var sshEnableJumpHost: Bool = false
+    @State private var sshJumpHost: String = ""
+    @State private var sshJumpPort: String = "22"
+    @State private var sshJumpUser: String = "admin"
+    @State private var sshEnableLegacyCiphers: Bool = false
+
     @State private var selectedSerialPort: String = ""
     @State private var selectedBaudRate: Int = 9600
     @State private var selectedDataBits: Int = 8
@@ -49,6 +60,28 @@ public struct TerminalWorkbenchView: View {
     @State private var profileName: String = ""
     @State private var profileFolder: String = "Data Center"
 
+    // SSH Key Studio States (MobaKeyGen)
+    @State private var newKeyType: String = "Ed25519"
+    @State private var newKeyComment: String = "saeid@mac"
+    @State private var keyGenSuccessToast: String? = nil
+    @State private var selectedKeyForDeploy: String = ""
+    @State private var deployHost: String = ""
+    @State private var deployPort: String = "22"
+    @State private var deployUser: String = "root"
+    @State private var isDeployingKey: Bool = false
+    @State private var deployStatusMsg: String? = nil
+
+    // SSH Tunnel Form States (MobaSSHTunnel)
+    @State private var tunnelNameInput: String = ""
+    @State private var tunnelTypeInput: SSHTunnelType = .localForward
+    @State private var tunnelLocalPortInput: String = "8080"
+    @State private var tunnelDestHostInput: String = "192.168.1.1"
+    @State private var tunnelDestPortInput: String = "443"
+    @State private var tunnelSSHHostInput: String = ""
+    @State private var tunnelSSHPortInput: String = "22"
+    @State private var tunnelSSHUserInput: String = "admin"
+    @State private var tunnelIdentityKeyInput: String = ""
+
     public init(state: AppState) {
         self.state = state
     }
@@ -62,36 +95,45 @@ public struct TerminalWorkbenchView: View {
     }
 
     public var body: some View {
-        VStack(spacing: 0) {
-            // Header Bar
-            headerBar
-
-            Divider().overlay(Theme.borderLight)
-
-            // Broadcast Banner (when active)
-            if state.terminalManager.isBroadcastEnabled {
-                broadcastWarningBanner
+        HStack(spacing: 0) {
+            // Collapsible MobaXterm Session Tree & Quick Connect Sidebar
+            if state.terminalManager.isSidebarExpanded {
+                sessionTreeSidebar
+                    .frame(width: 260)
                 Divider().overlay(Theme.borderLight)
             }
 
-            // Session Tab Strip
-            sessionTabBar
+            VStack(spacing: 0) {
+                // Header Bar
+                headerBar
 
-            Divider().overlay(Theme.borderLight)
-
-            // Search Bar (collapsible)
-            if isSearching {
-                transcriptSearchBar
                 Divider().overlay(Theme.borderLight)
+
+                // Broadcast Banner (when active)
+                if state.terminalManager.isBroadcastEnabled {
+                    broadcastWarningBanner
+                    Divider().overlay(Theme.borderLight)
+                }
+
+                // Session Tab Strip
+                sessionTabBar
+
+                Divider().overlay(Theme.borderLight)
+
+                // Search Bar (collapsible)
+                if isSearching {
+                    transcriptSearchBar
+                    Divider().overlay(Theme.borderLight)
+                }
+
+                // Command Macros Strip
+                commandSnippetsBar
+
+                Divider().overlay(Theme.borderLight)
+
+                // Main Terminal Canvas (Single, Split, or Quad Grid)
+                mainTerminalLayoutView
             }
-
-            // Command Macros Strip
-            commandSnippetsBar
-
-            Divider().overlay(Theme.borderLight)
-
-            // Main Terminal Canvas (Single or Split Panes)
-            mainTerminalLayoutView
         }
         .background(Theme.surfaceBackground)
         .sheet(isPresented: $showNewSessionSheet) {
@@ -102,6 +144,12 @@ public struct TerminalWorkbenchView: View {
         }
         .sheet(isPresented: $showPacedPasteSheet) {
             pacedScriptRunnerModal
+        }
+        .sheet(isPresented: $showSSHKeyStudioSheet) {
+            sshKeyStudioModal
+        }
+        .sheet(isPresented: $showSSHTunnelsSheet) {
+            sshTunnelsModal
         }
         .onAppear {
             if selectedSerialPort.isEmpty, let firstPort = state.terminalManager.availableSerialPorts.first {
@@ -114,6 +162,19 @@ public struct TerminalWorkbenchView: View {
 
     private var headerBar: some View {
         HStack(spacing: 12) {
+            // Sidebar toggle button
+            Button(action: {
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    state.terminalManager.isSidebarExpanded.toggle()
+                }
+            }) {
+                Image(systemName: state.terminalManager.isSidebarExpanded ? "sidebar.left" : "sidebar.leading")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(state.terminalManager.isSidebarExpanded ? Theme.neonCyan : .secondary)
+            }
+            .buttonStyle(.plain)
+            .help("Toggle MobaXterm Session & Quick Connect Sidebar")
+
             ZStack {
                 Circle()
                     .fill(Theme.cyanPulse.opacity(0.15))
@@ -150,7 +211,7 @@ public struct TerminalWorkbenchView: View {
                 }
                 .pickerStyle(.menu)
                 .frame(width: 150)
-                .help("Switch between Single, Side-by-Side, or Stacked terminal panes")
+                .help("Switch between Single, Side-by-Side, Stacked, or 2x2 Quad Grid terminal panes")
 
                 // Broadcast Multi-Exec Toggle Button
                 Button(action: {
@@ -175,6 +236,45 @@ public struct TerminalWorkbenchView: View {
                 }
                 .buttonStyle(.plain)
                 .help("Broadcast typed commands to all connected switch sessions simultaneously")
+
+                // SSH Key Studio (MobaKeyGen)
+                Button(action: { showSSHKeyStudioSheet = true }) {
+                    HStack(spacing: 4) {
+                        Image(systemName: "key.fill")
+                        Text("SSH Keys")
+                    }
+                    .font(.system(size: 10.5, weight: .semibold))
+                }
+                .buttonStyle(.bordered)
+                .help("Open SSH Key Studio: Generate Ed25519/RSA keys, copy public key, deploy to server (MobaKeyGen)")
+
+                // SSH Tunnels (MobaSSHTunnel)
+                Button(action: { showSSHTunnelsSheet = true }) {
+                    HStack(spacing: 4) {
+                        Image(systemName: "arrow.triangle.swap")
+                        Text("Tunnels")
+                    }
+                    .font(.system(size: 10.5, weight: .semibold))
+                }
+                .buttonStyle(.bordered)
+                .help("Manage SSH Port Forwarding & Tunnels: -L Local, -R Remote, -D SOCKS5 Proxy (MobaSSHTunnel)")
+
+                // Live Syntax Highlighting Toggle
+                Button(action: {
+                    state.terminalManager.isSyntaxHighlightingEnabled.toggle()
+                    for s in state.terminalManager.sessions {
+                        s.syntaxHighlightConfig.isEnabled = state.terminalManager.isSyntaxHighlightingEnabled
+                    }
+                }) {
+                    HStack(spacing: 4) {
+                        Image(systemName: "paintpalette.fill")
+                        Text(state.terminalManager.isSyntaxHighlightingEnabled ? "SYNTAX ON" : "Syntax")
+                    }
+                    .font(.system(size: 10.5, weight: .semibold))
+                    .foregroundStyle(state.terminalManager.isSyntaxHighlightingEnabled ? Theme.neonCyan : .secondary)
+                }
+                .buttonStyle(.bordered)
+                .help("Toggle live syntax highlighting for IP addresses, MAC addresses, error states, and up/down keywords")
 
                 // Hardware Serial Break (ROMMON) Button
                 Button(action: sendHardwareBreak) {
@@ -272,7 +372,7 @@ public struct TerminalWorkbenchView: View {
 
                 // External Terminal Launch Menu
                 Menu {
-                    if let session = activeSession, case .ssh(let host, let port, let user, _, _) = session.connectionType {
+                    if let session = activeSession, case .ssh(let host, let port, let user, _, _, _, _) = session.connectionType {
                         Button("Open in Terminal.app") {
                             let cmd = ExternalTerminalBridge.shared.sshCommand(host: host, port: port, username: user)
                             ExternalTerminalBridge.shared.launchInTerminalApp(command: cmd)
@@ -531,9 +631,45 @@ public struct TerminalWorkbenchView: View {
                         emptySecondaryPanePlaceholder
                     }
                 }
+
+            case .quadGrid:
+                VStack(spacing: 2) {
+                    HStack(spacing: 2) {
+                        terminalPane(session: primary, paneIndex: 0)
+                        Divider().overlay(Theme.borderLight)
+                        if let sec = secondarySession {
+                            terminalPane(session: sec, paneIndex: 1)
+                        } else {
+                            emptySecondaryPanePlaceholder
+                        }
+                    }
+                    Divider().overlay(Theme.borderLight)
+                    HStack(spacing: 2) {
+                        if let p3 = state.terminalManager.pane3Session {
+                            terminalPane(session: p3, paneIndex: 2)
+                        } else {
+                            emptySecondaryPanePlaceholder
+                        }
+                        Divider().overlay(Theme.borderLight)
+                        if let p4 = state.terminalManager.pane4Session {
+                            terminalPane(session: p4, paneIndex: 3)
+                        } else {
+                            emptySecondaryPanePlaceholder
+                        }
+                    }
+                }
             }
         } else {
             emptySessionPlaceholder
+        }
+    }
+
+    private func paneSessionBinding(paneIndex: Int) -> Binding<UUID?> {
+        switch paneIndex {
+        case 0: return $state.terminalManager.activeSessionId
+        case 1: return $state.terminalManager.secondarySessionId
+        case 2: return $state.terminalManager.pane3SessionId
+        default: return $state.terminalManager.pane4SessionId
         }
     }
 
@@ -558,7 +694,7 @@ public struct TerminalWorkbenchView: View {
                     Spacer()
 
                     // Session picker for this pane
-                    Picker("", selection: paneIndex == 0 ? $state.terminalManager.activeSessionId : $state.terminalManager.secondarySessionId) {
+                    Picker("", selection: paneSessionBinding(paneIndex: paneIndex)) {
                         ForEach(state.terminalManager.sessions) { s in
                             Text(s.title).tag(Optional(s.id))
                         }
@@ -796,12 +932,69 @@ public struct TerminalWorkbenchView: View {
                             .textFieldStyle(.roundedBorder)
                     }
 
+                    // Local SSH Keys dropdown selector (MobaKeyGen)
+                    let discoveredKeys = state.terminalManager.keyStudio.discoverLocalKeys()
+                    if !discoveredKeys.isEmpty {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("SELECT LOCAL SSH KEY")
+                                .font(Theme.monoText(10, weight: .bold))
+                                .foregroundStyle(.secondary)
+                            Picker("", selection: $sshKeyPath) {
+                                Text("Password only (no key)").tag("")
+                                ForEach(discoveredKeys) { k in
+                                    Text("\(k.name) (\(k.keyType))").tag(k.privateKeyPath)
+                                }
+                            }
+                            .pickerStyle(.menu)
+                        }
+                    }
+
                     VStack(alignment: .leading, spacing: 6) {
-                        Text("OPTIONAL IDENTITY KEY PATH")
+                        Text("OR CUSTOM IDENTITY KEY PATH")
                             .font(Theme.monoText(10, weight: .bold))
                             .foregroundStyle(.secondary)
-                        TextField("~/.ssh/id_rsa (leave empty for password)", text: $sshKeyPath)
-                            .textFieldStyle(.roundedBorder)
+                        HStack {
+                            TextField("~/.ssh/id_rsa or /path/to/key.pem", text: $sshKeyPath)
+                                .textFieldStyle(.roundedBorder)
+                            Button("Browse...") {
+                                let panel = NSOpenPanel()
+                                panel.allowsMultipleSelection = false
+                                panel.canChooseDirectories = false
+                                panel.canChooseFiles = true
+                                if panel.runModal() == .OK, let url = panel.url {
+                                    sshKeyPath = url.path
+                                }
+                            }
+                            .font(.system(size: 11))
+                        }
+                    }
+
+                    // Bastion / Jump Host (ProxyJump)
+                    DisclosureGroup("Bastion Jump Host (ProxyJump)", isExpanded: $sshEnableJumpHost) {
+                        VStack(spacing: 8) {
+                            TextField("Jump Host (e.g. bastion.corp.net)", text: $sshJumpHost)
+                                .textFieldStyle(.roundedBorder)
+                            HStack(spacing: 8) {
+                                TextField("Port", text: $sshJumpPort)
+                                    .textFieldStyle(.roundedBorder)
+                                    .frame(width: 70)
+                                TextField("Jump Username", text: $sshJumpUser)
+                                    .textFieldStyle(.roundedBorder)
+                            }
+                        }
+                        .padding(.top, 4)
+                    }
+                    .font(Theme.monoText(10, weight: .bold))
+
+                    // Legacy Network Hardware Ciphers Toggle
+                    Toggle(isOn: $sshEnableLegacyCiphers) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Enable Legacy Network Ciphers")
+                                .font(Theme.monoText(10, weight: .bold))
+                            Text("Allows ssh-rsa, diffie-hellman, and 3des for older Cisco IOS 12/15, legacy switches & firewalls")
+                                .font(.system(size: 9))
+                                .foregroundStyle(.secondary)
+                        }
                     }
 
                 } else if newSessionType == 1 {
@@ -1115,12 +1308,17 @@ public struct TerminalWorkbenchView: View {
             let portInt = Int(sshPort) ?? 22
             let key = sshKeyPath.isEmpty ? nil : sshKeyPath
             let pass = sshPassword.isEmpty ? nil : sshPassword
+            let jump: SSHJumpConfig? = (sshEnableJumpHost && !sshJumpHost.isEmpty) ?
+                SSHJumpConfig(host: sshJumpHost, port: Int(sshJumpPort) ?? 22, username: sshJumpUser) : nil
+
             state.terminalManager.openSSHSession(
                 host: sshHost,
                 port: portInt,
                 username: sshUser,
                 identityFile: key,
-                password: pass
+                password: pass,
+                jumpHost: jump,
+                enableLegacyCiphers: sshEnableLegacyCiphers
             )
         case 1:
             let path = selectedSerialPort.isEmpty ? "/dev/cu.usbserial-001" : selectedSerialPort
@@ -1202,4 +1400,587 @@ public struct TerminalWorkbenchView: View {
         }
         return Color.clear
     }
+
+    // MARK: - MobaXterm Collapsible Session Tree & Quick Connect Sidebar
+
+    private var sessionTreeSidebar: some View {
+        VStack(spacing: 0) {
+            // Quick Connect Card
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Label("Quick Connect", systemImage: "bolt.fill")
+                        .font(Theme.monoText(10, weight: .bold))
+                        .foregroundStyle(Theme.neonCyan)
+                    Spacer()
+                    Button(action: { showNewSessionSheet = true }) {
+                        Image(systemName: "plus.circle.fill")
+                            .font(.system(size: 13))
+                            .foregroundStyle(Theme.cyanPulse)
+                    }
+                    .buttonStyle(.plain)
+                    .help("New Connection Wizard")
+                }
+
+                HStack(spacing: 4) {
+                    TextField("root@185.81.99.104", text: $quickConnectInput)
+                        .textFieldStyle(.plain)
+                        .font(Theme.monoText(11))
+                        .onSubmit {
+                            performQuickConnect()
+                        }
+
+                    if !quickConnectInput.isEmpty {
+                        Button("Go") {
+                            performQuickConnect()
+                        }
+                        .font(Theme.monoText(9, weight: .bold))
+                        .buttonStyle(.borderedProminent)
+                        .tint(Theme.cyanPulse)
+                        .foregroundStyle(Color.black)
+                    }
+                }
+                .padding(6)
+                .background(Theme.surfaceBackground)
+                .clipShape(RoundedRectangle(cornerRadius: 6))
+                .overlay(RoundedRectangle(cornerRadius: 6).stroke(Theme.borderLight, lineWidth: 1))
+            }
+            .padding(10)
+            .background(Theme.cardBackground)
+
+            Divider().overlay(Theme.borderLight)
+
+            // Hierarchical Folder Tree of Saved Sessions
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 8) {
+                    ForEach(["Data Center", "Campus Access", "WAN Edge", "Lab Rack", "General"], id: \.self) { folder in
+                        let folderProfiles = state.terminalManager.savedProfiles.filter { $0.folder == folder }
+                        if !folderProfiles.isEmpty {
+                            VStack(alignment: .leading, spacing: 3) {
+                                HStack(spacing: 4) {
+                                    Image(systemName: "folder.fill")
+                                        .font(.system(size: 10))
+                                        .foregroundStyle(Theme.solarAmber)
+                                    Text(folder.uppercased())
+                                        .font(Theme.monoText(9, weight: .bold))
+                                        .foregroundStyle(.secondary)
+                                    Spacer()
+                                    Text("\(folderProfiles.count)")
+                                        .font(.system(size: 9))
+                                        .foregroundStyle(.secondary.opacity(0.6))
+                                }
+                                .padding(.horizontal, 8)
+                                .padding(.top, 4)
+
+                                ForEach(folderProfiles) { profile in
+                                    Button(action: {
+                                        state.terminalManager.launchProfile(profile)
+                                    }) {
+                                        HStack(spacing: 6) {
+                                            Circle()
+                                                .fill(Color(hex: profile.badgeColorHex))
+                                                .frame(width: 6, height: 6)
+                                            VStack(alignment: .leading, spacing: 1) {
+                                                Text(profile.name)
+                                                    .font(Theme.monoText(10, weight: .semibold))
+                                                    .lineLimit(1)
+                                                Text(profile.host.isEmpty ? profile.serialPath : "\(profile.username)@\(profile.host)")
+                                                    .font(.system(size: 9))
+                                                    .foregroundStyle(.secondary)
+                                                    .lineLimit(1)
+                                            }
+                                            Spacer()
+                                        }
+                                        .padding(.vertical, 4)
+                                        .padding(.horizontal, 8)
+                                        .background(Theme.cardBackground.opacity(0.7))
+                                        .clipShape(RoundedRectangle(cornerRadius: 5))
+                                    }
+                                    .buttonStyle(.plain)
+                                }
+                            }
+                            .padding(.horizontal, 6)
+                        }
+                    }
+                }
+                .padding(.vertical, 8)
+            }
+
+            Divider().overlay(Theme.borderLight)
+
+            // MobaXterm Bottom Utilities Strip
+            HStack(spacing: 6) {
+                Button(action: { showSSHKeyStudioSheet = true }) {
+                    VStack(spacing: 2) {
+                        Image(systemName: "key.fill")
+                            .font(.system(size: 11))
+                        Text("Keys")
+                            .font(.system(size: 9, weight: .medium))
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 5)
+                    .background(Theme.cardBackground)
+                    .clipShape(RoundedRectangle(cornerRadius: 5))
+                }
+                .buttonStyle(.plain)
+                .help("SSH Key Studio & Generator (MobaKeyGen)")
+
+                Button(action: { showSSHTunnelsSheet = true }) {
+                    VStack(spacing: 2) {
+                        Image(systemName: "arrow.triangle.swap")
+                            .font(.system(size: 11))
+                        Text("Tunnels")
+                            .font(.system(size: 9, weight: .medium))
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 5)
+                    .background(Theme.cardBackground)
+                    .clipShape(RoundedRectangle(cornerRadius: 5))
+                }
+                .buttonStyle(.plain)
+                .help("SSH Port Forwarding & Tunnels (MobaSSHTunnel)")
+
+                Button(action: { showProfileVaultSheet = true }) {
+                    VStack(spacing: 2) {
+                        Image(systemName: "books.vertical.fill")
+                            .font(.system(size: 11))
+                        Text("Vault")
+                            .font(.system(size: 9, weight: .medium))
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 5)
+                    .background(Theme.cardBackground)
+                    .clipShape(RoundedRectangle(cornerRadius: 5))
+                }
+                .buttonStyle(.plain)
+                .help("Profile Vault")
+            }
+            .padding(8)
+            .background(Theme.surfaceBackground)
+        }
+        .background(Theme.surfaceBackground.opacity(0.95))
+    }
+
+    private func performQuickConnect() {
+        let input = quickConnectInput.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !input.isEmpty else { return }
+
+        var user = "root"
+        var host = input
+        var port = 22
+
+        if host.contains("@") {
+            let parts = host.components(separatedBy: "@")
+            user = parts[0]
+            host = parts[1]
+        }
+
+        if host.contains(":") {
+            let parts = host.components(separatedBy: ":")
+            host = parts[0]
+            if let p = Int(parts[1]) {
+                port = p
+            }
+        }
+
+        state.terminalManager.openSSHSession(
+            host: host,
+            port: port,
+            username: user,
+            autoConnect: true
+        )
+        quickConnectInput = ""
+    }
+
+    // MARK: - SSH Key Studio Modal (MobaKeyGen)
+
+    private var localDiscoveredSSHKeys: [SSHKeyInfo] {
+        state.terminalManager.keyStudio.discoverLocalKeys()
+    }
+
+    private var sshKeyStudioModal: some View {
+        VStack(spacing: 16) {
+            sshKeyStudioHeader
+            sshKeyStudioDiscoveredKeys(localKeys: localDiscoveredSSHKeys)
+            Divider().overlay(Theme.borderLight)
+            sshKeyStudioGenerateForm
+            Divider().overlay(Theme.borderLight)
+            sshKeyStudioDeployForm(localKeys: localDiscoveredSSHKeys)
+        }
+        .padding(20)
+        .frame(width: 580)
+    }
+
+    private var sshKeyStudioHeader: some View {
+        VStack(spacing: 8) {
+            HStack {
+                Label("SSH Key Studio & Generator (MobaKeyGen)", systemImage: "key.fill")
+                    .font(.system(size: 14, weight: .bold))
+                Spacer()
+                Button("Close") { showSSHKeyStudioSheet = false }
+                    .buttonStyle(.plain)
+            }
+
+            if let toast = keyGenSuccessToast {
+                HStack {
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundStyle(Theme.emeraldHealthy)
+                    Text(toast)
+                        .font(.system(size: 11, weight: .semibold))
+                    Spacer()
+                }
+                .padding(8)
+                .background(Theme.emeraldHealthy.opacity(0.12))
+                .clipShape(RoundedRectangle(cornerRadius: 6))
+            }
+        }
+    }
+
+    private func sshKeyStudioDiscoveredKeys(localKeys: [SSHKeyInfo]) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text("LOCAL SSH KEYPAIRS (~/.ssh/)")
+                    .font(Theme.monoText(10, weight: .bold))
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Text("\(localKeys.count) found")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.secondary)
+            }
+
+            if localKeys.isEmpty {
+                Text("No SSH keys found in ~/.ssh/. Generate an Ed25519 or RSA key below to authenticate securely without passwords.")
+                    .font(.system(size: 11))
+                    .foregroundStyle(Theme.solarAmber)
+                    .padding(8)
+                    .background(Theme.solarAmber.opacity(0.1))
+                    .clipShape(RoundedRectangle(cornerRadius: 6))
+            } else {
+                ScrollView {
+                    LazyVStack(spacing: 6) {
+                        ForEach(localKeys) { key in
+                            HStack {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    HStack(spacing: 6) {
+                                        Text(key.name)
+                                            .font(Theme.monoText(11, weight: .bold))
+                                        Text(key.keyType)
+                                            .font(Theme.monoText(9, weight: .bold))
+                                            .padding(.horizontal, 5)
+                                            .padding(.vertical, 1)
+                                            .background(key.keyType == "Ed25519" ? Theme.neonCyan.opacity(0.2) : Theme.solarAmber.opacity(0.2))
+                                            .foregroundStyle(key.keyType == "Ed25519" ? Theme.neonCyan : Theme.solarAmber)
+                                            .clipShape(Capsule())
+                                    }
+                                    Text(key.fingerprint)
+                                        .font(Theme.monoText(9))
+                                        .foregroundStyle(.secondary)
+                                }
+
+                                Spacer()
+
+                                Button("Copy Public Key") {
+                                    NSPasteboard.general.clearContents()
+                                    NSPasteboard.general.setString(key.publicKeyString, forType: .string)
+                                    keyGenSuccessToast = "Public key for \(key.name) copied to clipboard!"
+                                }
+                                .font(.system(size: 10))
+                                .buttonStyle(.bordered)
+
+                                Button("Use Key") {
+                                    sshKeyPath = key.privateKeyPath
+                                    showSSHKeyStudioSheet = false
+                                    showNewSessionSheet = true
+                                }
+                                .font(.system(size: 10))
+                                .buttonStyle(.borderedProminent)
+                                .tint(Theme.cyanPulse)
+                                .foregroundStyle(Color.black)
+                            }
+                            .padding(8)
+                            .background(Theme.cardBackground)
+                            .clipShape(RoundedRectangle(cornerRadius: 6))
+                        }
+                    }
+                }
+                .frame(maxHeight: 130)
+            }
+        }
+    }
+
+    private var sshKeyStudioGenerateForm: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("GENERATE NEW SSH KEYPAIR")
+                .font(Theme.monoText(10, weight: .bold))
+                .foregroundStyle(.secondary)
+
+            HStack(spacing: 12) {
+                Picker("Algorithm", selection: $newKeyType) {
+                    Text("Ed25519 (Recommended)").tag("Ed25519")
+                    Text("RSA 4096-bit (Legacy)").tag("RSA")
+                }
+                .pickerStyle(.segmented)
+
+                TextField("Comment (e.g. user@mac)", text: $newKeyComment)
+                    .textFieldStyle(.roundedBorder)
+
+                Button("Generate") {
+                    generateNewKeyPair()
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(Theme.cyanPulse)
+                .foregroundStyle(Color.black)
+            }
+        }
+    }
+
+    private func generateNewKeyPair() {
+        do {
+            let newKey: SSHKeyInfo
+            if newKeyType == "Ed25519" {
+                newKey = try state.terminalManager.keyStudio.generateEd25519Key(comment: newKeyComment)
+            } else {
+                newKey = try state.terminalManager.keyStudio.generateRSAKey(comment: newKeyComment)
+            }
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(newKey.publicKeyString, forType: .string)
+            keyGenSuccessToast = "Generated \(newKey.name)! Public key automatically copied to clipboard."
+        } catch {
+            keyGenSuccessToast = "Error: \(error.localizedDescription)"
+        }
+    }
+
+    private func sshKeyStudioDeployForm(localKeys: [SSHKeyInfo]) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("DEPLOY PUBLIC KEY TO REMOTE SERVER (ssh-copy-id)")
+                .font(Theme.monoText(10, weight: .bold))
+                .foregroundStyle(.secondary)
+
+            HStack(spacing: 8) {
+                TextField("Server Host (IP / Domain)", text: $deployHost)
+                    .textFieldStyle(.roundedBorder)
+                TextField("Port", text: $deployPort)
+                    .textFieldStyle(.roundedBorder)
+                    .frame(width: 60)
+                TextField("User", text: $deployUser)
+                    .textFieldStyle(.roundedBorder)
+                    .frame(width: 80)
+
+                Button(isDeployingKey ? "Deploying..." : "Deploy Key") {
+                    if let firstKey = localKeys.first {
+                        deploySelectedKey(firstKey: firstKey)
+                    }
+                }
+                .buttonStyle(.bordered)
+                .disabled(deployHost.isEmpty || localKeys.isEmpty || isDeployingKey)
+            }
+
+            if let msg = deployStatusMsg {
+                Text(msg)
+                    .font(.system(size: 10))
+                    .foregroundStyle(Theme.neonCyan)
+            }
+        }
+    }
+
+    private func deploySelectedKey(firstKey: SSHKeyInfo) {
+        guard !deployHost.isEmpty else { return }
+        isDeployingKey = true
+        let host = deployHost
+        let port = Int(deployPort) ?? 22
+        let user = deployUser
+        let path = firstKey.publicKeyPath
+        Task {
+            do {
+                let res = try await state.terminalManager.keyStudio.deployKeyToServer(
+                    publicKeyPath: path,
+                    host: host,
+                    port: port,
+                    username: user
+                )
+                await MainActor.run {
+                    deployStatusMsg = res
+                    isDeployingKey = false
+                }
+            } catch {
+                await MainActor.run {
+                    deployStatusMsg = error.localizedDescription
+                    isDeployingKey = false
+                }
+            }
+        }
+    }
+
+    // MARK: - SSH Port Forwarding & Tunnels Modal (MobaSSHTunnel)
+
+    private var sshTunnelsModal: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack {
+                Label("SSH Port Forwarding & Tunnels (MobaSSHTunnel)", systemImage: "arrow.triangle.swap")
+                    .font(.system(size: 14, weight: .bold))
+                Spacer()
+                Button("Close") { showSSHTunnelsSheet = false }
+                    .buttonStyle(.plain)
+            }
+
+            sshTunnelsList
+            Divider().overlay(Theme.borderLight)
+            sshTunnelsCreateForm
+        }
+        .padding(20)
+        .frame(width: 580)
+    }
+
+    private var sshTunnels: [SSHTunnelConfig] {
+        state.terminalManager.tunnelManager.tunnels
+    }
+
+    private var sshTunnelsList: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("ACTIVE & SAVED TUNNELS")
+                .font(Theme.monoText(10, weight: .bold))
+                .foregroundStyle(.secondary)
+
+            if sshTunnels.isEmpty {
+                Text("No SSH tunnels configured. Create a Local, Remote, or Dynamic SOCKS5 tunnel below.")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                    .padding(8)
+            } else {
+                ScrollView {
+                    LazyVStack(spacing: 6) {
+                        ForEach(sshTunnels) { tunnel in
+                            HStack {
+                                Circle()
+                                    .fill(tunnel.isActive ? Theme.emeraldHealthy : Color.gray.opacity(0.5))
+                                    .frame(width: 8, height: 8)
+
+                                VStack(alignment: .leading, spacing: 2) {
+                                    HStack(spacing: 6) {
+                                        Text(tunnel.name)
+                                            .font(Theme.monoText(11, weight: .bold))
+                                        Text(tunnel.tunnelType.flag)
+                                            .font(Theme.monoText(9, weight: .bold))
+                                            .padding(.horizontal, 4)
+                                            .padding(.vertical, 1)
+                                            .background(Theme.cyanPulse.opacity(0.15))
+                                            .foregroundStyle(Theme.cyanPulse)
+                                            .clipShape(RoundedRectangle(cornerRadius: 3))
+                                    }
+
+                                    Text(tunnel.tunnelType == .dynamicSOCKS5 ?
+                                         "localhost:\(tunnel.localPort) (SOCKS5 Proxy) via \(tunnel.sshUsername)@\(tunnel.sshHost)" :
+                                         "localhost:\(tunnel.localPort) -> \(tunnel.destinationHost):\(tunnel.destinationPort) via \(tunnel.sshUsername)@\(tunnel.sshHost)")
+                                        .font(Theme.monoText(9))
+                                        .foregroundStyle(.secondary)
+
+                                    if let err = tunnel.lastError {
+                                        Text(err)
+                                            .font(.system(size: 9))
+                                            .foregroundStyle(Theme.crimsonCritical)
+                                    }
+                                }
+
+                                Spacer()
+
+                                Button(tunnel.isActive ? "Stop" : "Start") {
+                                    if tunnel.isActive {
+                                        state.terminalManager.tunnelManager.stopTunnel(id: tunnel.id)
+                                    } else {
+                                        try? state.terminalManager.tunnelManager.startTunnel(id: tunnel.id)
+                                    }
+                                }
+                                .buttonStyle(.bordered)
+                                .tint(tunnel.isActive ? Theme.crimsonCritical : Theme.emeraldHealthy)
+
+                                Button(action: {
+                                    state.terminalManager.tunnelManager.deleteTunnel(id: tunnel.id)
+                                }) {
+                                    Image(systemName: "trash")
+                                        .font(.system(size: 10))
+                                        .foregroundStyle(.secondary)
+                                }
+                                .buttonStyle(.plain)
+                            }
+                            .padding(8)
+                            .background(Theme.cardBackground)
+                            .clipShape(RoundedRectangle(cornerRadius: 6))
+                        }
+                    }
+                }
+                .frame(maxHeight: 150)
+            }
+        }
+    }
+
+    private var sshTunnelsCreateForm: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("ADD NEW SSH TUNNEL")
+                .font(Theme.monoText(10, weight: .bold))
+                .foregroundStyle(.secondary)
+
+            HStack(spacing: 8) {
+                Picker("Type", selection: $tunnelTypeInput) {
+                    ForEach(SSHTunnelType.allCases) { t in
+                        Text(t.rawValue).tag(t)
+                    }
+                }
+                .pickerStyle(.menu)
+
+                TextField("Tunnel Name (optional)", text: $tunnelNameInput)
+                    .textFieldStyle(.roundedBorder)
+            }
+
+            HStack(spacing: 8) {
+                TextField("Local Port", text: $tunnelLocalPortInput)
+                    .textFieldStyle(.roundedBorder)
+                    .frame(width: 90)
+
+                if tunnelTypeInput != .dynamicSOCKS5 {
+                    TextField("Remote Host", text: $tunnelDestHostInput)
+                        .textFieldStyle(.roundedBorder)
+                    TextField("Remote Port", text: $tunnelDestPortInput)
+                        .textFieldStyle(.roundedBorder)
+                        .frame(width: 90)
+                }
+            }
+
+            HStack(spacing: 8) {
+                TextField("SSH Host (Gateway)", text: $tunnelSSHHostInput)
+                    .textFieldStyle(.roundedBorder)
+                TextField("Port", text: $tunnelSSHPortInput)
+                    .textFieldStyle(.roundedBorder)
+                    .frame(width: 60)
+                TextField("User", text: $tunnelSSHUserInput)
+                    .textFieldStyle(.roundedBorder)
+                    .frame(width: 90)
+
+                Button("Save Tunnel") {
+                    saveNewTunnel()
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(Theme.cyanPulse)
+                .foregroundStyle(Color.black)
+                .disabled(tunnelSSHHostInput.isEmpty)
+            }
+        }
+    }
+
+    private func saveNewTunnel() {
+        guard !tunnelSSHHostInput.isEmpty else { return }
+        let newTunnel = SSHTunnelConfig(
+            name: tunnelNameInput,
+            tunnelType: tunnelTypeInput,
+            localPort: Int(tunnelLocalPortInput) ?? 8080,
+            destinationHost: tunnelDestHostInput,
+            destinationPort: Int(tunnelDestPortInput) ?? 80,
+            sshHost: tunnelSSHHostInput,
+            sshPort: Int(tunnelSSHPortInput) ?? 22,
+            sshUsername: tunnelSSHUserInput,
+            sshIdentityFile: tunnelIdentityKeyInput.isEmpty ? nil : tunnelIdentityKeyInput
+        )
+        state.terminalManager.tunnelManager.saveTunnel(newTunnel)
+        tunnelNameInput = ""
+        tunnelSSHHostInput = ""
+    }
 }
+

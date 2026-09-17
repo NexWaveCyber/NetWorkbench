@@ -12,6 +12,7 @@ public final class TerminalSession: Identifiable, @unchecked Sendable {
     public var commandHistory: [String] = []
     public var logFilePath: URL? = nil
     public var showTimestamps: Bool = false
+    public var syntaxHighlightConfig: TerminalSyntaxHighlightConfig = TerminalSyntaxHighlightConfig()
 
     private let maxBufferedLines: Int = 4000
     private var ptyRunner: PTYProcessRunner?
@@ -35,7 +36,7 @@ public final class TerminalSession: Identifiable, @unchecked Sendable {
         initSessionLogFile()
 
         switch connectionType {
-        case .ssh(let host, let port, let username, let identityFile, let password):
+        case .ssh(let host, let port, let username, let identityFile, let password, let jumpHost, let enableLegacyCiphers):
             let runner = PTYProcessRunner()
             self.ptyRunner = runner
 
@@ -50,7 +51,21 @@ public final class TerminalSession: Identifiable, @unchecked Sendable {
             }
 
             do {
-                try runner.launchSSH(host: host, port: port, username: username, identityFile: identityFile, password: password)
+                if let jump = jumpHost, !jump.host.isEmpty {
+                    appendOutput("[Routing via Bastion Jump Host: \(jump.proxyJumpArgument)]\n")
+                }
+                if enableLegacyCiphers {
+                    appendOutput("[Legacy Network Hardware Ciphers Active: ssh-rsa, diffie-hellman-group14-sha1]\n")
+                }
+                try runner.launchSSH(
+                    host: host,
+                    port: port,
+                    username: username,
+                    identityFile: identityFile,
+                    password: password,
+                    jumpHost: jumpHost,
+                    enableLegacyCiphers: enableLegacyCiphers
+                )
                 self.status = .connected
                 appendOutput("[Connected to \(username)@\(host):\(port)]\n")
             } catch {
@@ -263,7 +278,8 @@ public final class TerminalSession: Identifiable, @unchecked Sendable {
     }
 
     private func appendLine(_ line: TerminalLine) {
-        lines.append(line)
+        let processedLine = TerminalKeywordHighlighter.shared.highlight(line: line, config: syntaxHighlightConfig)
+        lines.append(processedLine)
         if lines.count > maxBufferedLines {
             lines.removeFirst(lines.count - maxBufferedLines)
         }

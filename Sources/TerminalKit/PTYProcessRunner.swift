@@ -70,27 +70,46 @@ public final class PTYProcessRunner: @unchecked Sendable {
 
     private var pendingPassword: String?
 
-    /// Launch standard SSH session with keepalive, optional identity file or automated password
+    /// Launch standard SSH session with keepalive, optional identity file, Bastion ProxyJump, and legacy network ciphers
     public func launchSSH(
         host: String,
         port: Int = 22,
         username: String,
         identityFile: String? = nil,
-        password: String? = nil
+        password: String? = nil,
+        jumpHost: SSHJumpConfig? = nil,
+        enableLegacyCiphers: Bool = false
     ) throws {
         self.pendingPassword = password
         var args = [
             "-p", "\(port)",
-            "-o", "StrictHostKeyChecking=no",
-            "-o", "UserKnownHostsFile=/dev/null",
-            "-o", "LogLevel=ERROR",
+            "-o", "StrictHostKeyChecking=accept-new",
             "-o", "ServerAliveInterval=30",
-            "-o", "ServerAliveCountMax=3",
-            "\(username)@\(host)"
+            "-o", "ServerAliveCountMax=3"
         ]
-        if let key = identityFile, !key.isEmpty {
-            args.insert(contentsOf: ["-i", key], at: 0)
+
+        // Legacy network hardware ciphers for older Cisco/Juniper/HP appliances
+        if enableLegacyCiphers {
+            args.append(contentsOf: [
+                "-o", "PubkeyAcceptedKeyTypes=+ssh-rsa",
+                "-o", "HostKeyAlgorithms=+ssh-rsa,ssh-dss",
+                "-o", "KexAlgorithms=+diffie-hellman-group14-sha1,diffie-hellman-group1-sha1,diffie-hellman-group-exchange-sha1",
+                "-o", "Ciphers=+aes128-cbc,aes256-cbc,3des-cbc"
+            ])
         }
+
+        // Bastion / Jump Host (ProxyJump)
+        if let jump = jumpHost, !jump.host.isEmpty {
+            args.append("-J")
+            args.append(jump.proxyJumpArgument)
+        }
+
+        if let key = identityFile, !key.isEmpty {
+            args.append("-i")
+            args.append(key)
+        }
+
+        args.append("\(username)@\(host)")
 
         let sshURL = URL(fileURLWithPath: "/usr/bin/ssh")
         try launch(executableURL: sshURL, arguments: args)

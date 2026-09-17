@@ -9,6 +9,25 @@ public enum SSHAuthMethod: Sendable, Hashable, Codable {
     case interactive
 }
 
+/// Configuration for connecting through an SSH Jump Host (Bastion/ProxyJump)
+public struct SSHJumpConfig: Sendable, Hashable, Codable {
+    public var host: String
+    public var port: Int
+    public var username: String
+    public var identityFile: String?
+
+    public init(host: String, port: Int = 22, username: String = "admin", identityFile: String? = nil) {
+        self.host = host
+        self.port = port
+        self.username = username
+        self.identityFile = identityFile
+    }
+
+    public var proxyJumpArgument: String {
+        "\(username)@\(host):\(port)"
+    }
+}
+
 /// Profile configuration for connecting to remote network devices via SSH
 public struct SSHProfile: Identifiable, Sendable, Hashable, Codable {
     public let id: UUID
@@ -19,6 +38,8 @@ public struct SSHProfile: Identifiable, Sendable, Hashable, Codable {
     public var authMethod: SSHAuthMethod
     public var terminalType: String
     public var logSession: Bool
+    public var jumpHost: SSHJumpConfig?
+    public var enableLegacyCiphers: Bool
 
     public init(
         id: UUID = UUID(),
@@ -28,7 +49,9 @@ public struct SSHProfile: Identifiable, Sendable, Hashable, Codable {
         username: String,
         authMethod: SSHAuthMethod = .interactive,
         terminalType: String = "xterm-256color",
-        logSession: Bool = false
+        logSession: Bool = false,
+        jumpHost: SSHJumpConfig? = nil,
+        enableLegacyCiphers: Bool = false
     ) {
         self.id = id
         self.name = name.isEmpty ? "\(username)@\(host)" : name
@@ -38,12 +61,22 @@ public struct SSHProfile: Identifiable, Sendable, Hashable, Codable {
         self.authMethod = authMethod
         self.terminalType = terminalType
         self.logSession = logSession
+        self.jumpHost = jumpHost
+        self.enableLegacyCiphers = enableLegacyCiphers
     }
 }
 
 /// Connection mode for a network engineering terminal session
 public enum TerminalConnectionType: Sendable, Hashable {
-    case ssh(host: String, port: Int = 22, username: String, identityFile: String? = nil, password: String? = nil)
+    case ssh(
+        host: String,
+        port: Int = 22,
+        username: String,
+        identityFile: String? = nil,
+        password: String? = nil,
+        jumpHost: SSHJumpConfig? = nil,
+        enableLegacyCiphers: Bool = false
+    )
     case serial(devicePath: String, baudRate: Int = 9600, dataBits: Int = 8, parity: SerialParity = .none, stopBits: Int = 1)
     case telnet(host: String, port: Int = 23)
     case localShell
@@ -51,7 +84,7 @@ public enum TerminalConnectionType: Sendable, Hashable {
 
     public var title: String {
         switch self {
-        case .ssh(let host, _, let user, _, _):
+        case .ssh(let host, _, let user, _, _, _, _):
             return "\(user)@\(host)"
         case .serial(let path, let baud, _, _, _):
             let shortName = path.components(separatedBy: "/").last ?? path
@@ -275,6 +308,7 @@ public enum TerminalSplitMode: String, Sendable, CaseIterable, Identifiable, Cod
     case single = "Single Pane"
     case vertical = "Vertical Split (Side-by-Side)"
     case horizontal = "Horizontal Split (Stacked)"
+    case quadGrid = "2x2 Quad Grid (4 Panes)"
 
     public var id: String { rawValue }
 }
@@ -294,6 +328,10 @@ public struct TerminalProfile: Identifiable, Sendable, Hashable, Codable {
     public var vendorPreset: String
     public var autoConnect: Bool
     public var badgeColorHex: String
+    public var jumpHost: String?
+    public var jumpUser: String?
+    public var jumpPort: Int?
+    public var enableLegacyCiphers: Bool
 
     public init(
         id: UUID = UUID(),
@@ -308,7 +346,11 @@ public struct TerminalProfile: Identifiable, Sendable, Hashable, Codable {
         serialPath: String = "",
         vendorPreset: String = "Catalyst 9300 Core",
         autoConnect: Bool = false,
-        badgeColorHex: String = "#00E5FF"
+        badgeColorHex: String = "#00E5FF",
+        jumpHost: String? = nil,
+        jumpUser: String? = nil,
+        jumpPort: Int? = 22,
+        enableLegacyCiphers: Bool = false
     ) {
         self.id = id
         self.name = name
@@ -323,6 +365,134 @@ public struct TerminalProfile: Identifiable, Sendable, Hashable, Codable {
         self.vendorPreset = vendorPreset
         self.autoConnect = autoConnect
         self.badgeColorHex = badgeColorHex
+        self.jumpHost = jumpHost
+        self.jumpUser = jumpUser
+        self.jumpPort = jumpPort
+        self.enableLegacyCiphers = enableLegacyCiphers
+    }
+}
+
+/// Information describing a local SSH public/private keypair (MobaKeyGen)
+public struct SSHKeyInfo: Identifiable, Sendable, Hashable, Codable {
+    public let id: UUID
+    public var name: String
+    public var privateKeyPath: String
+    public var publicKeyPath: String
+    public var keyType: String // "ed25519", "rsa", "ecdsa"
+    public var fingerprint: String
+    public var comment: String
+    public var publicKeyString: String
+
+    public init(
+        id: UUID = UUID(),
+        name: String,
+        privateKeyPath: String,
+        publicKeyPath: String,
+        keyType: String,
+        fingerprint: String = "",
+        comment: String = "",
+        publicKeyString: String = ""
+    ) {
+        self.id = id
+        self.name = name
+        self.privateKeyPath = privateKeyPath
+        self.publicKeyPath = publicKeyPath
+        self.keyType = keyType
+        self.fingerprint = fingerprint
+        self.comment = comment
+        self.publicKeyString = publicKeyString
+    }
+}
+
+/// Type of SSH tunnel (MobaSSHTunnel)
+public enum SSHTunnelType: String, Sendable, CaseIterable, Identifiable, Codable {
+    case localForward = "Local Port Forward (-L)"
+    case remoteForward = "Remote Port Forward (-R)"
+    case dynamicSOCKS5 = "Dynamic SOCKS5 Proxy (-D)"
+
+    public var id: String { rawValue }
+    public var flag: String {
+        switch self {
+        case .localForward: return "-L"
+        case .remoteForward: return "-R"
+        case .dynamicSOCKS5: return "-D"
+        }
+    }
+}
+
+/// Persistent configuration for an SSH Port Forwarding Tunnel (MobaSSHTunnel)
+public struct SSHTunnelConfig: Identifiable, Sendable, Hashable, Codable {
+    public let id: UUID
+    public var name: String
+    public var tunnelType: SSHTunnelType
+    public var localPort: Int
+    public var destinationHost: String
+    public var destinationPort: Int
+    public var sshHost: String
+    public var sshPort: Int
+    public var sshUsername: String
+    public var sshIdentityFile: String?
+    public var isActive: Bool
+    public var lastError: String?
+
+    public init(
+        id: UUID = UUID(),
+        name: String = "",
+        tunnelType: SSHTunnelType = .localForward,
+        localPort: Int = 8080,
+        destinationHost: String = "localhost",
+        destinationPort: Int = 80,
+        sshHost: String = "",
+        sshPort: Int = 22,
+        sshUsername: String = "admin",
+        sshIdentityFile: String? = nil,
+        isActive: Bool = false,
+        lastError: String? = nil
+    ) {
+        self.id = id
+        self.name = name.isEmpty ? "\(tunnelType.flag) \(localPort):\(destinationHost):\(destinationPort)" : name
+        self.tunnelType = tunnelType
+        self.localPort = localPort
+        self.destinationHost = destinationHost
+        self.destinationPort = destinationPort
+        self.sshHost = sshHost
+        self.sshPort = sshPort
+        self.sshUsername = sshUsername
+        self.sshIdentityFile = sshIdentityFile
+        self.isActive = isActive
+        self.lastError = lastError
+    }
+
+    public var specString: String {
+        switch tunnelType {
+        case .localForward, .remoteForward:
+            return "\(localPort):\(destinationHost):\(destinationPort)"
+        case .dynamicSOCKS5:
+            return "\(localPort)"
+        }
+    }
+}
+
+/// Configuration for live terminal keyword and syntax highlighting (MobaXterm Syntax Coloring)
+public struct TerminalSyntaxHighlightConfig: Sendable, Hashable, Codable {
+    public var isEnabled: Bool
+    public var highlightIPs: Bool
+    public var highlightMACs: Bool
+    public var highlightErrors: Bool
+    public var highlightSuccess: Bool
+
+    public init(
+        isEnabled: Bool = true,
+        highlightIPs: Bool = true,
+        highlightMACs: Bool = true,
+        highlightErrors: Bool = true,
+        highlightSuccess: Bool = true
+    ) {
+        self.isEnabled = isEnabled
+        self.highlightIPs = highlightIPs
+        self.highlightMACs = highlightMACs
+        self.highlightErrors = highlightErrors
+        self.highlightSuccess = highlightSuccess
     }
 }
 

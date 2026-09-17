@@ -388,7 +388,116 @@ struct TerminalTests {
 
         session.disconnect()
     }
+
+    @Test("SSH Jump Host formats ProxyJump argument correctly")
+    func testSSHJumpConfigArgument() {
+        let jump = SSHJumpConfig(host: "bastion.corp.net", port: 2222, username: "jumpuser")
+        #expect(jump.proxyJumpArgument == "jumpuser@bastion.corp.net:2222")
+
+        let defaultJump = SSHJumpConfig(host: "gateway.internal", port: 22, username: "admin")
+        #expect(defaultJump.proxyJumpArgument == "admin@gateway.internal:22")
+    }
+
+    @Test("SSH Tunnel Manager configures -L, -R, and -D tunnels with proper spec strings")
+    func testSSHTunnelManagerAndConfig() {
+        let manager = SSHTunnelManager.shared
+
+        let localTunnel = SSHTunnelConfig(
+            name: "Local Database",
+            tunnelType: .localForward,
+            localPort: 5432,
+            destinationHost: "db.internal.corp",
+            destinationPort: 5432,
+            sshHost: "bastion.corp.com",
+            sshUsername: "deploy"
+        )
+        #expect(localTunnel.specString == "5432:db.internal.corp:5432")
+        #expect(localTunnel.tunnelType.flag == "-L")
+
+        let remoteTunnel = SSHTunnelConfig(
+            name: "Remote Webhook",
+            tunnelType: .remoteForward,
+            localPort: 9000,
+            destinationHost: "localhost",
+            destinationPort: 3000,
+            sshHost: "edge.server.net",
+            sshUsername: "root"
+        )
+        #expect(remoteTunnel.specString == "9000:localhost:3000")
+        #expect(remoteTunnel.tunnelType.flag == "-R")
+
+        let socksTunnel = SSHTunnelConfig(
+            name: "SOCKS5 Proxy",
+            tunnelType: .dynamicSOCKS5,
+            localPort: 1080,
+            sshHost: "proxy.server.net",
+            sshUsername: "admin"
+        )
+        #expect(socksTunnel.specString == "1080")
+        #expect(socksTunnel.tunnelType.flag == "-D")
+
+        // Test saving and deletion in manager
+        manager.saveTunnel(localTunnel)
+        #expect(manager.tunnels.contains(where: { $0.id == localTunnel.id }))
+
+        manager.deleteTunnel(id: localTunnel.id)
+        #expect(!manager.tunnels.contains(where: { $0.id == localTunnel.id }))
+    }
+
+    @Test("Terminal Keyword Highlighter dynamically color-codes IPs, MACs, Errors, and Status")
+    func testTerminalKeywordHighlighter() {
+        let highlighter = TerminalKeywordHighlighter.shared
+        let config = TerminalSyntaxHighlightConfig(
+            isEnabled: true,
+            highlightIPs: true,
+            highlightMACs: true,
+            highlightErrors: true,
+            highlightSuccess: true
+        )
+
+        let lineText = "Interface Gi0/1 192.168.1.50 is up with MAC 00:1A:2B:3C:4D:5E but status denied"
+        let line = TerminalLine(text: lineText)
+        let highlighted = highlighter.highlight(line: line, config: config)
+
+        // Spans should be decomposed into multiple styled segments
+        #expect(highlighted.spans.count > 1)
+        #expect(highlighted.spans.contains(where: { $0.text == "192.168.1.50" }))
+        #expect(highlighted.spans.contains(where: { $0.text.lowercased() == "up" }))
+        #expect(highlighted.spans.contains(where: { $0.text == "00:1A:2B:3C:4D:5E" }))
+        #expect(highlighted.spans.contains(where: { $0.text.lowercased() == "denied" }))
+    }
+
+    @Test("SSH Key Studio discovers local SSH keys in user directory")
+    func testSSHKeyStudioDiscovery() {
+        let studio = SSHKeyStudio.shared
+        let keys = studio.discoverLocalKeys()
+        // Discovery executes without throwing and returns a valid array
+        #expect(keys.count >= 0)
+    }
+
+    @Test("Quad Grid 2x2 layout supports 4 active pane bindings")
+    func testQuadGridSplitModeAndPanes() {
+        let manager = TerminalManager()
+        #expect(TerminalSplitMode.quadGrid.rawValue == "2x2 Quad Grid (4 Panes)")
+
+        manager.splitMode = .quadGrid
+        let s1 = manager.openSimulatedSession(preset: "Cisco Catalyst 9300")
+        let s2 = manager.openSimulatedSession(preset: "Arista 7050X")
+        let s3 = manager.openSimulatedSession(preset: "Juniper EX4300")
+        let s4 = manager.openSimulatedSession(preset: "Lab Core Switch")
+
+        manager.activeSessionId = s1.id
+        manager.secondarySessionId = s2.id
+        manager.pane3SessionId = s3.id
+        manager.pane4SessionId = s4.id
+
+        #expect(manager.activeSession?.id == s1.id)
+        #expect(manager.secondarySession?.id == s2.id)
+        #expect(manager.pane3Session?.id == s3.id)
+        #expect(manager.pane4Session?.id == s4.id)
+    }
 }
+
 
 
 

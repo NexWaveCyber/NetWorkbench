@@ -8,11 +8,18 @@ public final class TerminalManager: @unchecked Sendable {
     public var sessions: [TerminalSession] = []
     public var activeSessionId: UUID?
     public var secondarySessionId: UUID?
+    public var pane3SessionId: UUID?
+    public var pane4SessionId: UUID?
     public var splitMode: TerminalSplitMode = .single
     public var isBroadcastEnabled: Bool = false
+    public var isSidebarExpanded: Bool = true
+    public var isSyntaxHighlightingEnabled: Bool = true
     public var availableSerialPorts: [SerialPortInfo] = []
     public var savedProfiles: [TerminalProfile] = []
     public var macros: [CommandMacro] = []
+
+    public let keyStudio = SSHKeyStudio.shared
+    public let tunnelManager = SSHTunnelManager.shared
 
     private let profilesStorageKey = "com.nexwave.terminal.saved_profiles"
     private let macrosStorageKey = "com.nexwave.terminal.custom_macros"
@@ -37,6 +44,16 @@ public final class TerminalManager: @unchecked Sendable {
         return sessions.first(where: { $0.id == id })
     }
 
+    public var pane3Session: TerminalSession? {
+        guard let id = pane3SessionId else { return sessions.dropFirst(2).first }
+        return sessions.first(where: { $0.id == id })
+    }
+
+    public var pane4Session: TerminalSession? {
+        guard let id = pane4SessionId else { return sessions.dropFirst(3).first }
+        return sessions.first(where: { $0.id == id })
+    }
+
     /// Refresh hardware serial ports
     public func refreshSerialPorts() {
         self.availableSerialPorts = SerialDiscovery.shared.discoverPorts()
@@ -52,10 +69,12 @@ public final class TerminalManager: @unchecked Sendable {
         username: String = "admin",
         identityFile: String? = nil,
         password: String? = nil,
+        jumpHost: SSHJumpConfig? = nil,
+        enableLegacyCiphers: Bool = false,
         autoConnect: Bool = true
     ) -> TerminalSession {
         if let existing = sessions.first(where: {
-            if case .ssh(let h, let p, let u, _, _) = $0.connectionType {
+            if case .ssh(let h, let p, let u, _, _, _, _) = $0.connectionType {
                 return h == host && p == port && u == username
             }
             return false
@@ -69,7 +88,15 @@ public final class TerminalManager: @unchecked Sendable {
 
         let session = TerminalSession(
             title: "\(username)@\(host)",
-            connectionType: .ssh(host: host, port: port, username: username, identityFile: identityFile, password: password)
+            connectionType: .ssh(
+                host: host,
+                port: port,
+                username: username,
+                identityFile: identityFile,
+                password: password,
+                jumpHost: jumpHost,
+                enableLegacyCiphers: enableLegacyCiphers
+            )
         )
         sessions.append(session)
         activeSessionId = session.id
@@ -142,11 +169,19 @@ public final class TerminalManager: @unchecked Sendable {
         case "localshell", "shell":
             return openLocalShell()
         default:
+            let jump: SSHJumpConfig?
+            if let jh = profile.jumpHost, !jh.isEmpty {
+                jump = SSHJumpConfig(host: jh, port: profile.jumpPort ?? 22, username: profile.jumpUser ?? "admin")
+            } else {
+                jump = nil
+            }
             return openSSHSession(
                 host: profile.host,
                 port: profile.port,
                 username: profile.username,
-                identityFile: profile.identityFile
+                identityFile: profile.identityFile,
+                jumpHost: jump,
+                enableLegacyCiphers: profile.enableLegacyCiphers
             )
         }
     }
