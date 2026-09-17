@@ -485,31 +485,47 @@ public struct TopologyGraph: Sendable, Codable, Equatable {
     /// Automatically constructs a topology from local LAN discovered neighbors
     public static func buildFromDiscoveredLAN(
         neighbors: [DiscoveredNeighbor],
-        gatewayIP: String = "172.16.16.1",
+        gatewayIP: String = "192.168.10.1",
         bounds: CGSize = CGSize(width: 900, height: 600)
     ) -> TopologyGraph {
         var nodes: [TopologyNode] = []
         var links: [TopologyLink] = []
 
         // 1. Local Workstation Node
+        let hostName = ProcessInfo.processInfo.hostName.components(separatedBy: ".").first ?? "Your Mac"
         let localNode = TopologyNode(
             id: "local-mac",
-            label: "Your MacBook Pro",
+            label: hostName,
             role: .workstation,
             vendor: .apple,
             ipAddress: "Local Host",
+            platform: "Apple Mac",
             status: .online,
             tier: .access
         )
         nodes.append(localNode)
 
-        // 2. Gateway Node
+        // 2. Gateway Node (Enriched from discovered neighbors if present)
+        let gwNeighbor = neighbors.first(where: { $0.ipAddress == gatewayIP })
+        let gwVendor = gwNeighbor?.vendor ?? .generic
+        let gwPlatform = gwNeighbor?.ouiVendor ?? (gwVendor != .generic ? gwVendor.rawValue : "Default Gateway")
+        let gwLabel: String
+        if let h = gwNeighbor?.hostname, !h.isEmpty, h != gatewayIP {
+            gwLabel = h
+        } else if let v = gwNeighbor?.ouiVendor, !v.isEmpty {
+            gwLabel = v
+        } else {
+            gwLabel = "Default Gateway"
+        }
+
         let gwNode = TopologyNode(
             id: "gateway-router",
-            label: "Default Gateway",
+            label: gwLabel,
             role: .router,
-            vendor: .generic,
+            vendor: gwVendor == .generic ? .linksys : gwVendor,
             ipAddress: gatewayIP,
+            macAddress: gwNeighbor?.macAddress,
+            platform: gwPlatform,
             status: .online,
             tier: .core
         )
@@ -525,28 +541,47 @@ public struct TopologyGraph: Sendable, Codable, Equatable {
             speedMbps: 1_200
         ))
 
-        // Discovered Neighbors connected to Gateway
-        for (idx, n) in neighbors.prefix(12).enumerated() {
+        // Discovered Neighbors connected to Gateway (deduplicating gateway to prevent duplicate nodes)
+        let otherNeighbors = neighbors.filter { $0.ipAddress != gatewayIP && $0.ipAddress != "127.0.0.1" }
+        for (idx, n) in otherNeighbors.prefix(48).enumerated() {
             let role: DeviceRole
             let lowerVendor = (n.ouiVendor ?? "").lowercased()
-            if lowerVendor.contains("cisco") || lowerVendor.contains("arista") || lowerVendor.contains("juniper") {
+            if lowerVendor.contains("cisco") || lowerVendor.contains("arista") || lowerVendor.contains("juniper") || lowerVendor.contains("switch") {
                 role = .switchRole
             } else if lowerVendor.contains("apple") {
                 role = .workstation
-            } else if lowerVendor.contains("vmware") || lowerVendor.contains("intel") {
+            } else if lowerVendor.contains("router") || lowerVendor.contains("gateway") || lowerVendor.contains("linksys") || lowerVendor.contains("netgear") {
+                role = .router
+            } else if lowerVendor.contains("vmware") || lowerVendor.contains("intel") || lowerVendor.contains("synology") || lowerVendor.contains("qnap") {
                 role = .server
+            } else if lowerVendor.contains("access point") || lowerVendor.contains("unifi") || lowerVendor.contains("ubiquiti") {
+                role = .accessPoint
             } else {
                 role = .other
+            }
+
+            // Clean friendly label that NEVER duplicates the IP address
+            let cleanLabel: String
+            if let h = n.hostname, !h.isEmpty, h != n.ipAddress {
+                cleanLabel = h
+            } else if let v = n.ouiVendor, !v.isEmpty {
+                cleanLabel = v
+            } else if n.vendor != .generic {
+                cleanLabel = "\(n.vendor.rawValue) Device"
+            } else {
+                let lastOctet = n.ipAddress.components(separatedBy: ".").last ?? "\(idx)"
+                cleanLabel = "Host .\(lastOctet)"
             }
 
             let nodeId = "neighbor-\(idx)"
             let node = TopologyNode(
                 id: nodeId,
-                label: n.hostname ?? n.ipAddress,
+                label: cleanLabel,
                 role: role,
-                vendor: .generic,
+                vendor: n.vendor,
                 ipAddress: n.ipAddress,
-                macAddress: n.macAddress,
+                macAddress: n.macAddress.isEmpty ? nil : n.macAddress,
+                platform: n.ouiVendor,
                 status: .online,
                 tier: .endpoint
             )

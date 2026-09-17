@@ -177,6 +177,11 @@ public struct TopologyCanvasView: View {
                 .onAppear {
                     loadTopology(preset: preset, size: geo.size)
                 }
+                .onChange(of: state.discoveredNeighbors) { _, _ in
+                    if preset == .discoveredLAN {
+                        loadTopology(preset: .discoveredLAN, size: geo.size)
+                    }
+                }
             }
         }
         .background(Theme.surfaceBackground)
@@ -259,6 +264,9 @@ public struct TopologyCanvasView: View {
                 .pickerStyle(.menu)
                 .frame(width: 220)
                 .onChange(of: preset) { _, newPreset in
+                    if newPreset == .discoveredLAN && state.discoveredNeighbors.isEmpty {
+                        Task { await state.runLocalDiscovery() }
+                    }
                     loadTopology(preset: newPreset, size: CGSize(width: 1000, height: 700))
                 }
 
@@ -755,12 +763,12 @@ public struct TopologyCanvasView: View {
                     pathHopIndex: pathHopIndex,
                     isSearchMatch: isSearchMatch
                 )
-                .frame(width: 140, height: 75)
+                .frame(width: 156, height: 92)
                 .contentShape(Rectangle())
                 .contextMenu {
                     nodeContextMenu(for: node)
                 }
-                .offset(x: pos.x - 70, y: pos.y - 37.5)
+                .offset(x: pos.x - 78, y: pos.y - 46)
                 .zIndex(isBeingDragged ? 300 : (pathHopIndex != nil ? 250 : (isSelected ? 200 : Double(node.tier.tierLevel * -1))))
                 .gesture(
                     DragGesture(minimumDistance: 4)
@@ -845,24 +853,51 @@ public struct TopologyCanvasView: View {
     ) -> some View {
         let roleColor = colorForRole(node.role)
 
-        return VStack(spacing: 3) {
+        // Resolve friendly primary title - strictly never duplicate the IP address
+        let titleText: String = {
+            if !node.label.isEmpty && node.label != node.ipAddress {
+                return node.label
+            }
+            if let plat = node.platform, !plat.isEmpty {
+                return plat
+            }
+            if node.vendor != .generic {
+                return "\(node.vendor.rawValue) Host"
+            }
+            let lastOctet = node.ipAddress.components(separatedBy: ".").last ?? ""
+            return lastOctet.isEmpty ? "Network Host" : "Host .\(lastOctet)"
+        }()
+
+        // Resolve vendor badge text if known
+        let vendorBadgeText: String? = {
+            if node.vendor != .generic {
+                return node.vendor.rawValue.uppercased()
+            }
+            if let plat = node.platform, !plat.isEmpty {
+                let firstWord = plat.components(separatedBy: " ").first ?? plat
+                return firstWord.uppercased()
+            }
+            return nil
+        }()
+
+        return VStack(spacing: 2.5) {
             ZStack {
                 // Glow Halo
                 Circle()
                     .fill(roleColor.opacity(isBeingDragged ? 0.42 : (pathHopIndex != nil ? 0.35 : (isSelected ? 0.28 : 0.12))))
-                    .frame(width: isBeingDragged ? 50 : 44, height: isBeingDragged ? 50 : 44)
+                    .frame(width: isBeingDragged ? 42 : 36, height: isBeingDragged ? 42 : 36)
                     .overlay(
                         Circle()
                             .strokeBorder(
                                 isSearchMatch ? Theme.neonCyan : (isBeingDragged ? Theme.cyanPulse : (pathHopIndex != nil ? Theme.signalEmerald : (isSelected ? Theme.neonCyan : roleColor.opacity(0.6)))),
-                                lineWidth: isSearchMatch ? 3.0 : (isBeingDragged ? 2.8 : (pathHopIndex != nil ? 2.5 : (isSelected ? 2.2 : 1.2)))
+                                lineWidth: isSearchMatch ? 2.5 : (isBeingDragged ? 2.2 : (pathHopIndex != nil ? 2.0 : (isSelected ? 1.8 : 1.0)))
                             )
                     )
-                    .shadow(color: isSearchMatch ? Theme.cyanPulse : (isBeingDragged ? Theme.cyanPulse.opacity(0.8) : (isSelected ? Theme.neonCyan.opacity(0.5) : .clear)), radius: isSearchMatch ? 14 : (isBeingDragged ? 12 : 8))
+                    .shadow(color: isSearchMatch ? Theme.cyanPulse : (isBeingDragged ? Theme.cyanPulse.opacity(0.8) : (isSelected ? Theme.neonCyan.opacity(0.5) : .clear)), radius: isSearchMatch ? 12 : (isBeingDragged ? 10 : 6))
 
                 // Role Icon
                 Image(systemName: node.role.iconName)
-                    .font(.system(size: isBeingDragged ? 20 : 17, weight: .bold))
+                    .font(.system(size: isBeingDragged ? 16 : 14, weight: .bold))
                     .foregroundStyle(isBeingDragged ? Theme.cyanPulse : (pathHopIndex != nil ? Theme.signalEmerald : (isSelected ? Theme.neonCyan : roleColor)))
 
                 // Alarm badge
@@ -875,30 +910,31 @@ public struct TopologyCanvasView: View {
                                 .font(Theme.monoText(8, weight: .bold))
                                 .foregroundStyle(Color.white)
                         )
-                        .offset(x: 16, y: -16)
+                        .offset(x: 14, y: -14)
                 }
 
                 // Path Trace Hop Badge
                 if let hop = pathHopIndex {
                     Circle()
                         .fill(Theme.signalEmerald)
-                        .frame(width: 18, height: 18)
+                        .frame(width: 16, height: 16)
                         .overlay(
                             Text("H\(hop + 1)")
-                                .font(Theme.monoText(9, weight: .black))
+                                .font(Theme.monoText(8, weight: .black))
                                 .foregroundStyle(Color.black)
                         )
-                        .offset(x: -18, y: -16)
+                        .offset(x: -14, y: -14)
                 }
             }
 
-            // Node Name Label
-            Text(node.label)
-                .font(Theme.monoText(10, weight: .bold))
+            // Primary Hostname / Device Title (Never Duplicate IP!)
+            Text(titleText)
+                .font(Theme.monoText(9.5, weight: .bold))
                 .foregroundStyle(Color.white)
                 .lineLimit(1)
+                .truncationMode(.tail)
                 .padding(.horizontal, 6)
-                .padding(.vertical, 2)
+                .padding(.vertical, 1.5)
                 .background(Theme.surfaceBackground.opacity(0.92))
                 .clipShape(RoundedRectangle(cornerRadius: 4))
                 .overlay(
@@ -906,10 +942,34 @@ public struct TopologyCanvasView: View {
                         .stroke(isSearchMatch ? Theme.cyanPulse : (isBeingDragged ? Theme.cyanPulse.opacity(0.8) : Color.clear), lineWidth: 1)
                 )
 
-            // IP Address Subtitle
+            // IP Address (Single display in bright electric cyan)
             Text(node.ipAddress)
-                .font(Theme.monoText(9))
-                .foregroundStyle(isBeingDragged ? Theme.cyanPulse : .secondary)
+                .font(Theme.monoText(8.5, weight: .medium))
+                .foregroundStyle(isBeingDragged ? Theme.cyanPulse : Theme.neonCyan)
+                .lineLimit(1)
+
+            // Hardware Metadata: Vendor Badge & MAC Address
+            HStack(spacing: 3) {
+                if let vBadge = vendorBadgeText {
+                    Text(vBadge)
+                        .font(Theme.monoText(7, weight: .bold))
+                        .padding(.horizontal, 3.5)
+                        .padding(.vertical, 1)
+                        .background(Theme.azurePro.opacity(0.25))
+                        .foregroundStyle(Theme.azurePro)
+                        .clipShape(RoundedRectangle(cornerRadius: 2.5))
+                        .overlay(RoundedRectangle(cornerRadius: 2.5).stroke(Theme.azurePro.opacity(0.4), lineWidth: 0.5))
+                        .lineLimit(1)
+                }
+
+                if let mac = node.macAddress, !mac.isEmpty {
+                    Text(mac)
+                        .font(Theme.monoText(7.5))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                }
+            }
         }
         .scaleEffect(isBeingDragged ? 1.08 : 1.0)
         .opacity(isDimmed ? 0.18 : 1.0)
@@ -1460,7 +1520,8 @@ public struct TopologyCanvasView: View {
             self.graph = g
 
         case .discoveredLAN:
-            var g = TopologyGraph.buildFromDiscoveredLAN(neighbors: state.discoveredNeighbors, bounds: size)
+            let liveGW = MenuBarMonitorEngine.shared.defaultGateway.isEmpty ? "192.168.10.1" : MenuBarMonitorEngine.shared.defaultGateway
+            var g = TopologyGraph.buildFromDiscoveredLAN(neighbors: state.discoveredNeighbors, gatewayIP: liveGW, bounds: size)
             recalculateLayout(graph: &g, mode: layoutMode, size: size)
             self.graph = g
 
