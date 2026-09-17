@@ -23,6 +23,17 @@ public enum WiFiChannelWidth: String, Sendable, Codable {
     case mhz160 = "160 MHz"
     case mhz320 = "320 MHz"
     case unknown = "Unknown"
+
+    public var widthMHz: Double {
+        switch self {
+        case .mhz20: return 20.0
+        case .mhz40: return 40.0
+        case .mhz80: return 80.0
+        case .mhz160: return 160.0
+        case .mhz320: return 320.0
+        case .unknown: return 20.0
+        }
+    }
 }
 
 public enum WiFiPHYMode: String, Sendable, Codable {
@@ -98,6 +109,111 @@ public enum WiFiSignalQuality: String, Sendable, Codable {
     }
 }
 
+// MARK: - RF Frequency & Spectrum Geometry Helper
+
+public enum RFFrequencyHelper {
+    public static func centerFrequencyMHz(channel: Int, band: WiFiBand) -> Double {
+        switch band {
+        case .ghz2_4:
+            if channel == 14 { return 2484.0 }
+            if channel >= 1 && channel <= 13 { return Double(2407 + channel * 5) }
+            return 2412.0
+        case .ghz5:
+            if channel >= 36 && channel <= 177 { return Double(5000 + channel * 5) }
+            return 5180.0
+        case .ghz6:
+            if channel >= 1 && channel <= 233 { return Double(5950 + channel * 5) }
+            return 6135.0
+        case .unknown:
+            if channel <= 14 { return centerFrequencyMHz(channel: channel, band: .ghz2_4) }
+            return centerFrequencyMHz(channel: channel, band: .ghz5)
+        }
+    }
+
+    public static func isDFS(channel: Int, band: WiFiBand) -> Bool {
+        guard band == .ghz5 else { return false }
+        return (channel >= 52 && channel <= 64) || (channel >= 100 && channel <= 144)
+    }
+
+    public static func uniiSubBand(channel: Int, band: WiFiBand) -> String? {
+        switch band {
+        case .ghz2_4:
+            return "ISM 2.4 GHz"
+        case .ghz5:
+            if channel >= 36 && channel <= 48 { return "UNII-1 (Indoor)" }
+            if channel >= 52 && channel <= 64 { return "UNII-2A (DFS)" }
+            if channel >= 100 && channel <= 144 { return "UNII-2C (DFS)" }
+            if channel >= 149 && channel <= 165 { return "UNII-3" }
+            if channel >= 169 && channel <= 177 { return "UNII-4" }
+            return "5 GHz UNII"
+        case .ghz6:
+            if channel >= 1 && channel <= 93 { return "UNII-5" }
+            if channel >= 97 && channel <= 117 { return "UNII-6" }
+            if channel >= 121 && channel <= 185 { return "UNII-7" }
+            if channel >= 189 && channel <= 233 { return "UNII-8" }
+            return "6 GHz UNII"
+        case .unknown:
+            return nil
+        }
+    }
+
+    public static func frequencySpan(channel: Int, band: WiFiBand, width: WiFiChannelWidth) -> ClosedRange<Double> {
+        let center = centerFrequencyMHz(channel: channel, band: band)
+        switch band {
+        case .ghz2_4:
+            // 2.4 GHz standard mask span
+            let span = width == .mhz40 ? 40.0 : 22.0
+            return (center - span / 2.0)...(center + span / 2.0)
+        case .ghz5:
+            switch width {
+            case .mhz20, .unknown:
+                return (center - 10.0)...(center + 10.0)
+            case .mhz40:
+                let bondedCenter: Double
+                if [36, 44, 52, 60, 100, 108, 116, 124, 132, 140, 149, 157].contains(channel) {
+                    bondedCenter = center + 10.0
+                } else {
+                    bondedCenter = center - 10.0
+                }
+                return (bondedCenter - 20.0)...(bondedCenter + 20.0)
+            case .mhz80:
+                let bondedCenter: Double
+                if (36...48).contains(channel) { bondedCenter = 5210.0 }
+                else if (52...64).contains(channel) { bondedCenter = 5290.0 }
+                else if (100...112).contains(channel) { bondedCenter = 5530.0 }
+                else if (116...128).contains(channel) { bondedCenter = 5610.0 }
+                else if (132...144).contains(channel) { bondedCenter = 5690.0 }
+                else if (149...161).contains(channel) { bondedCenter = 5775.0 }
+                else { bondedCenter = center }
+                return (bondedCenter - 40.0)...(bondedCenter + 40.0)
+            case .mhz160:
+                let bondedCenter: Double
+                if (36...64).contains(channel) { bondedCenter = 5250.0 }
+                else if (100...128).contains(channel) { bondedCenter = 5570.0 }
+                else { bondedCenter = center }
+                return (bondedCenter - 80.0)...(bondedCenter + 80.0)
+            case .mhz320:
+                return (center - 160.0)...(center + 160.0)
+            }
+        case .ghz6:
+            switch width {
+            case .mhz20, .unknown:
+                return (center - 10.0)...(center + 10.0)
+            case .mhz40:
+                return (center - 20.0)...(center + 20.0)
+            case .mhz80:
+                return (center - 40.0)...(center + 40.0)
+            case .mhz160:
+                return (center - 80.0)...(center + 80.0)
+            case .mhz320:
+                return (center - 160.0)...(center + 160.0)
+            }
+        case .unknown:
+            return (center - 10.0)...(center + 10.0)
+        }
+    }
+}
+
 public struct WiFiCurrentLink: Sendable, Codable, Equatable {
     public let interfaceName: String
     public let macAddress: String
@@ -118,6 +234,22 @@ public struct WiFiCurrentLink: Sendable, Codable, Equatable {
     public let signalQuality: WiFiSignalQuality
     public let dhcpServer: String?
     public let timestamp: Date
+
+    public var centerFrequencyMHz: Double {
+        RFFrequencyHelper.centerFrequencyMHz(channel: channel, band: band)
+    }
+
+    public var frequencySpanMHz: ClosedRange<Double> {
+        RFFrequencyHelper.frequencySpan(channel: channel, band: band, width: channelWidth)
+    }
+
+    public var isDFS: Bool {
+        RFFrequencyHelper.isDFS(channel: channel, band: band)
+    }
+
+    public var uniiSubBand: String? {
+        RFFrequencyHelper.uniiSubBand(channel: channel, band: band)
+    }
 
     public init(
         interfaceName: String,
@@ -173,6 +305,27 @@ public struct NearbyAP: Identifiable, Sendable, Codable, Equatable {
     public let security: String
     public let phyMode: String
     public let isCurrentAssociation: Bool
+
+    public var centerFrequencyMHz: Double {
+        RFFrequencyHelper.centerFrequencyMHz(channel: channel, band: band)
+    }
+
+    public var frequencySpanMHz: ClosedRange<Double> {
+        RFFrequencyHelper.frequencySpan(channel: channel, band: band, width: channelWidth)
+    }
+
+    public var isDFS: Bool {
+        RFFrequencyHelper.isDFS(channel: channel, band: band)
+    }
+
+    public var uniiSubBand: String? {
+        RFFrequencyHelper.uniiSubBand(channel: channel, band: band)
+    }
+
+    public var snr: Int? {
+        guard let r = rssi, let n = noise else { return nil }
+        return r - n
+    }
 
     public init(
         ssid: String,
@@ -300,10 +453,40 @@ public enum WiFiContentionSeverity: String, Sendable, Codable {
     }
 }
 
+public struct WiFiOBSSOverlap: Sendable, Codable, Equatable {
+    public let ssid: String
+    public let bssid: String
+    public let vendor: String?
+    public let primaryChannel: Int
+    public let channelWidth: WiFiChannelWidth
+    public let overlappingBandwidthMHz: Double
+    public let rssi: Int?
+
+    public init(
+        ssid: String,
+        bssid: String,
+        vendor: String?,
+        primaryChannel: Int,
+        channelWidth: WiFiChannelWidth,
+        overlappingBandwidthMHz: Double,
+        rssi: Int?
+    ) {
+        self.ssid = ssid
+        self.bssid = bssid
+        self.vendor = vendor
+        self.primaryChannel = primaryChannel
+        self.channelWidth = channelWidth
+        self.overlappingBandwidthMHz = overlappingBandwidthMHz
+        self.rssi = rssi
+    }
+}
+
 public struct WiFiCoChannelWarning: Sendable, Codable, Equatable {
     public let channel: Int
     public let band: WiFiBand
     public let contendingAPCount: Int
+    public let obssOverlappingAPCount: Int
+    public let obssOverlaps: [WiFiOBSSOverlap]
     public let severity: WiFiContentionSeverity
     public let advisory: String
 
@@ -311,14 +494,51 @@ public struct WiFiCoChannelWarning: Sendable, Codable, Equatable {
         channel: Int,
         band: WiFiBand,
         contendingAPCount: Int,
+        obssOverlappingAPCount: Int = 0,
+        obssOverlaps: [WiFiOBSSOverlap] = [],
         severity: WiFiContentionSeverity,
         advisory: String
     ) {
         self.channel = channel
         self.band = band
         self.contendingAPCount = contendingAPCount
+        self.obssOverlappingAPCount = obssOverlappingAPCount
+        self.obssOverlaps = obssOverlaps
         self.severity = severity
         self.advisory = advisory
+    }
+}
+
+public struct WiFiStickyClientAnomaly: Sendable, Codable, Equatable {
+    public let currentBSSID: String
+    public let currentRSSI: Int
+    public let candidateBSSID: String
+    public let candidateVendor: String?
+    public let candidateRSSI: Int
+    public let candidateChannel: Int
+    public let candidateBand: WiFiBand
+    public let rssiDelta: Int
+    public let recommendation: String
+
+    public init(
+        currentBSSID: String,
+        currentRSSI: Int,
+        candidateBSSID: String,
+        candidateVendor: String?,
+        candidateRSSI: Int,
+        candidateChannel: Int,
+        candidateBand: WiFiBand,
+        recommendation: String? = nil
+    ) {
+        self.currentBSSID = currentBSSID
+        self.currentRSSI = currentRSSI
+        self.candidateBSSID = candidateBSSID
+        self.candidateVendor = candidateVendor
+        self.candidateRSSI = candidateRSSI
+        self.candidateChannel = candidateChannel
+        self.candidateBand = candidateBand
+        self.rssiDelta = candidateRSSI - currentRSSI
+        self.recommendation = recommendation ?? "Client is attached to degraded BSSID (\(currentRSSI) dBm) despite stronger candidate \(candidateBSSID) (\(candidateRSSI) dBm, +\(candidateRSSI - currentRSSI) dB margin)."
     }
 }
 
@@ -327,6 +547,7 @@ public struct WiFiRFSurveyReport: Sendable, Codable {
     public let currentLink: WiFiCurrentLink?
     public let recommendations: [WiFiChannelRecommendation]
     public let coChannelWarning: WiFiCoChannelWarning?
+    public let stickyClientAnomaly: WiFiStickyClientAnomaly?
     public let congestion: [ChannelCongestion]
     public let nearbyAPs: [NearbyAP]
     public let roamingEvents: [WiFiRoamingEvent]
@@ -336,6 +557,7 @@ public struct WiFiRFSurveyReport: Sendable, Codable {
         currentLink: WiFiCurrentLink?,
         recommendations: [WiFiChannelRecommendation],
         coChannelWarning: WiFiCoChannelWarning?,
+        stickyClientAnomaly: WiFiStickyClientAnomaly? = nil,
         congestion: [ChannelCongestion],
         nearbyAPs: [NearbyAP],
         roamingEvents: [WiFiRoamingEvent]
@@ -344,6 +566,7 @@ public struct WiFiRFSurveyReport: Sendable, Codable {
         self.currentLink = currentLink
         self.recommendations = recommendations
         self.coChannelWarning = coChannelWarning
+        self.stickyClientAnomaly = stickyClientAnomaly
         self.congestion = congestion
         self.nearbyAPs = nearbyAPs
         self.roamingEvents = roamingEvents
@@ -364,6 +587,7 @@ public struct WiFiRFSurveyReport: Sendable, Codable {
             md += "| **Noise Floor** | `\(link.noise) dBm` |\n"
             md += "| **SNR Margin** | `\(link.snr) dB` (\(link.signalQuality.rawValue)) |\n"
             md += "| **Operating Channel** | Ch \(link.channel) (\(link.band.rawValue), \(link.channelWidth.rawValue)) |\n"
+            md += "| **Center Frequency** | `\(Int(link.centerFrequencyMHz)) MHz` (\(link.uniiSubBand ?? link.band.rawValue)) |\n"
             md += "| **PHY Mode** | \(link.phyMode.displayName) |\n"
             md += "| **TX Rate** | \(link.transmitRate > 0 ? "\(Int(link.transmitRate)) Mbps" : "Auto") \(link.mcsIndex != nil ? "(MCS \(link.mcsIndex!))" : "") |\n"
             md += "| **Client MAC** | `\(link.macAddress)` |\n"
@@ -373,11 +597,21 @@ public struct WiFiRFSurveyReport: Sendable, Codable {
             md += "| **Security** | \(link.security) |\n\n"
         }
 
+        if let anomaly = stickyClientAnomaly {
+            md += "## Sticky Client Diagnostic Alert\n\n"
+            md += "> [!WARNING]\n"
+            md += "> **Degraded Association Detected:** Connected AP signal is `\(anomaly.currentRSSI) dBm` while candidate AP `\(anomaly.candidateBSSID)` (\(anomaly.candidateVendor ?? "Unknown")) offers `\(anomaly.candidateRSSI) dBm` (+\(anomaly.rssiDelta) dB margin) on Ch \(anomaly.candidateChannel) (\(anomaly.candidateBand.rawValue)).\n"
+            md += "> **Advisory:** \(anomaly.recommendation)\n\n"
+        }
+
         if let warning = coChannelWarning {
-            md += "## Co-Channel Contention Assessment\n\n"
+            md += "## Co-Channel & Overlapping Contention Assessment\n\n"
             md += "> [!NOTE]\n"
             md += "> **Status:** \(warning.severity.rawValue) on Channel \(warning.channel) (\(warning.band.rawValue))\n"
-            md += "> **Contending BSSIDs:** \(warning.contendingAPCount) APs detected\n"
+            md += "> **Direct Co-Channel BSSIDs:** \(warning.contendingAPCount) APs detected\n"
+            if warning.obssOverlappingAPCount > 0 {
+                md += "> **Bonded Spectrum (OBSS) Overlaps:** \(warning.obssOverlappingAPCount) overlapping BSSIDs\n"
+            }
             md += "> **Advisory:** \(warning.advisory)\n\n"
         }
 
@@ -393,12 +627,12 @@ public struct WiFiRFSurveyReport: Sendable, Codable {
 
         if !nearbyAPs.isEmpty {
             md += "## Visible Surrounding Access Points (\(nearbyAPs.count))\n\n"
-            md += "| SSID | BSSID | Vendor | Ch / Band | Signal | Width | Security | PHY |\n"
-            md += "| :--- | :--- | :--- | :--- | :---: | :--- | :--- | :--- |\n"
+            md += "| SSID | BSSID | Vendor | Ch / Band | Freq (MHz) | Signal | Width | Security | PHY |\n"
+            md += "| :--- | :--- | :--- | :--- | :---: | :---: | :--- | :--- | :--- |\n"
             for ap in nearbyAPs {
                 let vendor = ap.vendorName ?? "Unknown"
                 let sig = ap.rssi != nil ? "\(ap.rssi!) dBm" : "N/A"
-                md += "| `\(ap.ssid)` | `\(ap.bssid)` | \(vendor) | Ch \(ap.channel) (\(ap.band.rawValue)) | \(sig) | \(ap.channelWidth.rawValue) | \(ap.security) | \(ap.phyMode) |\n"
+                md += "| `\(ap.ssid)` | `\(ap.bssid)` | \(vendor) | Ch \(ap.channel) (\(ap.band.rawValue)) | \(Int(ap.centerFrequencyMHz)) MHz | \(sig) | \(ap.channelWidth.rawValue) | \(ap.security) | \(ap.phyMode) |\n"
             }
             md += "\n"
         }
@@ -427,5 +661,20 @@ public struct WiFiRFSurveyReport: Sendable, Codable {
             return str
         }
         return "{}"
+    }
+
+    public func toCSV() -> String {
+        var csv = "SSID,BSSID,Vendor,Channel,Band,Channel_Width,Center_Frequency_MHz,Signal_dBm,Noise_dBm,SNR_dB,Security,PHY_Mode,Is_Connected\n"
+        for ap in nearbyAPs {
+            let ssidClean = ap.ssid.replacingOccurrences(of: "\"", with: "\"\"")
+            let vendorClean = (ap.vendorName ?? "Unknown").replacingOccurrences(of: "\"", with: "\"\"")
+            let freq = Int(ap.centerFrequencyMHz)
+            let rssiStr = ap.rssi != nil ? "\(ap.rssi!)" : ""
+            let noiseStr = ap.noise != nil ? "\(ap.noise!)" : ""
+            let snrStr = (ap.rssi != nil && ap.noise != nil) ? "\(ap.rssi! - ap.noise!)" : ""
+            let connectedStr = ap.isCurrentAssociation ? "TRUE" : "FALSE"
+            csv += "\"\(ssidClean)\",\"\(ap.bssid)\",\"\(vendorClean)\",\(ap.channel),\"\(ap.band.rawValue)\",\"\(ap.channelWidth.rawValue)\",\(freq),\(rssiStr),\(noiseStr),\(snrStr),\"\(ap.security)\",\"\(ap.phyMode)\",\(connectedStr)\n"
+        }
+        return csv
     }
 }

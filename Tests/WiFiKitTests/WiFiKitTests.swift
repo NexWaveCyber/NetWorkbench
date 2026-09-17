@@ -255,5 +255,147 @@ struct WiFiKitTests {
         #expect(json.contains("\"ssid\" : \"HQ-Production\""))
         #expect(json.contains("\"vendorName\" : \"Cisco Systems\""))
     }
+
+    @Test("RF Spectrum Frequency Spans & Geometry Helper")
+    func testRFFrequencyGeometry() {
+        // 2.4 GHz
+        let ch1Span = RFFrequencyHelper.frequencySpan(channel: 1, band: .ghz2_4, width: .mhz20)
+        #expect(RFFrequencyHelper.centerFrequencyMHz(channel: 1, band: .ghz2_4) == 2412.0)
+        #expect(ch1Span.lowerBound == 2401.0)
+        #expect(ch1Span.upperBound == 2423.0)
+
+        // 5 GHz UNII-1 80 MHz bonded block (Ch 36 - 48 bonded center 5210 MHz)
+        let ch36Span = RFFrequencyHelper.frequencySpan(channel: 36, band: .ghz5, width: .mhz80)
+        #expect(RFFrequencyHelper.centerFrequencyMHz(channel: 36, band: .ghz5) == 5180.0)
+        #expect(ch36Span.lowerBound == 5170.0)
+        #expect(ch36Span.upperBound == 5250.0)
+
+        // DFS Radar Detection
+        #expect(RFFrequencyHelper.isDFS(channel: 52, band: .ghz5) == true)
+        #expect(RFFrequencyHelper.isDFS(channel: 100, band: .ghz5) == true)
+        #expect(RFFrequencyHelper.isDFS(channel: 36, band: .ghz5) == false)
+        #expect(RFFrequencyHelper.isDFS(channel: 149, band: .ghz5) == false)
+
+        // 6 GHz Preferred Scanning Channel
+        #expect(RFFrequencyHelper.centerFrequencyMHz(channel: 37, band: .ghz6) == 6135.0)
+        #expect(RFFrequencyHelper.uniiSubBand(channel: 37, band: .ghz6) == "UNII-5")
+    }
+
+    @Test("OBSS Bonded Channel Overlap Detection")
+    func testOBSSContentionDetection() async {
+        let engine = WiFiEngine()
+        let currentLink = WiFiCurrentLink(
+            interfaceName: "en0",
+            macAddress: "de:06:f4:f1:6e:35",
+            ssid: "Corporate-5G",
+            bssid: "00:11:22:33:44:00",
+            rssi: -45,
+            noise: -85,
+            transmitRate: 1200.0,
+            channel: 36,
+            band: .ghz5,
+            channelWidth: .mhz80,
+            phyMode: .ax,
+            security: "WPA3",
+            countryCode: "US"
+        )
+
+        // AP on Channel 40 at 80 MHz: primary channel differs (36 vs 40), but both share 5170-5250 MHz!
+        let networks = [
+            NearbyAP(ssid: "Neighbor-80M", bssid: "AA:BB:CC:DD:EE:01", vendorName: "Netgear", channel: 40, band: .ghz5, channelWidth: .mhz80, rssi: -60, noise: -85, security: "WPA2", phyMode: "802.11ax", isCurrentAssociation: false),
+            // Distant AP on UNII-3 (Ch 149, 80 MHz): completely separate spectrum (5735-5815 MHz)
+            NearbyAP(ssid: "Distant-149", bssid: "AA:BB:CC:DD:EE:02", vendorName: "Aruba", channel: 149, band: .ghz5, channelWidth: .mhz80, rssi: -70, noise: -85, security: "WPA2", phyMode: "802.11ax", isCurrentAssociation: false)
+        ]
+
+        let warning = await engine.evaluateCoChannelContention(currentLink: currentLink, networks: networks)
+        #expect(warning.contendingAPCount == 0) // Zero direct co-channel (channel 36)
+        #expect(warning.obssOverlappingAPCount == 1) // 1 OBSS overlap on Ch 40!
+        #expect(warning.obssOverlaps.first?.primaryChannel == 40)
+        #expect(warning.obssOverlaps.first?.overlappingBandwidthMHz == 80.0)
+    }
+
+    @Test("Sticky Client Anomaly Detection")
+    func testStickyClientAnomaly() async {
+        let engine = WiFiEngine()
+        let weakLink = WiFiCurrentLink(
+            interfaceName: "en0",
+            macAddress: "de:06:f4:f1:6e:35",
+            ssid: "Campus-Secure",
+            bssid: "11:22:33:44:55:01",
+            vendorName: "Cisco Systems",
+            rssi: -78, // Degraded signal
+            noise: -85,
+            transmitRate: 144.0,
+            channel: 1,
+            band: .ghz2_4,
+            channelWidth: .mhz20,
+            phyMode: .n,
+            security: "WPA3",
+            countryCode: "US"
+        )
+
+        let networks = [
+            // Strong candidate on same SSID
+            NearbyAP(ssid: "Campus-Secure", bssid: "11:22:33:44:55:02", vendorName: "Cisco Systems", channel: 149, band: .ghz5, channelWidth: .mhz80, rssi: -48, noise: -85, security: "WPA3", phyMode: "802.11ax", isCurrentAssociation: false),
+            // Unrelated neighbor network
+            NearbyAP(ssid: "Guest-Cafe", bssid: "99:88:77:66:55:44", vendorName: "Apple", channel: 6, band: .ghz2_4, channelWidth: .mhz20, rssi: -50, noise: -85, security: "WPA2", phyMode: "802.11ax", isCurrentAssociation: false)
+        ]
+
+        let anomaly = await engine.evaluateStickyClientAnomaly(currentLink: weakLink, networks: networks)
+        #expect(anomaly != nil)
+        #expect(anomaly?.candidateBSSID == "11:22:33:44:55:02")
+        #expect(anomaly?.rssiDelta == 30) // -48 - (-78) = +30 dBm
+        #expect(anomaly?.candidateChannel == 149)
+    }
+
+    @Test("Dynamic Modulation and Coding Scheme (MCS) Derivation")
+    func testDynamicMCSExtraction() async {
+        let engine = WiFiEngine()
+        // 80 MHz 2x2
+        #expect(await engine.extractMCSIndex(txRate: 1200.0, channelWidth: .mhz80, phyMode: .ax) == 11)
+        #expect(await engine.extractMCSIndex(txRate: 864.0, channelWidth: .mhz80, phyMode: .ax) == 8)
+        #expect(await engine.extractMCSIndex(txRate: 240.0, channelWidth: .mhz80, phyMode: .ax) == 2)
+
+        // 40 MHz 2x2
+        #expect(await engine.extractMCSIndex(txRate: 574.0, channelWidth: .mhz40, phyMode: .ax) == 11)
+        #expect(await engine.extractMCSIndex(txRate: 280.0, channelWidth: .mhz40, phyMode: .ax) == 6)
+
+        // 20 MHz 2x2
+        #expect(await engine.extractMCSIndex(txRate: 287.0, channelWidth: .mhz20, phyMode: .ax) == 11)
+    }
+
+    @Test("RFC 4180 CSV Survey Report Export")
+    func testCSVReportExport() async {
+        let engine = WiFiEngine()
+        let link = WiFiCurrentLink(
+            interfaceName: "en0",
+            macAddress: "de:06:f4:f1:6e:35",
+            ssid: "Corporate-5G",
+            bssid: "00:1C:7F:6C:17:6E",
+            vendorName: "Aruba",
+            rssi: -45,
+            noise: -88,
+            transmitRate: 1200.0,
+            channel: 36,
+            band: .ghz5,
+            channelWidth: .mhz80,
+            phyMode: .ax,
+            security: "WPA3 Personal",
+            countryCode: "US"
+        )
+
+        let networks = [
+            NearbyAP(ssid: "Corporate-5G", bssid: "00:1C:7F:6C:17:6E", vendorName: "Aruba", channel: 36, band: .ghz5, channelWidth: .mhz80, rssi: -45, noise: -88, security: "WPA3 Personal", phyMode: "802.11ax", isCurrentAssociation: true),
+            NearbyAP(ssid: "Guest-WiFi", bssid: "00:1C:7F:6C:17:6F", vendorName: "Aruba", channel: 149, band: .ghz5, channelWidth: .mhz80, rssi: -62, noise: -88, security: "WPA2", phyMode: "802.11ax", isCurrentAssociation: false)
+        ]
+
+        let report = await engine.generateSurveyReport(currentLink: link, networks: networks)
+        let csv = report.toCSV()
+
+        #expect(csv.contains("SSID,BSSID,Vendor,Channel,Band,Channel_Width,Center_Frequency_MHz,Signal_dBm,Noise_dBm,SNR_dB,Security,PHY_Mode,Is_Connected"))
+        #expect(csv.contains("\"Corporate-5G\",\"00:1C:7F:6C:17:6E\",\"Aruba\",36,\"5 GHz\",\"80 MHz\",5180,-45,-88,43,\"WPA3 Personal\",\"802.11ax\",TRUE"))
+        #expect(csv.contains("\"Guest-WiFi\",\"00:1C:7F:6C:17:6F\",\"Aruba\",149,\"5 GHz\",\"80 MHz\",5745,-62,-88,26,\"WPA2\",\"802.11ax\",FALSE"))
+    }
 }
+
 

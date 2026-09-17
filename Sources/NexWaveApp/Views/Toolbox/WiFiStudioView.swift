@@ -10,18 +10,49 @@ public struct WiFiStudioView: View {
     @State private var congestion: [ChannelCongestion] = []
     @State private var recommendations: [WiFiChannelRecommendation] = []
     @State private var coChannelWarning: WiFiCoChannelWarning? = nil
+    @State private var stickyClientAnomaly: WiFiStickyClientAnomaly? = nil
     @State private var rssiSamples: [(timestamp: Date, rssi: Int, noise: Int)] = []
 
+    // Spectrum View Controls
+    @State private var selectedSpectrumBand: WiFiBand = .ghz5
+    @State private var spectrumDisplayMode: SpectrumDisplayMode = .parabolicCurves
+
+    // Filtering & Sorting
+    @State private var selectedBandFilter: String = "All"
+    @State private var quickFilter: APQuickFilter = .all
+    @State private var searchText = ""
+    @State private var sortColumn: APSortColumn = .signal
+    @State private var sortAscending: Bool = false
+
+    // Inspection & Modals
+    @State private var selectedAPForDetail: NearbyAP? = nil
+    @State private var toastMessage: String? = nil
+
+    // Engine & Monitoring
     @State private var isScanning = false
     @State private var isAutoRefresh = true
-    @State private var selectedBandFilter: String = "All"
-    @State private var searchText = ""
-    @State private var toastMessage: String? = nil
     @State private var timerTask: Task<Void, Never>? = nil
 
     @ObservedObject private var locationAuthorizer = WiFiLocationAuthorizer.shared
 
     public init() {}
+
+    public enum SpectrumDisplayMode: String, CaseIterable {
+        case parabolicCurves = "RF Parabolic Spectrum"
+        case channelDensity = "Channel Congestion Bars"
+    }
+
+    public enum APSortColumn {
+        case ssid, bssid, channel, band, width, freq, signal, snr, security, vendor, phy
+    }
+
+    public enum APQuickFilter: String, CaseIterable {
+        case all = "All Networks"
+        case connectedSSID = "Connected ESSID"
+        case strong = "Strong (≥ -60 dBm)"
+        case weak = "Weak (≤ -75 dBm)"
+        case dfs = "DFS Channels"
+    }
 
     public var body: some View {
         ZStack(alignment: .bottom) {
@@ -31,6 +62,10 @@ public struct WiFiStudioView: View {
 
                     if !locationAuthorizer.isAuthorized {
                         locationPermissionBanner
+                    }
+
+                    if let anomaly = stickyClientAnomaly {
+                        stickyClientWarningBanner(anomaly: anomaly)
                     }
 
                     if let link = currentLink {
@@ -47,7 +82,7 @@ public struct WiFiStudioView: View {
                     // Algorithmic Channel Optimizer (Grade A++++ Pro Section)
                     channelOptimizerSection
 
-                    // Spectrum & Co-Channel Distribution
+                    // Interactive Parabolic RF Spectrum & Contention
                     spectrumCongestionSection
 
                     // AP Roaming Audit Trail
@@ -55,7 +90,7 @@ public struct WiFiStudioView: View {
                         roamingAuditSection
                     }
 
-                    // Surrounding Visible Wi-Fi Environments
+                    // Surrounding Visible Wi-Fi Environments (Multi-Column Sortable Table)
                     nearbyNetworksSection
                 }
                 .padding(20)
@@ -82,16 +117,26 @@ public struct WiFiStudioView: View {
             }
         }
         .background(Theme.surfaceBackground)
+        .sheet(item: $selectedAPForDetail) { ap in
+            apDetailSheet(ap: ap)
+        }
         .onAppear {
             if locationAuthorizer.isNotDetermined {
                 locationAuthorizer.requestAuthorization()
             }
             startLiveMonitor()
+            Task {
+                await pollTelemetry()
+                if let link = currentLink {
+                    selectedSpectrumBand = link.band
+                }
+                await performFullScan()
+            }
         }
         .onDisappear {
             stopLiveMonitor()
         }
-        .onChange(of: locationAuthorizer.authorizationStatus) { _, status in
+        .onChange(of: locationAuthorizer.authorizationStatus) { _, _ in
             if locationAuthorizer.isAuthorized {
                 Task {
                     await pollTelemetry()
@@ -173,6 +218,68 @@ public struct WiFiStudioView: View {
         .overlay(
             RoundedRectangle(cornerRadius: 12)
                 .stroke(locationAuthorizer.isDenied ? Theme.solarAmber.opacity(0.3) : Theme.azurePro.opacity(0.3), lineWidth: 1)
+        )
+    }
+
+    // MARK: - Sticky Client Anomaly Banner
+
+    private func stickyClientWarningBanner(anomaly: WiFiStickyClientAnomaly) -> some View {
+        HStack(spacing: 14) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.title2)
+                .foregroundStyle(Theme.solarAmber)
+
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 8) {
+                    Text("Suboptimal Association Detected (Sticky Client)")
+                        .font(.subheadline.bold())
+                        .foregroundStyle(Theme.solarAmber)
+
+                    Text("+\(anomaly.rssiDelta) dB Gain Available")
+                        .font(.system(size: 9, weight: .heavy))
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(Theme.solarAmber.opacity(0.2))
+                        .foregroundStyle(Theme.solarAmber)
+                        .cornerRadius(4)
+                }
+
+                Text("Client is clinging to degraded BSSID `\(anomaly.currentBSSID)` (\(anomaly.currentRSSI) dBm) despite candidate AP `\(anomaly.candidateBSSID)` (\(anomaly.candidateVendor ?? "Unknown")) offering \(anomaly.candidateRSSI) dBm on Ch \(anomaly.candidateChannel) (\(anomaly.candidateBand.rawValue)).")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                Text(anomaly.recommendation)
+                    .font(.caption2)
+                    .foregroundStyle(Theme.azurePro)
+            }
+
+            Spacer()
+
+            Button(action: {
+                Task {
+                    await pollTelemetry()
+                    await performFullScan()
+                }
+            }) {
+                HStack(spacing: 6) {
+                    Image(systemName: "arrow.clockwise")
+                    Text("Re-evaluate")
+                        .font(.caption.bold())
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
+                .background(Theme.solarAmber.opacity(0.18))
+                .foregroundStyle(Theme.solarAmber)
+                .cornerRadius(7)
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(14)
+        .background(Theme.solarAmber.opacity(0.08))
+        .cornerRadius(12)
+        .overlay(
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(Theme.solarAmber.opacity(0.35), lineWidth: 1)
         )
     }
 
@@ -262,12 +369,18 @@ public struct WiFiStudioView: View {
                     Button(action: exportMarkdownToClipboard) {
                         Label("Copy Markdown Survey Report", systemImage: "doc.on.clipboard")
                     }
+                    Button(action: exportCSVToClipboard) {
+                        Label("Copy CSV Inventory Table", systemImage: "tablecells")
+                    }
                     Button(action: exportJSONToClipboard) {
                         Label("Copy JSON Telemetry Payload", systemImage: "curlybraces")
                     }
                     Divider()
                     Button(action: saveSurveyReport) {
                         Label("Save RF Survey Report (.md)...", systemImage: "square.and.arrow.down")
+                    }
+                    Button(action: saveCSVInventory) {
+                        Label("Save AP Inventory (.csv)...", systemImage: "tablecells.badge.ellipsis")
                     }
                 } label: {
                     HStack(spacing: 6) {
@@ -286,7 +399,7 @@ public struct WiFiStudioView: View {
         }
     }
 
-    // MARK: - RF Health Hero Card
+    // MARK: - RF Health Hero Card (with Dual-Trace Time-Series Graph)
 
     private func rfHealthHeroCard(link: WiFiCurrentLink) -> some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -318,65 +431,38 @@ public struct WiFiStudioView: View {
                         .fill(
                             LinearGradient(
                                 colors: [
-                                    Color(hex: link.signalQuality.colorHex).opacity(0.7),
-                                    Color(hex: link.signalQuality.colorHex)
+                                    Color(hex: link.signalQuality.colorHex),
+                                    Color(hex: link.signalQuality.colorHex).opacity(0.7)
                                 ],
                                 startPoint: .leading,
                                 endPoint: .trailing
                             )
                         )
-                        .frame(width: geo.size.width * CGFloat(link.signalQuality.scorePercentage) / 100.0, height: 10)
+                        .frame(width: max(14, geo.size.width * CGFloat(link.signalQuality.scorePercentage) / 100.0), height: 10)
                 }
             }
             .frame(height: 10)
 
-            // Co-Channel Contention Banner
-            if let warning = coChannelWarning {
-                HStack(spacing: 10) {
-                    Image(systemName: warning.severity == .clean ? "checkmark.shield.fill" : "exclamationmark.triangle.fill")
-                        .foregroundStyle(Color(hex: warning.severity.badgeColor))
-
-                    VStack(alignment: .leading, spacing: 2) {
-                        HStack {
-                            Text(warning.severity.rawValue.uppercased())
-                                .font(.caption.bold())
-                                .foregroundStyle(Color(hex: warning.severity.badgeColor))
-                            Text("• Channel \(warning.channel) (\(warning.band.rawValue))")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                        Text(warning.advisory)
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                    }
-                    Spacer()
-                }
-                .padding(10)
-                .background(Color(hex: warning.severity.badgeColor).opacity(0.08))
-                .cornerRadius(8)
-                .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color(hex: warning.severity.badgeColor).opacity(0.25), lineWidth: 1))
-            }
-
-            // Primary 4 Telemetry Metrics
+            // Primary 4-Metric Grid
             LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
                 telemetryTile(
-                    title: "SIGNAL (RSSI)",
+                    title: "SIGNAL STRENGTH",
                     value: "\(link.rssi) dBm",
-                    subtext: estimatedDistance(rssi: link.rssi, band: link.band),
-                    color: Color(hex: link.signalQuality.colorHex),
+                    subtext: link.rssi >= -55 ? "Optimal RSSI" : (link.rssi >= -70 ? "Adequate RSSI" : "Weak RSSI"),
+                    color: link.rssi >= -65 ? Theme.signalEmerald : (link.rssi >= -75 ? Theme.solarAmber : Theme.pulseCrimson),
                     icon: "antenna.radiowaves.left.and.right"
                 )
 
                 telemetryTile(
                     title: "NOISE FLOOR",
                     value: "\(link.noise) dBm",
-                    subtext: link.noise <= -85 ? "Quiet Spectrum" : "Elevated Noise",
-                    color: link.noise <= -85 ? Theme.cyanPulse : Theme.amberWarning,
-                    icon: "waveform.path"
+                    subtext: link.noise <= -85 ? "Quiet RF Noise" : "High Interference",
+                    color: link.noise <= -85 ? Theme.cyanPulse : Theme.solarAmber,
+                    icon: "waveform.path.ecg"
                 )
 
                 telemetryTile(
-                    title: "SNR RATIO",
+                    title: "SNR MARGIN",
                     value: "\(link.snr) dB",
                     subtext: link.snr >= 35 ? "Pristine Margin" : (link.snr >= 20 ? "Acceptable Margin" : "Degraded Margin"),
                     color: link.snr >= 25 ? Theme.signalEmerald : Theme.pulseCrimson,
@@ -392,41 +478,9 @@ public struct WiFiStudioView: View {
                 )
             }
 
-            // Live Sparkline of RSSI
+            // Calibrated Dual-Trace Signal & Noise Graph
             if !rssiSamples.isEmpty {
-                VStack(alignment: .leading, spacing: 6) {
-                    HStack {
-                        Text("Live Signal Variance (Last 60s)")
-                            .font(.caption2.bold())
-                            .foregroundStyle(.secondary)
-                        Spacer()
-                        let minRssi = rssiSamples.map(\.rssi).min() ?? link.rssi
-                        let maxRssi = rssiSamples.map(\.rssi).max() ?? link.rssi
-                        Text("Range: [\(minRssi) dBm ... \(maxRssi) dBm] | Current: \(link.rssi) dBm")
-                            .font(Theme.monoText(10))
-                            .foregroundStyle(.secondary)
-                    }
-
-                    HStack(alignment: .bottom, spacing: 3) {
-                        ForEach(0..<rssiSamples.count, id: \.self) { idx in
-                            let sample = rssiSamples[idx]
-                            let normalizedHeight = max(4.0, min(36.0, CGFloat(sample.rssi + 100) * 0.6))
-                            VStack(spacing: 0) {
-                                Spacer()
-                                RoundedRectangle(cornerRadius: 2)
-                                    .fill(
-                                        sample.rssi >= -55 ? Theme.signalEmerald :
-                                        (sample.rssi >= -70 ? Theme.solarAmber : Theme.pulseCrimson)
-                                    )
-                                    .frame(height: normalizedHeight)
-                            }
-                        }
-                    }
-                    .frame(height: 36)
-                    .padding(8)
-                    .background(Theme.cardBackground.opacity(0.6))
-                    .cornerRadius(6)
-                }
+                RFDualTraceGraphView(samples: rssiSamples, currentRSSI: link.rssi, currentNoise: link.noise)
             }
         }
         .padding(18)
@@ -466,56 +520,34 @@ public struct WiFiStudioView: View {
     private func apAssociationCard(link: WiFiCurrentLink) -> some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack {
-                Image(systemName: "network")
-                    .foregroundStyle(Theme.cyanPulse)
-                Text("Access Point Association")
-                    .font(.subheadline.bold())
+                HStack(spacing: 8) {
+                    Image(systemName: "network")
+                        .foregroundStyle(Theme.cyanPulse)
+                    Text("Layer 2/3 Association")
+                        .font(.headline.bold())
+                }
                 Spacer()
-                Text("Layer 2/3")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
+                Text("BSSID")
+                    .font(.caption2.bold())
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(Theme.azurePro.opacity(0.18))
+                    .foregroundStyle(Theme.azurePro)
+                    .cornerRadius(4)
             }
 
-            VStack(spacing: 8) {
-                detailRow(label: "SSID (Network)", value: link.ssid, isMono: false)
-
-                // BSSID with Hardware Vendor Badge
-                HStack {
-                    Text("BSSID (Hardware)")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    Spacer()
-                    if let vendor = link.vendorName {
-                        Text(vendor)
-                            .font(.system(size: 9, weight: .bold))
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 1)
-                            .background(Theme.azurePro.opacity(0.18))
-                            .foregroundStyle(Theme.azurePro)
-                            .cornerRadius(4)
-                    }
-                    Text(link.bssid)
-                        .font(Theme.monoText(11, weight: .semibold))
-                        .foregroundStyle(.primary)
-                        .textSelection(.enabled)
-
-                    Button(action: {
-                        copyToClipboard(link.bssid, message: "Copied BSSID to clipboard")
-                    }) {
-                        Image(systemName: "doc.on.doc")
-                            .font(.system(size: 10))
-                            .foregroundStyle(.secondary)
-                    }
-                    .buttonStyle(.plain)
+            VStack(spacing: 10) {
+                summaryRow(label: "Connected SSID", value: link.ssid, isMono: false)
+                summaryRow(label: "BSSID (AP MAC)", value: link.bssid, isMono: true)
+                if let vendor = link.vendorName {
+                    summaryRow(label: "Hardware Vendor", value: vendor, isMono: false)
                 }
-                .padding(.vertical, 2)
-
-                detailRow(label: "Security Protocol", value: link.security, isMono: false)
-                detailRow(label: "Hardware Client MAC", value: link.macAddress, isMono: true)
+                summaryRow(label: "Client Interface", value: "\(link.interfaceName) (\(link.macAddress))", isMono: true)
                 if let dhcp = link.dhcpServer {
-                    detailRow(label: "DHCP Server Gateway", value: dhcp, isMono: true)
+                    summaryRow(label: "DHCP Server IP", value: dhcp, isMono: true)
                 }
-                detailRow(label: "Country Code", value: link.countryCode, isMono: true)
+                summaryRow(label: "Security Suite", value: link.security, isMono: false)
+                summaryRow(label: "Regulatory Domain", value: "\(link.countryCode) (802.11d)", isMono: true)
             }
         }
         .padding(16)
@@ -529,25 +561,32 @@ public struct WiFiStudioView: View {
     private func channelBandCard(link: WiFiCurrentLink) -> some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack {
-                Image(systemName: "dot.radiowaves.up.forward")
-                    .foregroundStyle(Theme.azurePro)
-                Text("Spectrum & Radio Configuration")
-                    .font(.subheadline.bold())
+                HStack(spacing: 8) {
+                    Image(systemName: "wave.3.forward.circle.fill")
+                        .foregroundStyle(Theme.azurePro)
+                    Text("RF Spectrum Geometry")
+                        .font(.headline.bold())
+                }
                 Spacer()
-                Text("PHY Layer")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
+                Text(link.band.rawValue)
+                    .font(.caption2.bold())
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 2)
+                    .background(Color(hex: link.band.badgeColor).opacity(0.2))
+                    .foregroundStyle(Color(hex: link.band.badgeColor))
+                    .clipShape(Capsule())
             }
 
-            VStack(spacing: 8) {
-                detailRow(label: "Frequency Band", value: link.band.rawValue, isMono: false)
-                detailRow(label: "Operating Channel", value: bondedSpanString(channel: link.channel, width: link.channelWidth), isMono: true)
-                detailRow(label: "Channel Width", value: link.channelWidth.rawValue, isMono: true)
-                detailRow(label: "PHY Standard", value: link.phyMode.displayName, isMono: false)
-                detailRow(label: "Theoretical Max Link", value: link.transmitRate > 0 ? "\(Int(link.transmitRate)) Mbps" : "Auto", isMono: true)
-                if let mcs = link.mcsIndex {
-                    detailRow(label: "Modulation (MCS Index)", value: "MCS \(mcs)", isMono: true)
+            VStack(spacing: 10) {
+                summaryRow(label: "Primary Channel", value: "Channel \(link.channel)", isMono: true)
+                summaryRow(label: "Channel Bandwidth", value: link.channelWidth.rawValue, isMono: false)
+                summaryRow(label: "Center Frequency", value: "\(Int(link.centerFrequencyMHz)) MHz", isMono: true)
+                if let unii = link.uniiSubBand {
+                    summaryRow(label: "Sub-Band & DFS", value: "\(unii) \(link.isDFS ? "(DFS Radar)" : "(Non-DFS)")", isMono: false)
                 }
+                summaryRow(label: "802.11 Protocol", value: link.phyMode.displayName, isMono: false)
+                summaryRow(label: "MCS Spatial Stream", value: link.mcsIndex != nil ? "Index \(link.mcsIndex!) (2x2 NSS)" : "Dynamic Rate Adaptation", isMono: true)
+                summaryRow(label: "Spectrum Span", value: "\(Int(link.frequencySpanMHz.lowerBound)) – \(Int(link.frequencySpanMHz.upperBound)) MHz", isMono: true)
             }
         }
         .padding(16)
@@ -556,7 +595,7 @@ public struct WiFiStudioView: View {
         .overlay(RoundedRectangle(cornerRadius: 12).stroke(Theme.borderLight, lineWidth: 1))
     }
 
-    private func detailRow(label: String, value: String, isMono: Bool) -> some View {
+    private func summaryRow(label: String, value: String, isMono: Bool) -> some View {
         HStack {
             Text(label)
                 .font(.caption)
@@ -565,43 +604,95 @@ public struct WiFiStudioView: View {
             Text(value)
                 .font(isMono ? Theme.monoText(11, weight: .semibold) : .caption.weight(.semibold))
                 .foregroundStyle(.primary)
-                .textSelection(.enabled)
+                .lineLimit(1)
         }
-        .padding(.vertical, 2)
     }
 
-    // MARK: - Algorithmic Channel Optimizer (Grade A++++ Section)
+    // MARK: - Disconnected State Card
+
+    private var disconnectedStateCard: some View {
+        VStack(spacing: 14) {
+            Image(systemName: "wifi.slash")
+                .font(.system(size: 40))
+                .foregroundStyle(Theme.solarAmber)
+
+            Text("No Active Wi-Fi Connection")
+                .font(.headline.bold())
+
+            Text("Wi-Fi interface is disconnected or turned off. Connect to a network or click 'Scan Spectrum' below to survey surrounding radio environments.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: 460)
+        }
+        .padding(32)
+        .frame(maxWidth: .infinity)
+        .background(Theme.cardBackground)
+        .cornerRadius(12)
+        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Theme.borderLight, lineWidth: 1))
+    }
+
+    // MARK: - Algorithmic Channel Optimizer
 
     private var channelOptimizerSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 14) {
             HStack {
-                VStack(alignment: .leading, spacing: 2) {
-                    HStack(spacing: 8) {
-                        Image(systemName: "wand.and.stars")
-                            .foregroundStyle(Theme.purpleInferred)
-                        Text("Algorithmic RF Channel Optimization")
-                            .font(.headline.bold())
-
-                        Text("AUTOMATED ADVICE")
-                            .font(.system(size: 8, weight: .heavy))
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 2)
-                            .background(Theme.purpleInferred.opacity(0.18))
-                            .foregroundStyle(Theme.purpleInferred)
-                            .clipShape(Capsule())
-                    }
-                    Text("Calculates lowest interference floor across non-overlapping standard channels.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                Spacer()
-            }
-
-            if recommendations.isEmpty {
-                HStack {
+                HStack(spacing: 8) {
                     Image(systemName: "sparkles")
                         .foregroundStyle(Theme.purpleInferred)
-                    Text("Click 'Scan Spectrum' above to run the algorithmic RF interference optimizer across surrounding channels.")
+                    Text("Algorithmic RF Channel Optimizer")
+                        .font(.headline.bold())
+                }
+
+                Spacer()
+
+                Text("Grade A++++")
+                    .font(.system(size: 9, weight: .heavy))
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(Theme.purpleInferred.opacity(0.18))
+                    .foregroundStyle(Theme.purpleInferred)
+                    .cornerRadius(4)
+            }
+
+            // Co-Channel & OBSS Warning Banner
+            if let warning = coChannelWarning {
+                HStack(spacing: 12) {
+                    Image(systemName: warning.severity == .clean ? "checkmark.shield.fill" : "exclamationmark.shield.fill")
+                        .font(.title3)
+                        .foregroundStyle(Color(hex: warning.severity.badgeColor))
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        HStack(spacing: 6) {
+                            Text("Current Channel Contention: \(warning.severity.rawValue)")
+                                .font(.caption.bold())
+                                .foregroundStyle(Color(hex: warning.severity.badgeColor))
+
+                            if warning.obssOverlappingAPCount > 0 {
+                                Text("(\(warning.obssOverlappingAPCount) Bonded Overlaps)")
+                                    .font(Theme.monoText(10))
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+
+                        Text(warning.advisory)
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                }
+                .padding(12)
+                .background(Color(hex: warning.severity.badgeColor).opacity(0.08))
+                .cornerRadius(8)
+                .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color(hex: warning.severity.badgeColor).opacity(0.25), lineWidth: 1))
+            }
+
+            // Recommendations Grid
+            if recommendations.isEmpty {
+                HStack {
+                    Image(systemName: "arrow.triangle.2.circlepath")
+                        .foregroundStyle(Theme.azurePro)
+                    Text("Click 'Scan Spectrum' above to calculate optimal non-interfering channels.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -609,41 +700,41 @@ public struct WiFiStudioView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .background(Theme.cardBackground)
                 .cornerRadius(10)
-                .overlay(RoundedRectangle(cornerRadius: 10).stroke(Theme.borderLight, lineWidth: 1))
             } else {
                 LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
                     ForEach(recommendations) { rec in
-                        VStack(alignment: .leading, spacing: 10) {
+                        VStack(alignment: .leading, spacing: 8) {
                             HStack {
                                 Text(rec.band.rawValue)
                                     .font(.caption.bold())
                                     .foregroundStyle(Color(hex: rec.band.badgeColor))
                                 Spacer()
-                                Text("\(rec.cleanlinessScore)/100 Clean")
-                                    .font(.system(size: 10, weight: .bold))
+                                Text("\(rec.cleanlinessScore)% Clean")
+                                    .font(Theme.monoText(10, weight: .bold))
                                     .foregroundStyle(rec.cleanlinessScore >= 80 ? Theme.signalEmerald : Theme.solarAmber)
                             }
 
                             HStack(alignment: .firstTextBaseline, spacing: 4) {
-                                Text("Ch \(rec.recommendedChannel)")
+                                Text("Channel \(rec.recommendedChannel)")
                                     .font(Theme.monoText(20, weight: .bold))
                                     .foregroundStyle(.primary)
                                 Text("(\(rec.channelWidth))")
-                                    .font(.caption)
+                                    .font(.caption2)
                                     .foregroundStyle(.secondary)
                             }
 
-                            // Cleanliness Score Bar
-                            ZStack(alignment: .leading) {
-                                RoundedRectangle(cornerRadius: 3)
-                                    .fill(Color.primary.opacity(0.08))
-                                    .frame(height: 6)
-
-                                RoundedRectangle(cornerRadius: 3)
-                                    .fill(rec.cleanlinessScore >= 80 ? Theme.signalEmerald : Theme.solarAmber)
-                                    .frame(width: CGFloat(rec.cleanlinessScore) * 1.6, height: 6)
+                            // Score bar
+                            GeometryReader { g in
+                                ZStack(alignment: .leading) {
+                                    RoundedRectangle(cornerRadius: 3)
+                                        .fill(Color.primary.opacity(0.08))
+                                        .frame(height: 5)
+                                    RoundedRectangle(cornerRadius: 3)
+                                        .fill(rec.cleanlinessScore >= 80 ? Theme.signalEmerald : Theme.solarAmber)
+                                        .frame(width: max(8, g.size.width * CGFloat(rec.cleanlinessScore) / 100.0), height: 5)
+                                }
                             }
-                            .frame(height: 6)
+                            .frame(height: 5)
 
                             Text(rec.reason)
                                 .font(.caption2)
@@ -660,87 +751,152 @@ public struct WiFiStudioView: View {
         }
     }
 
-    // MARK: - Spectrum & Channel Congestion Section
+    // MARK: - Interactive Parabolic Spectrum & Congestion Section
 
     private var spectrumCongestionSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 14) {
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
                     HStack(spacing: 8) {
-                        Image(systemName: "chart.bar.doc.horizontal")
+                        Image(systemName: "waveform.path.badge.plus")
                             .foregroundStyle(Theme.neonCyan)
-                        Text("Channel Spectrum Distribution")
+                        Text("Interactive RF Spectrum & Channel Geometry")
                             .font(.headline.bold())
                     }
-                    Text("Shows co-channel density of visible access points to identify clean channels.")
+                    Text("Calibrated RF spectrum visualization modeled after WiFi Explorer Pro, featuring true parabolic channel lobes and bonded overlap.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
+
                 Spacer()
+
+                // Display Mode Picker
+                Picker("", selection: $spectrumDisplayMode) {
+                    ForEach(SpectrumDisplayMode.allCases, id: \.self) { mode in
+                        Text(mode.rawValue).tag(mode)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .frame(width: 340)
             }
 
-            if congestion.isEmpty {
+            // Band Selector Tabs
+            HStack(spacing: 8) {
+                bandTabButton(title: "2.4 GHz ISM", band: .ghz2_4)
+                bandTabButton(title: "5 GHz UNII-1/2/3", band: .ghz5)
+                bandTabButton(title: "6 GHz Wi-Fi 6E/7", band: .ghz6)
+                Spacer()
+
+                let countInBand = nearbyAPs.filter { $0.band == selectedSpectrumBand }.count
+                Text("\(countInBand) BSSIDs in Band")
+                    .font(Theme.monoText(11))
+                    .foregroundStyle(.secondary)
+            }
+
+            if nearbyAPs.isEmpty && currentLink == nil {
                 HStack {
                     Image(systemName: "info.circle")
                         .foregroundStyle(.secondary)
-                    Text("Click 'Scan Spectrum' above to inspect co-channel interference on surrounding frequencies.")
+                    Text("Click 'Scan Spectrum' above to sweep over-the-air RF frequencies.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
-                .padding(16)
+                .padding(24)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .background(Theme.cardBackground)
                 .cornerRadius(10)
             } else {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 12) {
-                        ForEach(congestion) { item in
-                            VStack(spacing: 6) {
-                                Text("Ch \(item.channel)")
-                                    .font(Theme.monoText(11, weight: item.isCurrentChannel ? .bold : .regular))
-                                    .foregroundStyle(item.isCurrentChannel ? Theme.neonCyan : .primary)
-
-                                // Bar
-                                ZStack(alignment: .bottom) {
-                                    RoundedRectangle(cornerRadius: 4)
-                                        .fill(Color.primary.opacity(0.06))
-                                        .frame(width: 34, height: 60)
-
-                                    RoundedRectangle(cornerRadius: 4)
-                                        .fill(
-                                            item.isCurrentChannel ? Theme.cyanPulse :
-                                            (item.apCount > 3 ? Theme.pulseCrimson : (item.apCount > 1 ? Theme.solarAmber : Theme.azurePro))
-                                        )
-                                        .frame(width: 34, height: min(60.0, max(8.0, CGFloat(item.apCount * 14))))
-                                }
-
-                                Text("\(item.apCount) AP\(item.apCount == 1 ? "" : "s")")
-                                    .font(.system(size: 10, weight: .bold))
-                                    .foregroundStyle(item.apCount > 3 ? Theme.pulseCrimson : .secondary)
-
-                                if item.isCurrentChannel {
-                                    Text("ACTIVE")
-                                        .font(.system(size: 8, weight: .heavy))
-                                        .padding(.horizontal, 4)
-                                        .padding(.vertical, 1)
-                                        .background(Theme.cyanPulse.opacity(0.2))
-                                        .foregroundStyle(Theme.cyanPulse)
-                                        .cornerRadius(3)
-                                }
-                            }
-                            .padding(.vertical, 8)
-                            .padding(.horizontal, 6)
-                            .background(item.isCurrentChannel ? Theme.azurePro.opacity(0.12) : Color.clear)
-                            .cornerRadius(8)
-                        }
-                    }
-                    .padding(14)
+                if spectrumDisplayMode == .parabolicCurves {
+                    RFSpectrumCanvasView(
+                        band: selectedSpectrumBand,
+                        networks: nearbyAPs,
+                        currentLink: currentLink,
+                        selectedAP: $selectedAPForDetail
+                    )
+                    .frame(height: 250)
+                    .background(Theme.cardBackground)
+                    .cornerRadius(12)
+                    .overlay(RoundedRectangle(cornerRadius: 12).stroke(Theme.borderLight, lineWidth: 1))
+                } else {
+                    channelDensityBarSection
                 }
-                .background(Theme.cardBackground)
-                .cornerRadius(10)
-                .overlay(RoundedRectangle(cornerRadius: 10).stroke(Theme.borderLight, lineWidth: 1))
             }
         }
+    }
+
+    private func bandTabButton(title: String, band: WiFiBand) -> some View {
+        Button(action: { selectedSpectrumBand = band }) {
+            Text(title)
+                .font(.caption.bold())
+                .padding(.horizontal, 14)
+                .padding(.vertical, 6)
+                .background(selectedSpectrumBand == band ? Color(hex: band.badgeColor).opacity(0.2) : Theme.cardBackground)
+                .foregroundStyle(selectedSpectrumBand == band ? Color(hex: band.badgeColor) : .secondary)
+                .cornerRadius(7)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 7)
+                        .stroke(selectedSpectrumBand == band ? Color(hex: band.badgeColor).opacity(0.5) : Theme.borderLight, lineWidth: 1)
+                )
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var channelDensityBarSection: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 12) {
+                let filteredCongestion = congestion.filter { $0.band == selectedSpectrumBand }
+                if filteredCongestion.isEmpty {
+                    Text("No APs detected on \(selectedSpectrumBand.rawValue).")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .padding(20)
+                } else {
+                    ForEach(filteredCongestion) { item in
+                        VStack(spacing: 6) {
+                            Text("Ch \(item.channel)")
+                                .font(Theme.monoText(11, weight: item.isCurrentChannel ? .bold : .regular))
+                                .foregroundStyle(item.isCurrentChannel ? Theme.neonCyan : .primary)
+
+                            // Bar
+                            ZStack(alignment: .bottom) {
+                                RoundedRectangle(cornerRadius: 4)
+                                    .fill(Color.primary.opacity(0.06))
+                                    .frame(width: 34, height: 80)
+
+                                RoundedRectangle(cornerRadius: 4)
+                                    .fill(
+                                        item.isCurrentChannel ? Theme.cyanPulse :
+                                        (item.apCount > 3 ? Theme.pulseCrimson : (item.apCount > 1 ? Theme.solarAmber : Theme.azurePro))
+                                    )
+                                    .frame(width: 34, height: min(80.0, max(8.0, CGFloat(item.apCount * 16))))
+                            }
+
+                            Text("\(item.apCount) AP\(item.apCount == 1 ? "" : "s")")
+                                .font(.system(size: 10, weight: .bold))
+                                .foregroundStyle(item.apCount > 3 ? Theme.pulseCrimson : .secondary)
+
+                            if item.isCurrentChannel {
+                                Text("ACTIVE")
+                                    .font(.system(size: 8, weight: .heavy))
+                                    .padding(.horizontal, 4)
+                                    .padding(.vertical, 1)
+                                    .background(Theme.cyanPulse.opacity(0.2))
+                                    .foregroundStyle(Theme.cyanPulse)
+                                    .cornerRadius(3)
+                            }
+                        }
+                        .padding(.vertical, 8)
+                        .padding(.horizontal, 6)
+                        .background(item.isCurrentChannel ? Theme.azurePro.opacity(0.12) : Color.clear)
+                        .cornerRadius(8)
+                    }
+                }
+            }
+            .padding(14)
+        }
+        .background(Theme.cardBackground)
+        .cornerRadius(10)
+        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Theme.borderLight, lineWidth: 1))
     }
 
     // MARK: - AP Roaming Audit Section
@@ -832,19 +988,19 @@ public struct WiFiStudioView: View {
         }
     }
 
-    // MARK: - Nearby Networks Table
+    // MARK: - Nearby Networks (Multi-Column Sortable Table)
 
     private var nearbyNetworksSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 14) {
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
                     HStack(spacing: 8) {
                         Image(systemName: "list.bullet.indent")
                             .foregroundStyle(Theme.azurePro)
-                        Text("Visible Wi-Fi Environments (\(filteredNearbyAPs.count))")
+                        Text("Visible Wi-Fi Environments (\(filteredAndSortedNearbyAPs.count))")
                             .font(.headline.bold())
                     }
-                    Text("Over-the-air spectrum scan of surrounding enterprise and consumer SSIDs.")
+                    Text("Over-the-air spectrum scan with IEEE 802.11 Layer 2/3 physical metrics, OUI resolution, and interactive column sorting.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -860,6 +1016,27 @@ public struct WiFiStudioView: View {
                 }
                 .pickerStyle(.segmented)
                 .frame(width: 320)
+            }
+
+            // Quick Filter Chips Row
+            HStack(spacing: 8) {
+                ForEach(APQuickFilter.allCases, id: \.self) { filter in
+                    Button(action: { quickFilter = filter }) {
+                        Text(filter.rawValue)
+                            .font(.caption2.bold())
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 4)
+                            .background(quickFilter == filter ? Theme.azurePro.opacity(0.2) : Theme.cardBackground)
+                            .foregroundStyle(quickFilter == filter ? Theme.azurePro : .secondary)
+                            .cornerRadius(6)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 6)
+                                    .stroke(quickFilter == filter ? Theme.azurePro : Theme.borderLight, lineWidth: 1)
+                            )
+                    }
+                    .buttonStyle(.plain)
+                }
+                Spacer()
             }
 
             // Search Bar
@@ -881,7 +1058,7 @@ public struct WiFiStudioView: View {
             .cornerRadius(8)
             .overlay(RoundedRectangle(cornerRadius: 8).stroke(Theme.borderLight, lineWidth: 1))
 
-            if filteredNearbyAPs.isEmpty {
+            if filteredAndSortedNearbyAPs.isEmpty {
                 HStack {
                     Spacer()
                     VStack(spacing: 8) {
@@ -899,30 +1076,33 @@ public struct WiFiStudioView: View {
                 .cornerRadius(10)
             } else {
                 VStack(spacing: 4) {
-                    // Header
+                    // Interactive Header
                     HStack {
-                        Text("SSID / BSSID / VENDOR")
-                            .font(.caption.bold())
+                        headerSortButton(title: "SSID / BSSID / VENDOR", col: .ssid)
                             .frame(maxWidth: .infinity, alignment: .leading)
-                        Text("CHANNEL / BAND")
-                            .font(.caption.bold())
-                            .frame(width: 140, alignment: .leading)
-                        Text("SIGNAL / NOISE")
-                            .font(.caption.bold())
-                            .frame(width: 130, alignment: .leading)
-                        Text("SECURITY")
-                            .font(.caption.bold())
-                            .frame(width: 130, alignment: .leading)
-                        Text("PHY")
-                            .font(.caption.bold())
-                            .frame(width: 90, alignment: .trailing)
+                        headerSortButton(title: "CH / BAND", col: .channel)
+                            .frame(width: 120, alignment: .leading)
+                        headerSortButton(title: "WIDTH", col: .width)
+                            .frame(width: 80, alignment: .leading)
+                        headerSortButton(title: "FREQ", col: .freq)
+                            .frame(width: 80, alignment: .leading)
+                        headerSortButton(title: "SIGNAL", col: .signal)
+                            .frame(width: 110, alignment: .leading)
+                        headerSortButton(title: "SNR", col: .snr)
+                            .frame(width: 80, alignment: .leading)
+                        headerSortButton(title: "SECURITY", col: .security)
+                            .frame(width: 120, alignment: .leading)
+                        headerSortButton(title: "PHY", col: .phy)
+                            .frame(width: 80, alignment: .trailing)
+                        Text("")
+                            .frame(width: 32)
                     }
                     .padding(.horizontal, 14)
                     .padding(.vertical, 8)
                     .background(Theme.secondaryBackground)
                     .cornerRadius(6)
 
-                    ForEach(filteredNearbyAPs) { ap in
+                    ForEach(filteredAndSortedNearbyAPs) { ap in
                         HStack {
                             VStack(alignment: .leading, spacing: 3) {
                                 HStack(spacing: 6) {
@@ -959,13 +1139,24 @@ public struct WiFiStudioView: View {
 
                             // Channel / Band
                             VStack(alignment: .leading, spacing: 2) {
-                                Text("Ch \(ap.channel) (\(ap.channelWidth.rawValue))")
+                                Text("Ch \(ap.channel)")
                                     .font(Theme.monoText(11, weight: .semibold))
                                 Text(ap.band.rawValue)
-                                    .font(.caption2)
+                                    .font(.system(size: 9, weight: .bold))
                                     .foregroundStyle(Color(hex: ap.band.badgeColor))
                             }
-                            .frame(width: 140, alignment: .leading)
+                            .frame(width: 120, alignment: .leading)
+
+                            // Width
+                            Text(ap.channelWidth.rawValue)
+                                .font(Theme.monoText(10))
+                                .frame(width: 80, alignment: .leading)
+
+                            // Center Frequency
+                            Text("\(Int(ap.centerFrequencyMHz)) MHz")
+                                .font(Theme.monoText(10))
+                                .foregroundStyle(.secondary)
+                                .frame(width: 80, alignment: .leading)
 
                             // Signal / Noise
                             HStack(spacing: 8) {
@@ -978,7 +1169,7 @@ public struct WiFiStudioView: View {
                                                 (rssi >= -70 ? Theme.solarAmber : Theme.pulseCrimson)
                                             )
                                         if let noise = ap.noise {
-                                            Text("Noise: \(noise) dBm")
+                                            Text("N: \(noise) dBm")
                                                 .font(Theme.monoText(9))
                                                 .foregroundStyle(.secondary)
                                         }
@@ -989,22 +1180,40 @@ public struct WiFiStudioView: View {
                                         .foregroundStyle(.secondary)
                                 }
                             }
-                            .frame(width: 130, alignment: .leading)
+                            .frame(width: 110, alignment: .leading)
+
+                            // SNR
+                            if let snr = ap.snr {
+                                Text("\(snr) dB")
+                                    .font(Theme.monoText(10, weight: .bold))
+                                    .foregroundStyle(snr >= 25 ? Theme.signalEmerald : Theme.solarAmber)
+                                    .frame(width: 80, alignment: .leading)
+                            } else {
+                                Text("—")
+                                    .font(Theme.monoText(10))
+                                    .foregroundStyle(.secondary)
+                                    .frame(width: 80, alignment: .leading)
+                            }
 
                             // Security
                             Text(ap.security)
-                                .font(.caption)
+                                .font(.caption2)
                                 .lineLimit(1)
-                                .frame(width: 130, alignment: .leading)
+                                .frame(width: 120, alignment: .leading)
 
                             // PHY Mode
                             Text(ap.phyMode)
-                                .font(Theme.monoText(10, weight: .semibold))
-                                .padding(.horizontal, 6)
-                                .padding(.vertical, 2)
-                                .background(Theme.cardBackground)
-                                .cornerRadius(4)
-                                .frame(width: 90, alignment: .trailing)
+                                .font(Theme.monoText(10))
+                                .foregroundStyle(.secondary)
+                                .frame(width: 80, alignment: .trailing)
+
+                            // Inspector Button
+                            Button(action: { selectedAPForDetail = ap }) {
+                                Image(systemName: "info.circle")
+                                    .foregroundStyle(Theme.azurePro)
+                            }
+                            .buttonStyle(.plain)
+                            .frame(width: 32)
                         }
                         .padding(.horizontal, 14)
                         .padding(.vertical, 10)
@@ -1012,7 +1221,7 @@ public struct WiFiStudioView: View {
                         .cornerRadius(8)
                         .overlay(
                             RoundedRectangle(cornerRadius: 8)
-                                .stroke(ap.isCurrentAssociation ? Theme.cyanPulse.opacity(0.4) : Theme.borderLight, lineWidth: 1)
+                                .stroke(ap.isCurrentAssociation ? Theme.cyanPulse.opacity(0.35) : Theme.borderLight, lineWidth: 1)
                         )
                     }
                 }
@@ -1020,35 +1229,171 @@ public struct WiFiStudioView: View {
         }
     }
 
-    private var filteredNearbyAPs: [NearbyAP] {
-        nearbyAPs.filter { ap in
-            let matchesBand = selectedBandFilter == "All" || ap.band.rawValue == selectedBandFilter
-            let matchesSearch = searchText.isEmpty ||
-                ap.ssid.localizedCaseInsensitiveContains(searchText) ||
-                ap.bssid.localizedCaseInsensitiveContains(searchText) ||
-                (ap.vendorName?.localizedCaseInsensitiveContains(searchText) ?? false) ||
-                String(ap.channel).contains(searchText)
-            return matchesBand && matchesSearch
+    private func headerSortButton(title: String, col: APSortColumn) -> some View {
+        Button(action: {
+            if sortColumn == col {
+                sortAscending.toggle()
+            } else {
+                sortColumn = col
+                sortAscending = (col == .ssid || col == .bssid || col == .channel)
+            }
+        }) {
+            HStack(spacing: 4) {
+                Text(title)
+                    .font(.caption2.bold())
+                if sortColumn == col {
+                    Image(systemName: sortAscending ? "chevron.up" : "chevron.down")
+                        .font(.system(size: 8, weight: .bold))
+                        .foregroundStyle(Theme.cyanPulse)
+                }
+            }
+            .foregroundStyle(sortColumn == col ? Theme.cyanPulse : .secondary)
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var filteredAndSortedNearbyAPs: [NearbyAP] {
+        var list = nearbyAPs
+
+        // 1. Band filter
+        if selectedBandFilter != "All" {
+            list = list.filter { $0.band.rawValue == selectedBandFilter }
+        }
+
+        // 2. Quick filter
+        switch quickFilter {
+        case .all:
+            break
+        case .connectedSSID:
+            if let currentSSID = currentLink?.ssid, !currentSSID.isEmpty {
+                list = list.filter { $0.ssid.lowercased() == currentSSID.lowercased() }
+            }
+        case .strong:
+            list = list.filter { ($0.rssi ?? -100) >= -60 }
+        case .weak:
+            list = list.filter { ($0.rssi ?? -100) <= -75 }
+        case .dfs:
+            list = list.filter { $0.isDFS }
+        }
+
+        // 3. Search query
+        if !searchText.isEmpty {
+            let q = searchText.lowercased()
+            list = list.filter {
+                $0.ssid.lowercased().contains(q) ||
+                $0.bssid.lowercased().contains(q) ||
+                ($0.vendorName ?? "").lowercased().contains(q) ||
+                "\($0.channel)".contains(q) ||
+                $0.security.lowercased().contains(q)
+            }
+        }
+
+        // 4. Sorting
+        return list.sorted { a, b in
+            let result: Bool
+            switch sortColumn {
+            case .ssid:
+                result = a.ssid.localizedCaseInsensitiveCompare(b.ssid) == .orderedAscending
+            case .bssid:
+                result = a.bssid < b.bssid
+            case .channel:
+                result = a.channel < b.channel
+            case .band:
+                result = a.band.rawValue < b.band.rawValue
+            case .width:
+                result = a.channelWidth.widthMHz < b.channelWidth.widthMHz
+            case .freq:
+                result = a.centerFrequencyMHz < b.centerFrequencyMHz
+            case .signal:
+                result = (a.rssi ?? -100) < (b.rssi ?? -100)
+            case .snr:
+                result = (a.snr ?? 0) < (b.snr ?? 0)
+            case .security:
+                result = a.security < b.security
+            case .vendor:
+                result = (a.vendorName ?? "") < (b.vendorName ?? "")
+            case .phy:
+                result = a.phyMode < b.phyMode
+            }
+            return sortAscending ? result : !result
         }
     }
 
-    // MARK: - Disconnected State
+    // MARK: - AP Detail Sheet
 
-    private var disconnectedStateCard: some View {
-        VStack(spacing: 12) {
-            Image(systemName: "wifi.slash")
-                .font(.system(size: 40))
-                .foregroundStyle(Theme.pulseCrimson)
-            Text("No Active Wi-Fi Interface Associated")
-                .font(.headline)
-            Text("Please ensure Wi-Fi is powered on and connected to an access point on interface en0.")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
+    private func apDetailSheet(ap: NearbyAP) -> some View {
+        VStack(alignment: .leading, spacing: 18) {
+            HStack {
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(spacing: 8) {
+                        Image(systemName: "antenna.radiowaves.left.and.right")
+                            .foregroundStyle(Theme.cyanPulse)
+                        Text(ap.ssid.isEmpty ? "Hidden Network" : ap.ssid)
+                            .font(.title2.bold())
+                    }
+                    Text("Detailed IEEE 802.11 Layer 1/2 Radio Profile")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                Spacer()
+
+                Button(action: { selectedAPForDetail = nil }) {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.title2)
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+            }
+
+            Divider()
+
+            VStack(spacing: 12) {
+                summaryRow(label: "BSSID (Access Point MAC)", value: ap.bssid, isMono: true)
+                if let vendor = ap.vendorName {
+                    summaryRow(label: "IEEE OUI Hardware Vendor", value: vendor, isMono: false)
+                }
+                summaryRow(label: "Operating Channel", value: "Ch \(ap.channel) (\(ap.band.rawValue))", isMono: true)
+                summaryRow(label: "Channel Bandwidth", value: ap.channelWidth.rawValue, isMono: false)
+                summaryRow(label: "Center Frequency", value: "\(Int(ap.centerFrequencyMHz)) MHz", isMono: true)
+                summaryRow(label: "Spectrum Span", value: "\(Int(ap.frequencySpanMHz.lowerBound)) – \(Int(ap.frequencySpanMHz.upperBound)) MHz", isMono: true)
+                if let unii = ap.uniiSubBand {
+                    summaryRow(label: "UNII Sub-Band", value: "\(unii) \(ap.isDFS ? "(DFS Radar Sensitive)" : "")", isMono: false)
+                }
+                summaryRow(label: "Received Signal (RSSI)", value: ap.rssi != nil ? "\(ap.rssi!) dBm" : "N/A", isMono: true)
+                summaryRow(label: "Noise Floor", value: ap.noise != nil ? "\(ap.noise!) dBm" : "N/A", isMono: true)
+                if let snr = ap.snr {
+                    summaryRow(label: "Signal-to-Noise Ratio (SNR)", value: "\(snr) dB", isMono: true)
+                }
+                summaryRow(label: "Security Suite", value: ap.security, isMono: false)
+                summaryRow(label: "PHY Standard", value: ap.phyMode, isMono: false)
+                summaryRow(label: "Active Connected Link", value: ap.isCurrentAssociation ? "Yes (Current Host Association)" : "No (Neighbor BSSID)", isMono: false)
+            }
+
+            Spacer()
+
+            HStack {
+                Button(action: {
+                    copyToClipboard(ap.bssid, message: "Copied BSSID \(ap.bssid)")
+                }) {
+                    Label("Copy BSSID", systemImage: "doc.on.doc")
+                        .font(.caption.bold())
+                }
+
+                Button(action: {
+                    let summary = "SSID: \(ap.ssid)\nBSSID: \(ap.bssid)\nVendor: \(ap.vendorName ?? "Unknown")\nCh \(ap.channel) (\(ap.channelWidth.rawValue), \(ap.band.rawValue))\nRSSI: \(ap.rssi ?? 0) dBm"
+                    copyToClipboard(summary, message: "Copied AP telemetry")
+                }) {
+                    Label("Copy Full AP Details", systemImage: "list.clipboard")
+                        .font(.caption.bold())
+                }
+
+                Spacer()
+            }
         }
-        .padding(32)
-        .frame(maxWidth: .infinity)
-        .background(Theme.cardBackground)
-        .cornerRadius(12)
+        .padding(24)
+        .frame(width: 520, height: 480)
+        .background(Theme.surfaceBackground)
     }
 
     // MARK: - Export Helpers
@@ -1059,6 +1404,15 @@ public struct WiFiStudioView: View {
             let report = await engine.generateSurveyReport(currentLink: currentLink, networks: nearbyAPs)
             let md = report.toMarkdown()
             copyToClipboard(md, message: "Copied Markdown RF Survey to clipboard")
+        }
+    }
+
+    private func exportCSVToClipboard() {
+        let engine = WiFiEngine.shared
+        Task {
+            let report = await engine.generateSurveyReport(currentLink: currentLink, networks: nearbyAPs)
+            let csv = report.toCSV()
+            copyToClipboard(csv, message: "Copied CSV AP Inventory to clipboard")
         }
     }
 
@@ -1094,6 +1448,29 @@ public struct WiFiStudioView: View {
         }
     }
 
+    private func saveCSVInventory() {
+        let engine = WiFiEngine.shared
+        Task {
+            let report = await engine.generateSurveyReport(currentLink: currentLink, networks: nearbyAPs)
+            let csv = report.toCSV()
+
+            await MainActor.run {
+                let panel = NSSavePanel()
+                let csvType = UTType(filenameExtension: "csv") ?? .commaSeparatedText
+                panel.allowedContentTypes = [csvType, .plainText]
+                let df = DateFormatter()
+                df.dateFormat = "yyyy-MM-dd_HHmm"
+                panel.nameFieldStringValue = "NexWave_WiFi_Inventory_\(df.string(from: Date())).csv"
+                panel.prompt = "Save AP Inventory CSV"
+
+                if panel.runModal() == .OK, let url = panel.url {
+                    try? csv.write(to: url, atomically: true, encoding: .utf8)
+                    copyToClipboard("", message: "Saved AP Inventory to \(url.lastPathComponent)")
+                }
+            }
+        }
+    }
+
     private func copyToClipboard(_ text: String, message: String) {
         if !text.isEmpty {
             NSPasteboard.general.clearContents()
@@ -1112,52 +1489,21 @@ public struct WiFiStudioView: View {
         }
     }
 
-    private func estimatedDistance(rssi: Int, band: WiFiBand) -> String {
-        let freq: Double
-        switch band {
-        case .ghz2_4: freq = 2412.0
-        case .ghz5: freq = 5180.0
-        case .ghz6: freq = 6100.0
-        case .unknown: freq = 5000.0
-        }
-        let exp = (Double(abs(rssi)) - 27.55 - 20.0 * log10(freq)) / 20.0
-        let meters = max(0.5, pow(10.0, exp))
-        if meters < 1.5 {
-            return "< 1m (Immediate Proximity)"
-        } else if meters < 15 {
-            return String(format: "~%.1fm (Line-of-Sight)", meters)
-        } else {
-            return String(format: "~%.0fm (Attenuated / Through Wall)", meters)
-        }
-    }
-
-    private func bondedSpanString(channel: Int, width: WiFiChannelWidth) -> String {
-        switch width {
-        case .mhz40:
-            let start = channel % 8 == 0 ? channel - 4 : channel
-            return "Ch \(channel) (\(start)-\(start + 4) bonded, 40 MHz)"
-        case .mhz80:
-            let anchors = [36, 52, 100, 116, 132, 149]
-            if let base = anchors.first(where: { abs($0 - channel) < 16 }) {
-                return "Ch \(channel) (\(base)-\(base + 12) bonded, 80 MHz)"
-            }
-            return "Ch \(channel) (80 MHz bonded)"
-        case .mhz160:
-            return "Ch \(channel) (160 MHz bonded wideband)"
-        case .mhz320:
-            return "Ch \(channel) (320 MHz ultra-wideband)"
-        default:
-            return "Ch \(channel) (20 MHz standard)"
-        }
-    }
-
     // MARK: - Live Telemetry Controller
 
     private func startLiveMonitor() {
         timerTask?.cancel()
         timerTask = Task {
+            var tickCount = 0
             while !Task.isCancelled {
                 await pollTelemetry()
+                tickCount += 1
+                if tickCount >= 8 {
+                    tickCount = 0
+                    if !isScanning {
+                        await performFullScan()
+                    }
+                }
                 try? await Task.sleep(nanoseconds: 2_000_000_000) // 2s tick
             }
         }
@@ -1174,6 +1520,7 @@ public struct WiFiStudioView: View {
         if let link = await engine.fetchCurrentLink() {
             self.currentLink = link
             self.coChannelWarning = await engine.evaluateCoChannelContention(currentLink: link, networks: self.nearbyAPs)
+            self.stickyClientAnomaly = await engine.evaluateStickyClientAnomaly(currentLink: link, networks: self.nearbyAPs)
         }
         self.roamingEvents = await engine.getRoamingHistory()
         let samples = await engine.getRSSIHistory()
@@ -1190,9 +1537,375 @@ public struct WiFiStudioView: View {
             self.congestion = await engine.calculateChannelCongestion(from: nets, currentChannel: link.channel)
             self.recommendations = await engine.recommendOptimalChannels(from: nets, currentChannel: link.channel)
             self.coChannelWarning = await engine.evaluateCoChannelContention(currentLink: link, networks: nets)
+            self.stickyClientAnomaly = await engine.evaluateStickyClientAnomaly(currentLink: link, networks: nets)
         } else {
             self.recommendations = await engine.recommendOptimalChannels(from: nets, currentChannel: 0)
         }
         isScanning = false
+    }
+}
+
+// MARK: - Parabolic RF Spectral Curve Canvas
+
+struct RFSpectrumCanvasView: View {
+    let band: WiFiBand
+    let networks: [NearbyAP]
+    let currentLink: WiFiCurrentLink?
+    @Binding var selectedAP: NearbyAP?
+
+    @State private var hoveredAP: NearbyAP? = nil
+    @State private var hoverLocation: CGPoint = .zero
+
+    private var domain: (minFreq: Double, maxFreq: Double) {
+        switch band {
+        case .ghz2_4:
+            return (2400.0, 2495.0)
+        case .ghz5:
+            return (5160.0, 5845.0)
+        case .ghz6:
+            return (5935.0, 7115.0)
+        case .unknown:
+            return (5160.0, 5845.0)
+        }
+    }
+
+    private var standardChannels: [(ch: Int, freq: Double, label: String)] {
+        switch band {
+        case .ghz2_4:
+            return [
+                (1, 2412, "1"), (3, 2422, "3"), (6, 2437, "6"),
+                (9, 2452, "9"), (11, 2462, "11"), (14, 2484, "14")
+            ]
+        case .ghz5:
+            return [
+                (36, 5180, "36"), (44, 5220, "44"), (52, 5260, "52"), (60, 5300, "60"),
+                (100, 5500, "100"), (116, 5580, "116"), (132, 5660, "132"), (149, 5745, "149"), (161, 5805, "161")
+            ]
+        case .ghz6:
+            return [
+                (37, 6135, "37 PSC"), (69, 6295, "69 PSC"), (101, 6455, "101 PSC"),
+                (133, 6615, "133 PSC"), (165, 6775, "165 PSC"), (197, 6935, "197 PSC")
+            ]
+        case .unknown:
+            return []
+        }
+    }
+
+    var body: some View {
+        let currentDomain = domain
+        let channels = standardChannels
+        ZStack {
+            Canvas { context, size in
+                let leftMargin: CGFloat = 55.0
+                let rightMargin: CGFloat = 25.0
+                let topMargin: CGFloat = 30.0
+                let bottomMargin: CGFloat = 32.0
+
+                let drawableW = size.width - leftMargin - rightMargin
+                let drawableH = size.height - topMargin - bottomMargin
+                let baseLineY = size.height - bottomMargin
+
+                func xFor(freq: Double) -> CGFloat {
+                    let ratio = (freq - currentDomain.minFreq) / (currentDomain.maxFreq - currentDomain.minFreq)
+                    return leftMargin + CGFloat(ratio) * drawableW
+                }
+
+                func yFor(signal: Double) -> CGFloat {
+                    let clamped = max(-100.0, min(-20.0, signal))
+                    let ratio = (clamped - (-100.0)) / (-20.0 - (-100.0))
+                    return baseLineY - CGFloat(ratio) * drawableH
+                }
+
+                // 1. Draw horizontal dBm reference grid lines
+                let gridLevels: [(dBm: Double, label: String)] = [
+                    (-30, "-30 dBm"),
+                    (-50, "-50 dBm"),
+                    (-70, "-70 dBm"),
+                    (-85, "-85 dBm")
+                ]
+
+                for grid in gridLevels {
+                    let y = yFor(signal: grid.dBm)
+                    var line = Path()
+                    line.move(to: CGPoint(x: leftMargin, y: y))
+                    line.addLine(to: CGPoint(x: size.width - rightMargin, y: y))
+                    context.stroke(line, with: .color(Color.primary.opacity(0.08)), style: StrokeStyle(lineWidth: 1, dash: [4, 4]))
+
+                    let text = Text(grid.label)
+                        .font(.system(size: 9, weight: .semibold, design: .monospaced))
+                        .foregroundColor(Color.secondary.opacity(0.6))
+                    context.draw(text, at: CGPoint(x: 28, y: y))
+                }
+
+                // 2. Draw channel vertical grid ticks & labels
+                for chInfo in channels {
+                    let x = xFor(freq: chInfo.freq)
+                    if x >= leftMargin && x <= (size.width - rightMargin) {
+                        var vline = Path()
+                        vline.move(to: CGPoint(x: x, y: topMargin))
+                        vline.addLine(to: CGPoint(x: x, y: baseLineY))
+                        context.stroke(vline, with: .color(Color.primary.opacity(0.05)), lineWidth: 1)
+
+                        let chText = Text(chInfo.label)
+                            .font(.system(size: 9, weight: .bold, design: .monospaced))
+                            .foregroundColor(Color.secondary)
+                        context.draw(chText, at: CGPoint(x: x, y: baseLineY + 14))
+                    }
+                }
+
+                // 3. Draw Parabolic Curves for APs in this band
+                var apsInBand = networks.filter { $0.band == band }
+
+                // Ensure active connected association is always present and updated with live telemetry
+                if let link = currentLink, link.band == band {
+                    if let idx = apsInBand.firstIndex(where: { $0.isCurrentAssociation || $0.bssid.lowercased() == link.bssid.lowercased() }) {
+                        let existing = apsInBand[idx]
+                        apsInBand[idx] = NearbyAP(
+                            ssid: link.ssid,
+                            bssid: link.bssid,
+                            vendorName: link.vendorName ?? existing.vendorName,
+                            channel: link.channel,
+                            band: link.band,
+                            channelWidth: link.channelWidth,
+                            rssi: link.rssi,
+                            noise: link.noise,
+                            security: link.security,
+                            phyMode: link.phyMode.displayName,
+                            isCurrentAssociation: true
+                        )
+                    } else {
+                        apsInBand.append(
+                            NearbyAP(
+                                ssid: link.ssid,
+                                bssid: link.bssid,
+                                vendorName: link.vendorName,
+                                channel: link.channel,
+                                band: link.band,
+                                channelWidth: link.channelWidth,
+                                rssi: link.rssi,
+                                noise: link.noise,
+                                security: link.security,
+                                phyMode: link.phyMode.displayName,
+                                isCurrentAssociation: true
+                            )
+                        )
+                    }
+                }
+
+                // Sort: non-connected first, connected AP last so it renders on top
+                let sortedAPs = apsInBand.sorted { a, _ in !a.isCurrentAssociation }
+
+                for ap in sortedAPs {
+                    let isConn = ap.isCurrentAssociation
+                    let span = ap.frequencySpanMHz
+                    let xL = xFor(freq: span.lowerBound)
+                    let xR = xFor(freq: span.upperBound)
+                    let xC = xFor(freq: ap.centerFrequencyMHz)
+                    let sig = Double(isConn ? (currentLink?.rssi ?? ap.rssi ?? -50) : (ap.rssi ?? -85))
+                    let yPeak = yFor(signal: sig)
+
+                    var curve = Path()
+                    curve.move(to: CGPoint(x: xL, y: baseLineY))
+                    // Ascending cubic bezier
+                    curve.addCurve(
+                        to: CGPoint(x: xC, y: yPeak),
+                        control1: CGPoint(x: xL + (xC - xL) * 0.35, y: baseLineY),
+                        control2: CGPoint(x: xC - (xC - xL) * 0.25, y: yPeak)
+                    )
+                    // Descending cubic bezier
+                    curve.addCurve(
+                        to: CGPoint(x: xR, y: baseLineY),
+                        control1: CGPoint(x: xC + (xR - xC) * 0.25, y: yPeak),
+                        control2: CGPoint(x: xR - (xR - xC) * 0.35, y: baseLineY)
+                    )
+                    curve.closeSubpath()
+
+                    let curveColor = isConn ? Theme.cyanPulse : Color(hex: ap.band.badgeColor)
+
+                    // Fill gradient
+                    context.fill(
+                        curve,
+                        with: .linearGradient(
+                            Gradient(colors: [
+                                curveColor.opacity(isConn ? 0.45 : 0.18),
+                                curveColor.opacity(0.03)
+                            ]),
+                            startPoint: CGPoint(x: xC, y: yPeak),
+                            endPoint: CGPoint(x: xC, y: baseLineY)
+                        )
+                    )
+
+                    // Stroke
+                    if isConn {
+                        // Outer glow
+                        context.stroke(curve, with: .color(Theme.cyanPulse.opacity(0.35)), lineWidth: 5)
+                        context.stroke(curve, with: .color(Theme.neonCyan), lineWidth: 2.5)
+
+                        // Peak indicator diamond
+                        var diamond = Path()
+                        diamond.move(to: CGPoint(x: xC, y: yPeak - 5))
+                        diamond.addLine(to: CGPoint(x: xC + 4, y: yPeak))
+                        diamond.addLine(to: CGPoint(x: xC, y: yPeak + 5))
+                        diamond.addLine(to: CGPoint(x: xC - 4, y: yPeak))
+                        diamond.closeSubpath()
+                        context.fill(diamond, with: .color(Theme.neonCyan))
+
+                        // Peak text label
+                        let labelText = Text("CONNECTED • \(ap.ssid) (\(Int(sig)) dBm)")
+                            .font(.system(size: 9, weight: .heavy, design: .monospaced))
+                            .foregroundColor(Theme.neonCyan)
+                        context.draw(labelText, at: CGPoint(x: xC, y: max(14, yPeak - 12)))
+                    } else {
+                        context.stroke(curve, with: .color(curveColor.opacity(0.85)), lineWidth: 1.5)
+
+                        // Peak label for distinct networks
+                        let apLabel = Text("\(ap.ssid) (\(Int(sig)))")
+                            .font(.system(size: 8, weight: .semibold, design: .monospaced))
+                            .foregroundColor(Color.primary.opacity(0.8))
+                        context.draw(apLabel, at: CGPoint(x: xC, y: max(12, yPeak - 10)))
+                    }
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Calibrated Dual-Trace Signal & Noise Graph
+
+struct RFDualTraceGraphView: View {
+    let samples: [(timestamp: Date, rssi: Int, noise: Int)]
+    let currentRSSI: Int
+    let currentNoise: Int
+
+    private var stats: (minRssi: Int, maxRssi: Int, avgRssi: Double, jitter: Double) {
+        guard !samples.isEmpty else { return (currentRSSI, currentRSSI, Double(currentRSSI), 0.0) }
+        let rssiList = samples.map(\.rssi)
+        let minR = rssiList.min() ?? currentRSSI
+        let maxR = rssiList.max() ?? currentRSSI
+        let avg = Double(rssiList.reduce(0, +)) / Double(rssiList.count)
+        let variance = rssiList.reduce(0.0) { $0 + pow(Double($1) - avg, 2) } / Double(rssiList.count)
+        let stdDev = sqrt(variance)
+        return (minR, maxR, avg, stdDev)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            // Stats Header Strip
+            HStack {
+                Text("LIVE RF TELEMETRY TRACE (120s WINDOW)")
+                    .font(.system(size: 9, weight: .bold))
+                    .foregroundStyle(.secondary)
+
+                Spacer()
+
+                HStack(spacing: 14) {
+                    HStack(spacing: 4) {
+                        Circle().fill(Theme.signalEmerald).frame(width: 6, height: 6)
+                        Text("RSSI: \(currentRSSI) dBm")
+                            .font(Theme.monoText(10, weight: .bold))
+                            .foregroundStyle(Theme.signalEmerald)
+                    }
+
+                    HStack(spacing: 4) {
+                        Circle().fill(Theme.pulseCrimson).frame(width: 6, height: 6)
+                        Text("Noise: \(currentNoise) dBm")
+                            .font(Theme.monoText(10))
+                            .foregroundStyle(.secondary)
+                    }
+
+                    Text("Range: [\(stats.minRssi) ... \(stats.maxRssi)]")
+                        .font(Theme.monoText(10))
+                        .foregroundStyle(.secondary)
+
+                    Text("Jitter: ±\(String(format: "%.1f", stats.jitter)) dB")
+                        .font(Theme.monoText(10, weight: .semibold))
+                        .foregroundStyle(Theme.azurePro)
+                }
+            }
+
+            // Canvas Dual-Trace
+            Canvas { context, size in
+                let leftMargin: CGFloat = 45.0
+                let rightMargin: CGFloat = 15.0
+                let topMargin: CGFloat = 8.0
+                let bottomMargin: CGFloat = 16.0
+
+                let drawableW = size.width - leftMargin - rightMargin
+                let drawableH = size.height - topMargin - bottomMargin
+                let baseLineY = size.height - bottomMargin
+
+                func yFor(dBm: Double) -> CGFloat {
+                    let clamped = max(-100.0, min(-20.0, dBm))
+                    let ratio = (clamped - (-100.0)) / (-20.0 - (-100.0))
+                    return baseLineY - CGFloat(ratio) * drawableH
+                }
+
+                // Grid Lines
+                for gridDbm in [-30.0, -50.0, -70.0, -90.0] {
+                    let y = yFor(dBm: gridDbm)
+                    var line = Path()
+                    line.move(to: CGPoint(x: leftMargin, y: y))
+                    line.addLine(to: CGPoint(x: size.width - rightMargin, y: y))
+                    context.stroke(line, with: .color(Color.primary.opacity(0.06)), style: StrokeStyle(lineWidth: 1, dash: [3, 3]))
+
+                    let t = Text("\(Int(gridDbm))")
+                        .font(.system(size: 8, weight: .semibold, design: .monospaced))
+                        .foregroundColor(Color.secondary.opacity(0.5))
+                    context.draw(t, at: CGPoint(x: 24, y: y))
+                }
+
+                guard samples.count > 1 else { return }
+
+                // Trace Points
+                var rssiPoints: [CGPoint] = []
+                var noisePoints: [CGPoint] = []
+
+                for i in 0..<samples.count {
+                    let ratio = CGFloat(i) / CGFloat(samples.count - 1)
+                    let x = leftMargin + ratio * drawableW
+                    let yR = yFor(dBm: Double(samples[i].rssi))
+                    let yN = yFor(dBm: Double(samples[i].noise))
+                    rssiPoints.append(CGPoint(x: x, y: yR))
+                    noisePoints.append(CGPoint(x: x, y: yN))
+                }
+
+                // Shaded SNR margin between RSSI and Noise
+                var snrArea = Path()
+                snrArea.move(to: rssiPoints[0])
+                for pt in rssiPoints.dropFirst() { snrArea.addLine(to: pt) }
+                for pt in noisePoints.reversed() { snrArea.addLine(to: pt) }
+                snrArea.closeSubpath()
+                context.fill(snrArea, with: .linearGradient(
+                    Gradient(colors: [Theme.signalEmerald.opacity(0.25), Theme.cyanPulse.opacity(0.08)]),
+                    startPoint: CGPoint(x: leftMargin, y: topMargin),
+                    endPoint: CGPoint(x: leftMargin, y: baseLineY)
+                ))
+
+                // Noise Trace Line
+                var noiseLine = Path()
+                noiseLine.move(to: noisePoints[0])
+                for pt in noisePoints.dropFirst() { noiseLine.addLine(to: pt) }
+                context.stroke(noiseLine, with: .color(Theme.pulseCrimson.opacity(0.6)), style: StrokeStyle(lineWidth: 1.2, dash: [3, 2]))
+
+                // RSSI Trace Line
+                var rssiLine = Path()
+                rssiLine.move(to: rssiPoints[0])
+                for pt in rssiPoints.dropFirst() { rssiLine.addLine(to: pt) }
+                context.stroke(rssiLine, with: .linearGradient(
+                    Gradient(colors: [Theme.signalEmerald, Theme.neonCyan]),
+                    startPoint: CGPoint(x: leftMargin, y: baseLineY),
+                    endPoint: CGPoint(x: size.width - rightMargin, y: topMargin)
+                ), lineWidth: 2)
+
+                // Current endpoint glowing dot
+                if let lastPt = rssiPoints.last {
+                    context.fill(Circle().path(in: CGRect(x: lastPt.x - 4, y: lastPt.y - 4, width: 8, height: 8)), with: .color(Theme.neonCyan))
+                }
+            }
+            .frame(height: 90)
+            .padding(10)
+            .background(Theme.secondaryBackground.opacity(0.5))
+            .cornerRadius(8)
+        }
     }
 }

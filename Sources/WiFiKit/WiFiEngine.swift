@@ -122,7 +122,7 @@ public actor WiFiEngine {
             rssi: rawRSSI,
             noise: rawNoise,
             transmitRate: rawTxRate,
-            mcsIndex: extractMCSIndex(txRate: rawTxRate),
+            mcsIndex: extractMCSIndex(txRate: rawTxRate, channelWidth: width, phyMode: phyMode),
             channel: channelNum,
             band: band,
             channelWidth: width,
@@ -453,50 +453,112 @@ public actor WiFiEngine {
         return recommendations
     }
 
-    /// Evaluates co-channel interference on the active link
+    /// Evaluates co-channel (CCI) and overlapping BSS (OBSS) interference on the active link
     public func evaluateCoChannelContention(currentLink: WiFiCurrentLink, networks: [NearbyAP]) -> WiFiCoChannelWarning {
-        let competing = networks.filter { ap in
+        let currentSpan = currentLink.frequencySpanMHz
+
+        // 1. Direct Co-Channel Contenders (Exact primary channel)
+        let directCompeting = networks.filter { ap in
             ap.channel == currentLink.channel &&
             !ap.isCurrentAssociation &&
             ap.bssid.lowercased() != currentLink.bssid.lowercased()
         }
 
-        let count = competing.count
-        if count == 0 {
-            return WiFiCoChannelWarning(
-                channel: currentLink.channel,
-                band: currentLink.band,
-                contendingAPCount: 0,
-                severity: .clean,
-                advisory: "Zero co-channel contention detected on Channel \(currentLink.channel). Client has uncontested airtime."
-            )
-        } else if count == 1 {
-            let ap = competing[0]
-            let sig = ap.rssi != nil ? "(\(ap.rssi!) dBm)" : ""
-            return WiFiCoChannelWarning(
-                channel: currentLink.channel,
-                band: currentLink.band,
-                contendingAPCount: 1,
-                severity: .low,
-                advisory: "1 competing AP '\(ap.ssid)' \(sig) sharing Channel \(currentLink.channel). Negligible impact on line-rate throughput."
-            )
-        } else if count <= 3 {
-            return WiFiCoChannelWarning(
-                channel: currentLink.channel,
-                band: currentLink.band,
-                contendingAPCount: count,
-                severity: .moderate,
-                advisory: "\(count) competing APs on Channel \(currentLink.channel). Clear Channel Assessment (CCA) deferrals may induce slight jitter."
-            )
+        // 2. Overlapping BSS (OBSS) Contenders (Different primary channel, but overlapping bonded frequency span)
+        var obssOverlaps: [WiFiOBSSOverlap] = []
+        for ap in networks where !ap.isCurrentAssociation && ap.bssid.lowercased() != currentLink.bssid.lowercased() {
+            if ap.channel != currentLink.channel {
+                let apSpan = ap.frequencySpanMHz
+                if currentSpan.overlaps(apSpan) {
+                    let overlapWidth = max(0.0, min(currentSpan.upperBound, apSpan.upperBound) - max(currentSpan.lowerBound, apSpan.lowerBound))
+                    if overlapWidth > 0 {
+                        obssOverlaps.append(
+                            WiFiOBSSOverlap(
+                                ssid: ap.ssid,
+                                bssid: ap.bssid,
+                                vendor: ap.vendorName,
+                                primaryChannel: ap.channel,
+                                channelWidth: ap.channelWidth,
+                                overlappingBandwidthMHz: overlapWidth,
+                                rssi: ap.rssi
+                            )
+                        )
+                    }
+                }
+            }
+        }
+
+        let directCount = directCompeting.count
+        let obssCount = obssOverlaps.count
+        let totalContenders = directCount + obssCount
+
+        let severity: WiFiContentionSeverity
+        if directCount == 0 && obssCount == 0 {
+            severity = .clean
+        } else if directCount <= 1 && obssCount <= 1 {
+            severity = .low
+        } else if directCount <= 3 && totalContenders <= 5 {
+            severity = .moderate
         } else {
-            return WiFiCoChannelWarning(
-                channel: currentLink.channel,
-                band: currentLink.band,
-                contendingAPCount: count,
-                severity: .severe,
-                advisory: "Heavy co-channel contention (\(count) APs) on Channel \(currentLink.channel). Significant airtime contention and throughput backoff are likely."
+            severity = .severe
+        }
+
+        var advisory = ""
+        if severity == .clean {
+            advisory = "Zero co-channel contention detected on Channel \(currentLink.channel). Client has uncontested airtime."
+        } else if directCount == 1 && obssCount == 0 {
+            let ap = directCompeting[0]
+            let sig = ap.rssi != nil ? "(\(ap.rssi!) dBm)" : ""
+            advisory = "1 competing AP '\(ap.ssid)' \(sig) sharing Channel \(currentLink.channel). Negligible impact on line-rate throughput."
+        } else if directCount == 0 && obssCount > 0 {
+            advisory = "\(obssCount) bonded overlapping BSS (OBSS) AP(s) detected sharing spectrum with Ch \(currentLink.channel) (\(currentLink.channelWidth.rawValue)). Occasional Clear Channel Assessment (CCA) deferrals may occur."
+        } else if severity == .moderate {
+            advisory = "\(directCount) direct co-channel and \(obssCount) bonded OBSS AP(s) contending on Ch \(currentLink.channel). Clear Channel Assessment (CCA) deferrals may induce minor jitter."
+        } else {
+            advisory = "Heavy spectrum contention (\(directCount) direct co-channel, \(obssCount) bonded OBSS) on Channel \(currentLink.channel). Significant airtime contention and throughput backoff are likely."
+        }
+
+        return WiFiCoChannelWarning(
+            channel: currentLink.channel,
+            band: currentLink.band,
+            contendingAPCount: directCount,
+            obssOverlappingAPCount: obssCount,
+            obssOverlaps: obssOverlaps,
+            severity: severity,
+            advisory: advisory
+        )
+    }
+
+    /// Evaluates whether the client is experiencing a sticky client anomaly (clinging to weak AP when a stronger BSSID exists)
+    public func evaluateStickyClientAnomaly(currentLink: WiFiCurrentLink, networks: [NearbyAP]) -> WiFiStickyClientAnomaly? {
+        guard !currentLink.ssid.isEmpty, currentLink.ssid != "Wi-Fi Network" else { return nil }
+
+        // Find candidate APs with the exact same SSID, different BSSID, and valid RSSI
+        let candidates = networks.filter { ap in
+            ap.ssid.lowercased() == currentLink.ssid.lowercased() &&
+            ap.bssid.lowercased() != currentLink.bssid.lowercased() &&
+            (ap.rssi ?? -100) > currentLink.rssi + 12 // At least 12 dB stronger
+        }
+
+        guard let bestCandidate = candidates.max(by: { ($0.rssi ?? -100) < ($1.rssi ?? -100) }) else {
+            return nil
+        }
+
+        // Only trigger if active link is sub-optimal (e.g. RSSI < -68 dBm)
+        if currentLink.rssi < -68 {
+            return WiFiStickyClientAnomaly(
+                currentBSSID: currentLink.bssid,
+                currentRSSI: currentLink.rssi,
+                candidateBSSID: bestCandidate.bssid,
+                candidateVendor: bestCandidate.vendorName,
+                candidateRSSI: bestCandidate.rssi ?? -50,
+                candidateChannel: bestCandidate.channel,
+                candidateBand: bestCandidate.band,
+                recommendation: "Mac is attached to edge BSSID (\(currentLink.rssi) dBm) despite stronger candidate \(bestCandidate.bssid) on Ch \(bestCandidate.channel) (\(bestCandidate.rssi ?? 0) dBm, +\( (bestCandidate.rssi ?? 0) - currentLink.rssi ) dB gain). Consider triggering 802.11k/v/r roaming by toggling Wi-Fi or moving."
             )
         }
+
+        return nil
     }
 
     /// Generates a comprehensive RF Site Survey Report
@@ -507,12 +569,14 @@ public actor WiFiEngine {
         let currentCh = currentLink?.channel ?? 0
         let recs = recommendOptimalChannels(from: networks, currentChannel: currentCh)
         let warning = currentLink != nil ? evaluateCoChannelContention(currentLink: currentLink!, networks: networks) : nil
+        let anomaly = currentLink != nil ? evaluateStickyClientAnomaly(currentLink: currentLink!, networks: networks) : nil
         let cong = calculateChannelCongestion(from: networks, currentChannel: currentCh)
 
         return WiFiRFSurveyReport(
             currentLink: currentLink,
             recommendations: recs,
             coChannelWarning: warning,
+            stickyClientAnomaly: anomaly,
             congestion: cong,
             nearbyAPs: networks,
             roamingEvents: roamingHistory
@@ -521,17 +585,63 @@ public actor WiFiEngine {
 
     // MARK: - Private Telemetry Helpers
 
-    private func extractMCSIndex(txRate: Double) -> Int? {
-        if txRate >= 1200 { return 11 }
-        if txRate >= 1080 { return 10 }
-        if txRate >= 960  { return 9 }
-        if txRate >= 864  { return 8 }
-        if txRate >= 720  { return 7 }
-        if txRate >= 576  { return 6 }
-        if txRate >= 432  { return 5 }
-        if txRate >= 288  { return 4 }
-        if txRate >= 144  { return 2 }
-        return nil
+    public func extractMCSIndex(txRate: Double, channelWidth: WiFiChannelWidth = .mhz80, phyMode: WiFiPHYMode = .ax) -> Int? {
+        guard txRate > 0 else { return nil }
+
+        switch channelWidth {
+        case .mhz160, .mhz320:
+            if txRate >= 2160 { return 11 }
+            if txRate >= 1920 { return 10 }
+            if txRate >= 1720 { return 9 }
+            if txRate >= 1530 { return 8 }
+            if txRate >= 1290 { return 7 }
+            if txRate >= 1150 { return 6 }
+            if txRate >= 960  { return 5 }
+            if txRate >= 770  { return 4 }
+            if txRate >= 570  { return 3 }
+            if txRate >= 380  { return 2 }
+            if txRate >= 280  { return 1 }
+            return 0
+        case .mhz80:
+            if txRate >= 1140 { return 11 }
+            if txRate >= 1020 { return 10 }
+            if txRate >= 910  { return 9 }
+            if txRate >= 810  { return 8 }
+            if txRate >= 680  { return 7 }
+            if txRate >= 600  { return 6 }
+            if txRate >= 500  { return 5 }
+            if txRate >= 400  { return 4 }
+            if txRate >= 270  { return 3 }
+            if txRate >= 200  { return 2 }
+            if txRate >= 130  { return 1 }
+            return 0
+        case .mhz40:
+            if txRate >= 540 { return 11 }
+            if txRate >= 480 { return 10 }
+            if txRate >= 430 { return 9 }
+            if txRate >= 380 { return 8 }
+            if txRate >= 320 { return 7 }
+            if txRate >= 280 { return 6 }
+            if txRate >= 240 { return 5 }
+            if txRate >= 190 { return 4 }
+            if txRate >= 130 { return 3 }
+            if txRate >= 90  { return 2 }
+            if txRate >= 60  { return 1 }
+            return 0
+        case .mhz20, .unknown:
+            if txRate >= 270 { return 11 }
+            if txRate >= 240 { return 10 }
+            if txRate >= 210 { return 9 }
+            if txRate >= 190 { return 8 }
+            if txRate >= 160 { return 7 }
+            if txRate >= 140 { return 6 }
+            if txRate >= 120 { return 5 }
+            if txRate >= 90  { return 4 }
+            if txRate >= 65  { return 3 }
+            if txRate >= 45  { return 2 }
+            if txRate >= 30  { return 1 }
+            return 0
+        }
     }
 
     private func fetchIPConfigSummary(interface: String) async -> (ssid: String, bssid: String, security: String, dhcpServer: String?) {
