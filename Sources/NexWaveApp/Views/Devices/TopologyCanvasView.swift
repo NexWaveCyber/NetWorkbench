@@ -282,6 +282,22 @@ public struct TopologyCanvasView: View {
                     recalculateLayout(mode: newMode, size: CGSize(width: 1000, height: 700))
                 }
 
+                // Reset to Default Algorithmic Layout
+                Button(action: {
+                    state.resetCanvasLayout(preset: preset.rawValue)
+                    recalculateLayout(mode: layoutMode, size: CGSize(width: 1000, height: 700))
+                    showToast("Layout reset to default algorithmic positions")
+                }) {
+                    Image(systemName: "arrow.counterclockwise")
+                        .font(.system(size: 11))
+                }
+                .buttonStyle(.plain)
+                .padding(6)
+                .background(Theme.surfaceBackground)
+                .clipShape(RoundedRectangle(cornerRadius: 6))
+                .overlay(RoundedRectangle(cornerRadius: 6).stroke(Theme.borderLight, lineWidth: 1))
+                .help("Reset custom node drag positions to algorithmic layout")
+
                 // Spotlight Search Input
                 HStack(spacing: 6) {
                     Image(systemName: "magnifyingglass")
@@ -790,10 +806,12 @@ public struct TopologyCanvasView: View {
                                     if let idx = graph.nodes.firstIndex(where: { $0.id == node.id }) {
                                         let deltaX = val.translation.width / zoomScale
                                         let deltaY = val.translation.height / zoomScale
-                                        graph.nodes[idx].position = CGPoint(
+                                        let newPos = CGPoint(
                                             x: graph.nodes[idx].position.x + deltaX,
                                             y: graph.nodes[idx].position.y + deltaY
                                         )
+                                        graph.nodes[idx].position = newPos
+                                        state.saveCanvasNodePosition(preset: preset.rawValue, nodeId: node.id, position: newPos)
                                     }
                                 }
                             }
@@ -1532,27 +1550,41 @@ public struct TopologyCanvasView: View {
         return graph.nodes
     }
 
+    private func applySavedPositions(to graph: inout TopologyGraph, preset: TopologyPreset) {
+        let saved = state.loadCanvasNodePositions(preset: preset.rawValue)
+        guard !saved.isEmpty else { return }
+        for i in 0..<graph.nodes.count {
+            if let savedPos = saved[graph.nodes[i].id] {
+                graph.nodes[i].position = savedPos
+            }
+        }
+    }
+
     private func loadTopology(preset: TopologyPreset, size: CGSize) {
         switch preset {
         case .enterprise:
             var g = TopologyGraph.buildEnterpriseDemo(bounds: size)
             recalculateLayout(graph: &g, mode: layoutMode, size: size)
+            applySavedPositions(to: &g, preset: preset)
             self.graph = g
 
         case .dataCenter:
             var g = TopologyGraph.buildDataCenterDemo(bounds: size)
             recalculateLayout(graph: &g, mode: layoutMode, size: size)
+            applySavedPositions(to: &g, preset: preset)
             self.graph = g
 
         case .discoveredLAN:
             let liveGW = MenuBarMonitorEngine.shared.defaultGateway.isEmpty ? "192.168.10.1" : MenuBarMonitorEngine.shared.defaultGateway
             var g = TopologyGraph.buildFromDiscoveredLAN(neighbors: state.discoveredNeighbors, gatewayIP: liveGW, bounds: size)
             recalculateLayout(graph: &g, mode: layoutMode, size: size)
+            applySavedPositions(to: &g, preset: preset)
             self.graph = g
 
         case .managedFleet:
             var g = TopologyGraph.buildFromInventory(devices: state.managedDevices, bounds: size)
             recalculateLayout(graph: &g, mode: layoutMode, size: size)
+            applySavedPositions(to: &g, preset: preset)
             self.graph = g
         }
     }

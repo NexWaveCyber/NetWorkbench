@@ -29,7 +29,9 @@ public struct PortDiagnosticsView: View {
 
     private let prober = TCPPingProber()
 
-    public init() {}
+    public init(initialHost: String = "1.1.1.1") {
+        _targetHost = State(initialValue: initialHost)
+    }
 
     public var filteredPorts: [PortProbeStatus] {
         if selectedFilter == "All" { return ports }

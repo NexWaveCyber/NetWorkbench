@@ -557,11 +557,11 @@ public struct TopologyGraph: Sendable, Codable, Equatable {
             let lowerVendor = (n.ouiVendor ?? "").lowercased()
             if lowerVendor.contains("cisco") || lowerVendor.contains("arista") || lowerVendor.contains("juniper") || lowerVendor.contains("switch") {
                 role = .switchRole
-            } else if lowerVendor.contains("apple") {
+            } else if lowerVendor.contains("apple") || lowerVendor.contains("dell") || lowerVendor.contains("lenovo") || lowerVendor.contains("asus") || lowerVendor.contains("samsung") || lowerVendor.contains("sony") {
                 role = .workstation
-            } else if lowerVendor.contains("router") || lowerVendor.contains("gateway") || lowerVendor.contains("linksys") || lowerVendor.contains("netgear") {
+            } else if lowerVendor.contains("router") || lowerVendor.contains("gateway") || lowerVendor.contains("linksys") || lowerVendor.contains("netgear") || lowerVendor.contains("tp-link") || lowerVendor.contains("fritz") || lowerVendor.contains("zyxel") {
                 role = .router
-            } else if lowerVendor.contains("vmware") || lowerVendor.contains("intel") || lowerVendor.contains("synology") || lowerVendor.contains("qnap") {
+            } else if lowerVendor.contains("vmware") || lowerVendor.contains("intel") || lowerVendor.contains("synology") || lowerVendor.contains("qnap") || lowerVendor.contains("super micro") {
                 role = .server
             } else if lowerVendor.contains("access point") || lowerVendor.contains("unifi") || lowerVendor.contains("ubiquiti") {
                 role = .accessPoint
@@ -574,7 +574,11 @@ public struct TopologyGraph: Sendable, Codable, Equatable {
             if let h = n.hostname, !h.isEmpty, h != n.ipAddress {
                 cleanLabel = h
             } else if let v = n.ouiVendor, !v.isEmpty {
-                cleanLabel = v
+                if v == "Private MAC (Locally Administered)" {
+                    cleanLabel = "Private Wi-Fi Device"
+                } else {
+                    cleanLabel = v
+                }
             } else if n.vendor != .generic {
                 cleanLabel = "\(n.vendor.rawValue) Device"
             } else if n.ipAddress.contains(":") {

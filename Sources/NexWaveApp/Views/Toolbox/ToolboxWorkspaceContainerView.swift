@@ -28,15 +28,31 @@ public enum ToolboxTool: String, CaseIterable, Identifiable {
 
 /// Unified container for interactive toolbox utilities.
 public struct ToolboxWorkspaceContainerView: View {
-    @State private var selectedTool: ToolboxTool = .wifi
+    var state: AppState? = nil
+    @State private var localSelectedTool: ToolboxTool = .wifi
 
-    public init() {}
+    private var activeToolBinding: Binding<ToolboxTool> {
+        Binding(
+            get: { state?.selectedToolboxTool ?? localSelectedTool },
+            set: {
+                if let s = state {
+                    s.selectedToolboxTool = $0
+                } else {
+                    localSelectedTool = $0
+                }
+            }
+        )
+    }
+
+    public init(state: AppState? = nil) {
+        self.state = state
+    }
 
     public var body: some View {
         VStack(spacing: 0) {
             // Sub-navigation bar
             HStack {
-                Picker("Toolbox Utility", selection: $selectedTool) {
+                Picker("Toolbox Utility", selection: activeToolBinding) {
                     ForEach(ToolboxTool.allCases) { tool in
                         Label(tool.rawValue, systemImage: tool.icon).tag(tool)
                     }
@@ -53,7 +69,7 @@ public struct ToolboxWorkspaceContainerView: View {
             Divider()
 
             // Active Tool View
-            switch selectedTool {
+            switch (state?.selectedToolboxTool ?? localSelectedTool) {
             case .wifi:
                 WiFiStudioView()
             case .timeline:
@@ -63,7 +79,7 @@ public struct ToolboxWorkspaceContainerView: View {
             case .dns:
                 DNSStudioView()
             case .ports:
-                PortDiagnosticsView()
+                PortDiagnosticsView(initialHost: (state?.portDiagnosticsTarget.isEmpty == false) ? state!.portDiagnosticsTarget : "1.1.1.1")
             case .mtr:
                 MTRStudioView()
             case .internetIntel:

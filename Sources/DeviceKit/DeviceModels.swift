@@ -54,6 +54,21 @@ public enum DeviceVendor: String, Codable, Sendable, CaseIterable, Identifiable 
     case avm = "AVM Fritz!Box"
     case belkin = "Belkin"
     case zyxel = "Zyxel"
+    case samsung = "Samsung"
+    case sony = "Sony"
+    case espressif = "Espressif / ESP32"
+    case realtek = "Realtek"
+    case lenovo = "Lenovo"
+    case xiaomi = "Xiaomi"
+    case microsoft = "Microsoft"
+    case brother = "Brother"
+    case canon = "Canon"
+    case roku = "Roku"
+    case sonos = "Sonos"
+    case lg = "LG Electronics"
+    case tuya = "Tuya Smart"
+    case philips = "Philips Hue"
+    case qnap = "QNAP"
     case generic = "Generic"
 
     public var id: String { rawValue }
@@ -181,6 +196,7 @@ public struct DiscoveredNeighbor: Identifiable, Codable, Sendable, Hashable {
     public let discoverySource: NeighborSource
     public var ouiVendor: String?
     public var discoveredServices: [String]
+    public var latencyMs: Double?
     public var lastSeen: Date
 
     public init(
@@ -192,6 +208,7 @@ public struct DiscoveredNeighbor: Identifiable, Codable, Sendable, Hashable {
         discoverySource: NeighborSource = .arp,
         ouiVendor: String? = nil,
         discoveredServices: [String] = [],
+        latencyMs: Double? = nil,
         lastSeen: Date = Date()
     ) {
         self.ipAddress = ipAddress
@@ -202,6 +219,7 @@ public struct DiscoveredNeighbor: Identifiable, Codable, Sendable, Hashable {
         self.discoverySource = discoverySource
         self.ouiVendor = ouiVendor
         self.discoveredServices = discoveredServices
+        self.latencyMs = latencyMs
         self.lastSeen = lastSeen
     }
 }
@@ -324,6 +342,14 @@ extension DiscoveredNeighbor {
         }
         return .generic
     }
+    public var latencyDisplay: String? {
+        guard let ms = latencyMs else { return nil }
+        if ms < 10.0 {
+            return String(format: "%.1f ms", ms)
+        } else {
+            return String(format: "%.0f ms", ms)
+        }
+    }
 }
 
 extension DeviceBaseline {
@@ -347,6 +373,20 @@ extension DeviceBaseline {
         self.openPorts = openPorts
         self.snmpSysDescr = nil
         self.notes = ""
+    }
+}
+
+public struct DeviceImportResult: Sendable, Codable {
+    public let totalProcessed: Int
+    public let addedCount: Int
+    public let updatedCount: Int
+    public let errors: [String]
+
+    public init(totalProcessed: Int, addedCount: Int, updatedCount: Int, errors: [String] = []) {
+        self.totalProcessed = totalProcessed
+        self.addedCount = addedCount
+        self.updatedCount = updatedCount
+        self.errors = errors
     }
 }
 

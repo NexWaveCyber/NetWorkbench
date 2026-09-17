@@ -195,6 +195,14 @@ public final class SQLiteDatabase: @unchecked Sendable {
         );
 
         CREATE INDEX IF NOT EXISTS idx_monitor_targets_name ON monitor_targets(name);
+
+        CREATE TABLE IF NOT EXISTS topology_node_positions (
+            preset_id TEXT NOT NULL,
+            node_id TEXT NOT NULL,
+            x REAL NOT NULL,
+            y REAL NOT NULL,
+            PRIMARY KEY (preset_id, node_id)
+        );
         """
         try execute(sql: schema)
 

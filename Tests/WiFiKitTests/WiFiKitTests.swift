@@ -206,15 +206,15 @@ struct WiFiKitTests {
     @Test("OUI Hardware Vendor Resolution")
     func testOUIHardwareVendorResolution() {
         // Cisco Systems
-        #expect(OUIResolver.resolve(mac: "00:00:0C:12:34:56") == "Cisco Systems")
+        #expect(OUIResolver.resolve(mac: "00:00:0C:12:34:56") == "Cisco Systems, Inc")
         // Apple
-        #expect(OUIResolver.resolve(mac: "3C:07:54:AA:BB:CC") == "Apple")
-        // Aruba Networks
-        #expect(OUIResolver.resolve(mac: "00:0B:86:11:22:33") == "Aruba Networks")
+        #expect(OUIResolver.resolve(mac: "3C:07:54:AA:BB:CC") == "Apple, Inc.")
+        // Aruba / HPE
+        #expect(OUIResolver.resolve(mac: "00:0B:86:11:22:33") == "Hewlett Packard Enterprise")
         // Ubiquiti Networks
-        #expect(OUIResolver.resolve(mac: "24:A4:3C:99:88:77") == "Ubiquiti Networks")
-        // eero
-        #expect(OUIResolver.resolve(mac: "50:F5:DA:44:55:66") == "eero")
+        #expect(OUIResolver.resolve(mac: "24:A4:3C:99:88:77") == "Ubiquiti Inc")
+        // eero / Amazon
+        #expect(OUIResolver.resolve(mac: "50:F5:DA:44:55:66") == "Amazon Technologies Inc.")
     }
 
     @Test("RF Survey Report Markdown and JSON Export")

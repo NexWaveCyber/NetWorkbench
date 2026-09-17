@@ -305,7 +305,7 @@ struct NexWaveApp: App {
         case .diagnose:
             DiagnoseWorkspaceView(state: state)
         case .toolbox:
-            ToolboxWorkspaceContainerView()
+            ToolboxWorkspaceContainerView(state: state)
         case .wifi:
             WiFiStudioView()
         case .timeline:

@@ -49,6 +49,13 @@ public enum WorkspaceItem: String, CaseIterable, Identifiable, Sendable {
     }
 }
 
+public enum FleetViewMode: String, CaseIterable, Identifiable, Sendable {
+    case grid = "Grid Cards"
+    case table = "Dense Table"
+
+    public var id: String { rawValue }
+}
+
 @Observable
 public final class AppState: @unchecked Sendable {
     public var selectedWorkspace: WorkspaceItem = .home
@@ -76,9 +83,43 @@ public final class AppState: @unchecked Sendable {
     public let deviceAuditor: DeviceAuditor = DeviceAuditor()
     public var managedDevices: [NetworkDevice] = []
     public var selectedDevice: NetworkDevice? = nil
+    public var fleetViewMode: FleetViewMode = .grid
+    public var selectedDeviceIds: Set<UUID> = []
+    public var isSelectionMode: Bool = false
+    public var isFleetBaselineAuditing: Bool = false
+    public var fleetBaselineAuditProgress: Double = 0.0
+    public var fleetDriftCompliancePct: Double = 100.0
+    public var driftDegradedDevices: [UUID: BaselineComparisonResult] = [:]
+    public var selectedToolboxTool: ToolboxTool = .ports
+    public var portDiagnosticsTarget: String = ""
     public var discoveredNeighbors: [DiscoveredNeighbor] = []
     public var isDiscoveringNeighbors: Bool = false
     public var lastNeighborDiscoveryTime: Date? = nil
+
+    public struct DiscoveryProgressInfo: Sendable {
+        public var phase: String
+        public var current: Int
+        public var total: Int
+        public var percent: Double
+        public var activeHost: String
+
+        public init(phase: String = "Idle", current: Int = 0, total: Int = 0, percent: Double = 0.0, activeHost: String = "") {
+            self.phase = phase
+            self.current = current
+            self.total = total
+            self.percent = percent
+            self.activeHost = activeHost
+        }
+    }
+
+    public var discoveryProgress: DiscoveryProgressInfo = DiscoveryProgressInfo()
+    public var activeSubnetDetected: String = ""
+    public var activeInterfaceDetected: String = ""
+    public var activeGatewayDetected: String = ""
+    public var customScanCIDR: String = ""
+    public var availableInterfaces: [ActiveNetworkInterface] = []
+    public var selectedInterfaceName: String = ""
+    public var activeDiscoveryTask: Task<Void, Never>? = nil
 
     // SNMP Studio target handoff
     public var activeSNMPTarget: String = "192.168.1.1"
@@ -220,6 +261,23 @@ public final class AppState: @unchecked Sendable {
         }
 
         self.updateTargetClassification(self.targetInput)
+        self.refreshNetworkInterfaces()
+    }
+
+    public func refreshNetworkInterfaces() {
+        self.availableInterfaces = LocalDiscoveryEngine.enumerateActiveInterfaces()
+        if self.selectedInterfaceName.isEmpty || !self.availableInterfaces.contains(where: { $0.name == self.selectedInterfaceName }) {
+            if let active = LocalDiscoveryEngine.resolveActiveInterface() {
+                self.selectedInterfaceName = active.name
+                self.activeSubnetDetected = active.cidr
+                self.activeInterfaceDetected = "\(active.name) (\(active.ipv4))"
+                self.activeGatewayDetected = active.gateway.isEmpty ? "Unknown" : active.gateway
+            }
+        } else if let matched = self.availableInterfaces.first(where: { $0.name == self.selectedInterfaceName }) {
+            self.activeSubnetDetected = matched.cidr
+            self.activeInterfaceDetected = "\(matched.name) (\(matched.ipv4))"
+            self.activeGatewayDetected = matched.gateway.isEmpty ? "Unknown" : matched.gateway
+        }
     }
 
     public func updateTargetClassification(_ text: String) {
@@ -302,13 +360,105 @@ public final class AppState: @unchecked Sendable {
     }
 
     @MainActor
-    public func runLocalDiscovery() async {
+    public func runLocalDiscovery(customCIDR: String? = nil, targetInterface: String? = nil, performSweep: Bool = true) async {
+        if self.isDiscoveringNeighbors { return }
+
+        let ifaceName = targetInterface ?? (self.selectedInterfaceName.isEmpty ? nil : self.selectedInterfaceName)
+
+        let cidrToScan = (customCIDR?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false)
+            ? customCIDR
+            : (self.customScanCIDR.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : self.customScanCIDR)
+
         self.isDiscoveringNeighbors = true
-        let engine = LocalDiscoveryEngine()
-        let neighbors = await engine.discoverNeighbors()
+        self.discoveryProgress = DiscoveryProgressInfo(phase: "Initializing multi-vector discovery...", current: 0, total: 100, percent: 0.0)
+
+        // Query active interfaces for freshest telemetry
+        self.refreshNetworkInterfaces()
+
+        let task = Task { [weak self] () -> [DiscoveredNeighbor] in
+            guard let self = self else { return [] }
+            let engine = LocalDiscoveryEngine()
+            let neighbors = await engine.discoverNeighbors(
+                customSubnet: cidrToScan,
+                targetInterface: ifaceName,
+                performSweep: performSweep
+            ) { [weak self] phase, current, total in
+                Task { @MainActor [weak self] in
+                    let pct = total > 0 ? Double(current) / Double(total) : 0.0
+                    self?.discoveryProgress = DiscoveryProgressInfo(
+                        phase: phase,
+                        current: current,
+                        total: total,
+                        percent: pct,
+                        activeHost: ""
+                    )
+                }
+            }
+            return neighbors
+        }
+
+        self.activeDiscoveryTask = Task {
+            _ = await task.value
+        }
+
+        let neighbors = await task.value
+
+        if Task.isCancelled {
+            self.isDiscoveringNeighbors = false
+            self.activeDiscoveryTask = nil
+            self.discoveryProgress = DiscoveryProgressInfo(phase: "Scan aborted", current: 0, total: 0, percent: 0.0)
+            self.toastMessage = "Scan LAN operation cancelled"
+            return
+        }
+
         self.discoveredNeighbors = neighbors
         self.lastNeighborDiscoveryTime = Date()
         self.isDiscoveringNeighbors = false
+        self.activeDiscoveryTask = nil
+        self.discoveryProgress = DiscoveryProgressInfo(phase: "Scan Complete", current: neighbors.count, total: neighbors.count, percent: 1.0)
+        self.toastMessage = "Discovered \(neighbors.count) active hosts on LAN"
+    }
+
+    @MainActor
+    public func cancelLocalDiscovery() {
+        if let task = self.activeDiscoveryTask {
+            task.cancel()
+            self.activeDiscoveryTask = nil
+        }
+        self.isDiscoveringNeighbors = false
+        self.discoveryProgress = DiscoveryProgressInfo(phase: "Scan aborted", current: 0, total: 0, percent: 0.0)
+        self.toastMessage = "Scan LAN operation cancelled"
+    }
+
+    @MainActor
+    public func enrolAllDiscoveredNeighbors() {
+        let existingIPs = Set(managedDevices.map { $0.managementIP })
+        let unenrolled = discoveredNeighbors.filter { !existingIPs.contains($0.ip) }
+        guard !unenrolled.isEmpty else {
+            self.toastMessage = "All discovered devices are already enrolled in inventory"
+            return
+        }
+
+        var count = 0
+        for neighbor in unenrolled {
+            let finalVendor = neighbor.vendor != .generic ? neighbor.vendor : OUIResolver.inferVendor(mac: neighbor.mac)
+            let device = NetworkDevice(
+                name: (neighbor.hostname?.isEmpty == false ? neighbor.hostname! : neighbor.ip),
+                hostname: neighbor.hostname,
+                ipAddress: neighbor.ip,
+                macAddress: neighbor.mac,
+                vendor: finalVendor,
+                role: .workstation,
+                status: .online,
+                tags: ["discovered", neighbor.source.rawValue]
+            )
+            do {
+                try deviceManager.saveDevice(device)
+                count += 1
+            } catch {}
+        }
+        refreshManagedDevices()
+        self.toastMessage = "Enrolled \(count) devices into inventory"
     }
 
     public func addDiscoveredNeighborToInventory(_ neighbor: DiscoveredNeighbor, role: DeviceRole, name: String) {
@@ -363,6 +513,16 @@ public final class AppState: @unchecked Sendable {
             self.toastMessage = "Device removed from inventory"
         } catch {
             self.toastMessage = "Failed to delete device: \(error.localizedDescription)"
+        }
+    }
+
+    public func updateManagedDevice(_ device: NetworkDevice) {
+        do {
+            try deviceManager.updateDevice(device)
+            refreshManagedDevices()
+            self.toastMessage = "Updated device: \(device.name)"
+        } catch {
+            self.toastMessage = "Failed to update device: \(error.localizedDescription)"
         }
     }
 
@@ -430,7 +590,7 @@ public final class AppState: @unchecked Sendable {
     }
 
     public func exportDiscoveredToCSV() -> String {
-        var csv = "IP Address,MAC Address,Resolved Vendor,Interface,Source,Hostname,Discovered Services,Last Seen\n"
+        var csv = "IP Address,MAC Address,Resolved Vendor,Interface,Source,Hostname,Latency (ms),Discovered Services,Last Seen\n"
         for n in discoveredNeighbors {
             let ip = n.ipAddress
             let mac = n.macAddress
@@ -438,9 +598,10 @@ public final class AppState: @unchecked Sendable {
             let iface = n.interface
             let source = n.discoverySource.rawValue
             let host = "\"\(n.hostname ?? "")\""
+            let latency = n.latencyMs != nil ? String(format: "%.2f", n.latencyMs!) : "N/A"
             let services = "\"\(n.discoveredServices.joined(separator: "; "))\""
             let lastSeen = n.lastSeen.ISO8601Format()
-            csv += "\(ip),\(mac),\(vendor),\(iface),\(source),\(host),\(services),\(lastSeen)\n"
+            csv += "\(ip),\(mac),\(vendor),\(iface),\(source),\(host),\(latency),\(services),\(lastSeen)\n"
         }
         return csv
     }
@@ -454,5 +615,164 @@ public final class AppState: @unchecked Sendable {
             return "{}"
         }
         return str
+    }
+
+    // MARK: - Multi-Selection & Bulk Actions
+
+    public func toggleDeviceSelection(id: UUID) {
+        if selectedDeviceIds.contains(id) {
+            selectedDeviceIds.remove(id)
+        } else {
+            selectedDeviceIds.insert(id)
+        }
+    }
+
+    public func selectAllDevices() {
+        selectedDeviceIds = Set(managedDevices.map(\.id))
+    }
+
+    public func clearDeviceSelection() {
+        selectedDeviceIds.removeAll()
+    }
+
+    public func bulkDeleteSelectedDevices() {
+        guard !selectedDeviceIds.isEmpty else { return }
+        let count = selectedDeviceIds.count
+        do {
+            try deviceManager.bulkDeleteDevices(ids: Array(selectedDeviceIds))
+            selectedDeviceIds.removeAll()
+            refreshManagedDevices()
+            self.toastMessage = "Deleted \(count) devices from fleet"
+        } catch {
+            self.toastMessage = "Failed to bulk delete devices: \(error.localizedDescription)"
+        }
+    }
+
+    public func bulkAddTagToSelected(tag: String) {
+        guard !selectedDeviceIds.isEmpty else { return }
+        do {
+            try deviceManager.bulkAddTags(ids: Array(selectedDeviceIds), tags: [tag])
+            refreshManagedDevices()
+            self.toastMessage = "Added tag #\(tag) to \(selectedDeviceIds.count) devices"
+        } catch {
+            self.toastMessage = "Failed to add tag: \(error.localizedDescription)"
+        }
+    }
+
+    public func bulkSetSiteForSelected(site: String) {
+        guard !selectedDeviceIds.isEmpty else { return }
+        do {
+            try deviceManager.bulkAssignSite(ids: Array(selectedDeviceIds), site: site)
+            refreshManagedDevices()
+            self.toastMessage = "Assigned site '\(site)' to \(selectedDeviceIds.count) devices"
+        } catch {
+            self.toastMessage = "Failed to assign site: \(error.localizedDescription)"
+        }
+    }
+
+    // MARK: - Device File Import
+
+    public func importDevices(from url: URL) async -> DeviceImportResult {
+        let isScoped = url.startAccessingSecurityScopedResource()
+        defer {
+            if isScoped { url.stopAccessingSecurityScopedResource() }
+        }
+        do {
+            let data = try Data(contentsOf: url)
+            let isCSV = url.pathExtension.lowercased() == "csv"
+            let result: DeviceImportResult
+            if isCSV {
+                guard let content = String(data: data, encoding: .utf8) ?? String(data: data, encoding: .ascii) else {
+                    return DeviceImportResult(totalProcessed: 0, addedCount: 0, updatedCount: 0, errors: ["Cannot decode CSV text as UTF-8/ASCII."])
+                }
+                result = try deviceManager.importDevicesFromCSV(content: content)
+            } else {
+                result = try deviceManager.importDevicesFromJSON(data: data)
+            }
+            refreshManagedDevices()
+            self.toastMessage = "Import complete: \(result.addedCount) added, \(result.updatedCount) updated"
+            return result
+        } catch {
+            return DeviceImportResult(totalProcessed: 0, addedCount: 0, updatedCount: 0, errors: [error.localizedDescription])
+        }
+    }
+
+    // MARK: - Port Diagnostics Deep-Linking
+
+    public func jumpToPortDiagnostics(host: String) {
+        self.portDiagnosticsTarget = host
+        self.selectedToolboxTool = .ports
+        self.selectedWorkspace = .toolbox
+        self.toastMessage = "Opened Port Reachability Prober for \(host)"
+    }
+
+    // MARK: - Canvas Coordinate Persistence
+
+    public func saveCanvasNodePosition(preset: String, nodeId: String, position: CGPoint) {
+        try? deviceManager.saveNodePosition(preset: preset, nodeId: nodeId, position: position)
+    }
+
+    public func loadCanvasNodePositions(preset: String) -> [String: CGPoint] {
+        (try? deviceManager.loadNodePositions(preset: preset)) ?? [:]
+    }
+
+    public func resetCanvasLayout(preset: String) {
+        try? deviceManager.clearNodePositions(preset: preset)
+    }
+
+    // MARK: - Fleet Baseline Drift Daemon
+
+    public func runFleetBaselineAuditNow() async {
+        guard !isFleetBaselineAuditing else { return }
+        isFleetBaselineAuditing = true
+        fleetBaselineAuditProgress = 0.0
+        defer { isFleetBaselineAuditing = false }
+
+        var baselinedDevices: [(NetworkDevice, DeviceBaseline)] = []
+        for dev in managedDevices {
+            if let base = try? deviceManager.getLatestBaseline(forDeviceId: dev.id) {
+                baselinedDevices.append((dev, base))
+            }
+        }
+
+        guard !baselinedDevices.isEmpty else {
+            self.fleetDriftCompliancePct = 100.0
+            self.driftDegradedDevices = [:]
+            self.toastMessage = "No devices have recorded SLA baselines yet."
+            return
+        }
+
+        var degraded: [UUID: BaselineComparisonResult] = [:]
+        var scores: [Double] = []
+
+        for (idx, (dev, base)) in baselinedDevices.enumerated() {
+            let sample = await deviceAuditor.probeLiveBaseline(
+                ipAddress: dev.managementIP,
+                customPorts: base.openPorts.isEmpty ? DeviceAuditor.standardAuditPorts : base.openPorts,
+                pingCount: 3,
+                snmpConfig: dev.snmpConfig
+            )
+            let comp = deviceManager.compareWithBaseline(
+                currentLatency: sample.avgLatencyMs,
+                currentLoss: sample.packetLossPct,
+                currentOpenPorts: sample.openPorts,
+                baseline: base
+            )
+            scores.append(Double(comp.overallHealthScore))
+            if comp.overallHealthScore < 75 {
+                degraded[dev.id] = comp
+            }
+            fleetBaselineAuditProgress = Double(idx + 1) / Double(baselinedDevices.count)
+        }
+
+        let avgScore = scores.isEmpty ? 100.0 : (scores.reduce(0, +) / Double(scores.count))
+        self.fleetDriftCompliancePct = avgScore
+        self.driftDegradedDevices = degraded
+
+        if !degraded.isEmpty {
+            self.toastMessage = "⚠️ Baseline Drift Alert: \(degraded.count) devices degraded!"
+        } else {
+            self.toastMessage = "Fleet Baseline Audit Complete: 100% compliant"
+        }
     }
 }

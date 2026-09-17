@@ -2,6 +2,7 @@ import Foundation
 import SQLite3
 import PersistenceKit
 import NetworkCore
+import CoreGraphics
 
 public enum DeviceManagerError: Error, LocalizedError {
     case deviceNotFound
@@ -230,6 +231,27 @@ public final class DeviceManager: @unchecked Sendable {
         return nil
     }
 
+    public func getDevice(byIP ip: String) throws -> NetworkDevice? {
+        lock.lock()
+        defer { lock.unlock() }
+
+        let sql = """
+        SELECT id, display_name, hostname, management_ip, mac_address, vendor, role,
+               platform, model, site, environment_id, tags, status,
+               credential_ref, snmp_community, snmp_port, snmp_version, last_seen
+        FROM devices WHERE management_ip = ? LIMIT 1;
+        """
+
+        let stmt = try database.prepare(sql: sql)
+        defer { sqlite3_finalize(stmt) }
+
+        sqlite3_bind_text(stmt, 1, (ip as NSString).utf8String, -1, nil)
+        if sqlite3_step(stmt) == SQLITE_ROW {
+            return parseDevice(from: stmt)
+        }
+        return nil
+    }
+
     public func saveDevice(_ device: NetworkDevice) throws {
         if (try? getDevice(id: device.id)) != nil {
             try updateDevice(device)
@@ -349,6 +371,495 @@ public final class DeviceManager: @unchecked Sendable {
             unexpectedPorts: unexpected,
             overallHealthScore: score
         )
+    }
+
+    // MARK: - Bulk Fleet Operations
+
+    public func bulkDeleteDevices(ids: [UUID]) throws {
+        guard !ids.isEmpty else { return }
+        lock.lock()
+        defer { lock.unlock() }
+
+        try database.execute(sql: "BEGIN TRANSACTION;")
+        defer {
+            _ = try? database.execute(sql: "COMMIT;")
+        }
+
+        let sql = "DELETE FROM devices WHERE id = ?;"
+        let stmt = try database.prepare(sql: sql)
+        defer { sqlite3_finalize(stmt) }
+
+        for id in ids {
+            sqlite3_reset(stmt)
+            sqlite3_bind_text(stmt, 1, (id.uuidString as NSString).utf8String, -1, nil)
+            _ = sqlite3_step(stmt)
+        }
+    }
+
+    public func bulkAddTags(ids: [UUID], tags: [String]) throws {
+        guard !ids.isEmpty, !tags.isEmpty else { return }
+        let cleanTags = tags.map { $0.trimmingCharacters(in: .whitespacesAndNewlines).trimmingCharacters(in: CharacterSet(charactersIn: "#")) }.filter { !$0.isEmpty }
+        guard !cleanTags.isEmpty else { return }
+
+        for id in ids {
+            if var dev = try getDevice(id: id) {
+                var currentTags = dev.tags
+                for tag in cleanTags {
+                    if !currentTags.contains(tag) {
+                        currentTags.append(tag)
+                    }
+                }
+                dev.tags = currentTags
+                try updateDevice(dev)
+            }
+        }
+    }
+
+    public func bulkRemoveTags(ids: [UUID], tags: [String]) throws {
+        guard !ids.isEmpty, !tags.isEmpty else { return }
+        let tagsToRemove = Set(tags.map { $0.trimmingCharacters(in: .whitespacesAndNewlines).trimmingCharacters(in: CharacterSet(charactersIn: "#")) })
+
+        for id in ids {
+            if var dev = try getDevice(id: id) {
+                dev.tags = dev.tags.filter { !tagsToRemove.contains($0) }
+                try updateDevice(dev)
+            }
+        }
+    }
+
+    public func bulkAssignSite(ids: [UUID], site: String?) throws {
+        guard !ids.isEmpty else { return }
+        let trimmedSite = site?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let finalSite = (trimmedSite?.isEmpty == false) ? trimmedSite : nil
+
+        for id in ids {
+            if var dev = try getDevice(id: id) {
+                dev.site = finalSite
+                try updateDevice(dev)
+            }
+        }
+    }
+
+    // MARK: - CSV and JSON Device Importers
+
+    public static func parseCSV(content: String) -> [[String]] {
+        var rows: [[String]] = []
+        var currentRow: [String] = []
+        var currentField = ""
+        var inQuotes = false
+
+        let chars = Array(content)
+        var i = 0
+        let count = chars.count
+
+        while i < count {
+            let ch = chars[i]
+            if ch == "\"" {
+                if inQuotes && i + 1 < count && chars[i + 1] == "\"" {
+                    currentField.append("\"")
+                    i += 1
+                } else {
+                    inQuotes.toggle()
+                }
+            } else if ch == "," && !inQuotes {
+                currentRow.append(currentField.trimmingCharacters(in: .whitespaces))
+                currentField = ""
+            } else if (ch == "\r" || ch == "\n") && !inQuotes {
+                if ch == "\r" && i + 1 < count && chars[i + 1] == "\n" {
+                    i += 1
+                }
+                currentRow.append(currentField.trimmingCharacters(in: .whitespaces))
+                currentField = ""
+                if !currentRow.allSatisfy({ $0.isEmpty }) {
+                    rows.append(currentRow)
+                }
+                currentRow = []
+            } else {
+                currentField.append(ch)
+            }
+            i += 1
+        }
+
+        if !currentField.isEmpty || !currentRow.isEmpty {
+            currentRow.append(currentField.trimmingCharacters(in: .whitespaces))
+            if !currentRow.allSatisfy({ $0.isEmpty }) {
+                rows.append(currentRow)
+            }
+        }
+        return rows
+    }
+
+    public func importDevicesFromCSV(content: String) throws -> DeviceImportResult {
+        let rows = Self.parseCSV(content: content)
+        guard rows.count > 1 else {
+            return DeviceImportResult(totalProcessed: 0, addedCount: 0, updatedCount: 0, errors: ["CSV file is empty or contains only header."])
+        }
+
+        let headers = rows[0].map { $0.lowercased().replacingOccurrences(of: " ", with: "").replacingOccurrences(of: "_", with: "") }
+        var nameIdx: Int?
+        var ipIdx: Int?
+        var macIdx: Int?
+        var hostIdx: Int?
+        var vendorIdx: Int?
+        var roleIdx: Int?
+        var platformIdx: Int?
+        var modelIdx: Int?
+        var siteIdx: Int?
+        var tagsIdx: Int?
+        var statusIdx: Int?
+        var snmpCommIdx: Int?
+        var snmpPortIdx: Int?
+        var snmpVerIdx: Int?
+
+        for (idx, h) in headers.enumerated() {
+            if h == "name" || h == "displayname" || h == "devicename" { nameIdx = idx }
+            else if h == "ip" || h == "ipaddress" || h == "managementip" || h == "hostip" { ipIdx = idx }
+            else if h == "mac" || h == "macaddress" || h == "ethernet" { macIdx = idx }
+            else if h == "host" || h == "hostname" || h == "fqdn" { hostIdx = idx }
+            else if h == "vendor" || h == "manufacturer" || h == "make" { vendorIdx = idx }
+            else if h == "role" || h == "type" || h == "devicetype" { roleIdx = idx }
+            else if h == "platform" || h == "os" { platformIdx = idx }
+            else if h == "model" || h == "hardware" { modelIdx = idx }
+            else if h == "site" || h == "location" || h == "datacenter" { siteIdx = idx }
+            else if h == "tags" || h == "labels" || h == "tag" { tagsIdx = idx }
+            else if h == "status" || h == "state" { statusIdx = idx }
+            else if h == "snmp" || h == "snmpcommunity" || h == "community" { snmpCommIdx = idx }
+            else if h == "snmpport" || h == "port" { snmpPortIdx = idx }
+            else if h == "snmpver" || h == "snmpversion" || h == "version" { snmpVerIdx = idx }
+        }
+
+        guard let targetIPIdx = ipIdx else {
+            return DeviceImportResult(totalProcessed: 0, addedCount: 0, updatedCount: 0, errors: ["Missing required 'IP Address' or 'Management IP' column in header."])
+        }
+
+        var added = 0
+        var updated = 0
+        var errors: [String] = []
+
+        for rowIdx in 1..<rows.count {
+            let row = rows[rowIdx]
+            guard row.count > targetIPIdx else { continue }
+            let ip = row[targetIPIdx].trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !ip.isEmpty else { continue }
+
+            let rawName = nameIdx.flatMap { idx in row.count > idx ? row[idx] : nil }?.trimmingCharacters(in: .whitespacesAndNewlines)
+            let hostname = hostIdx.flatMap { idx in row.count > idx ? row[idx] : nil }?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ip
+            let displayName = (rawName?.isEmpty == false) ? rawName! : hostname
+            let mac = macIdx.flatMap { idx in row.count > idx ? row[idx] : nil }?.trimmingCharacters(in: .whitespacesAndNewlines)
+            let cleanMAC = (mac?.isEmpty == false) ? mac : nil
+
+            // Resolve Vendor
+            let vendorStr = vendorIdx.flatMap { idx in row.count > idx ? row[idx] : nil }?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            var resolvedVendor = resolveVendorString(vendorStr)
+            if resolvedVendor == .generic, let m = cleanMAC, let resolvedOUI = OUIResolver.lookup(mac: m) {
+                resolvedVendor = resolveVendorString(resolvedOUI)
+            }
+
+            // Resolve Role
+            let roleStr = roleIdx.flatMap { idx in row.count > idx ? row[idx] : nil }?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            var resolvedRole = resolveRoleString(roleStr)
+            if roleStr.isEmpty {
+                resolvedRole = inferRoleFromVendor(resolvedVendor)
+            }
+
+            let platform = platformIdx.flatMap { idx in row.count > idx ? row[idx] : nil }?.trimmingCharacters(in: .whitespacesAndNewlines)
+            let model = modelIdx.flatMap { idx in row.count > idx ? row[idx] : nil }?.trimmingCharacters(in: .whitespacesAndNewlines)
+            let site = siteIdx.flatMap { idx in row.count > idx ? row[idx] : nil }?.trimmingCharacters(in: .whitespacesAndNewlines)
+
+            // Resolve Tags
+            let rawTags = tagsIdx.flatMap { idx in row.count > idx ? row[idx] : nil } ?? ""
+            let parsedTags = rawTags.components(separatedBy: CharacterSet(charactersIn: ",; "))
+                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines).trimmingCharacters(in: CharacterSet(charactersIn: "#")) }
+                .filter { !$0.isEmpty }
+
+            // Resolve Status
+            let rawStatus = statusIdx.flatMap { idx in row.count > idx ? row[idx] : nil }?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            let status: DeviceStatus
+            switch rawStatus.lowercased() {
+            case "online", "up", "active": status = .online
+            case "offline", "down": status = .offline
+            case "unresponsive": status = .unresponsive
+            default: status = .unknown
+            }
+
+            // Resolve SNMP
+            var snmpConfig: SNMPDeviceConfig? = nil
+            if let commIdx = snmpCommIdx, row.count > commIdx, !row[commIdx].isEmpty {
+                let comm = row[commIdx].trimmingCharacters(in: .whitespacesAndNewlines)
+                let port = snmpPortIdx.flatMap { idx in row.count > idx ? Int(row[idx]) : nil } ?? 161
+                let ver = snmpVerIdx.flatMap { idx in row.count > idx ? row[idx] : nil }?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "v2c"
+                snmpConfig = SNMPDeviceConfig(community: comm, port: port, version: ver)
+            }
+
+            do {
+                if var existing = try getDevice(byIP: ip) {
+                    existing.displayName = displayName
+                    existing.hostname = hostname
+                    if let m = cleanMAC { existing.macAddress = m }
+                    if resolvedVendor != .generic { existing.vendor = resolvedVendor }
+                    existing.role = resolvedRole
+                    if let p = platform, !p.isEmpty { existing.platform = p }
+                    if let m = model, !m.isEmpty { existing.model = m }
+                    if let s = site, !s.isEmpty { existing.site = s }
+                    for t in parsedTags where !existing.tags.contains(t) { existing.tags.append(t) }
+                    if status != .unknown { existing.status = status }
+                    if let snmp = snmpConfig { existing.snmpConfig = snmp }
+                    try updateDevice(existing)
+                    updated += 1
+                } else {
+                    let newDevice = NetworkDevice(
+                        id: UUID(),
+                        displayName: displayName,
+                        hostname: hostname,
+                        managementIP: ip,
+                        macAddress: cleanMAC,
+                        vendor: resolvedVendor,
+                        role: resolvedRole,
+                        platform: (platform?.isEmpty == false) ? platform : nil,
+                        model: (model?.isEmpty == false) ? model : nil,
+                        site: (site?.isEmpty == false) ? site : nil,
+                        tags: parsedTags,
+                        status: status,
+                        snmpConfig: snmpConfig,
+                        lastSeen: Date()
+                    )
+                    try createDevice(newDevice)
+                    added += 1
+                }
+            } catch {
+                errors.append("Row \(rowIdx) (\(ip)): \(error.localizedDescription)")
+            }
+        }
+
+        return DeviceImportResult(totalProcessed: rows.count - 1, addedCount: added, updatedCount: updated, errors: errors)
+    }
+
+    public func importDevicesFromJSON(data: Data) throws -> DeviceImportResult {
+        // First try standard NetworkDevice array
+        if let devices = try? JSONDecoder().decode([NetworkDevice].self, from: data) {
+            var added = 0
+            var updated = 0
+            var errors: [String] = []
+
+            for dev in devices {
+                do {
+                    if let _ = try getDevice(id: dev.id) {
+                        try updateDevice(dev)
+                        updated += 1
+                    } else if var existing = try getDevice(byIP: dev.managementIP) {
+                        existing.displayName = dev.displayName
+                        existing.hostname = dev.hostname
+                        if let m = dev.macAddress { existing.macAddress = m }
+                        existing.vendor = dev.vendor
+                        existing.role = dev.role
+                        existing.tags = dev.tags
+                        if let s = dev.site { existing.site = s }
+                        try updateDevice(existing)
+                        updated += 1
+                    } else {
+                        try createDevice(dev)
+                        added += 1
+                    }
+                } catch {
+                    errors.append("\(dev.displayName) (\(dev.managementIP)): \(error.localizedDescription)")
+                }
+            }
+            return DeviceImportResult(totalProcessed: devices.count, addedCount: added, updatedCount: updated, errors: errors)
+        }
+
+        // Generic JSON Dictionary array fallback
+        guard let jsonArray = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] else {
+            return DeviceImportResult(totalProcessed: 0, addedCount: 0, updatedCount: 0, errors: ["Data is not a valid JSON array of devices."])
+        }
+
+        var added = 0
+        var updated = 0
+        var errors: [String] = []
+
+        for (idx, dict) in jsonArray.enumerated() {
+            // Case-insensitive flexible key lookup
+            func lookupKey(_ keys: [String]) -> String? {
+                for k in keys {
+                    if let val = dict[k] as? String, !val.isEmpty { return val }
+                    if let entry = dict.first(where: { $0.key.caseInsensitiveCompare(k) == .orderedSame }),
+                       let val = entry.value as? String, !val.isEmpty {
+                        return val
+                    }
+                }
+                return nil
+            }
+
+            let ip = lookupKey(["managementIP", "ip", "ip_address", "ipaddress", "management_ip", "host_ip"]) ?? ""
+            guard !ip.isEmpty else {
+                errors.append("Item #\(idx): missing IP address")
+                continue
+            }
+
+            let name = lookupKey(["displayName", "name", "devicename", "device_name", "device", "hostname"]) ?? ip
+            let host = lookupKey(["hostname", "host", "name"]) ?? ip
+            let mac = lookupKey(["macAddress", "mac", "mac_address", "macaddress", "ethernet", "hwaddr"])
+            let vendorStr = lookupKey(["vendor", "manufacturer", "make"]) ?? ""
+            var vendor = resolveVendorString(vendorStr)
+            if vendor == .generic, let m = mac {
+                let inferred = OUIResolver.inferVendor(mac: m)
+                if inferred != .generic {
+                    vendor = inferred
+                } else if let resolved = OUIResolver.lookup(mac: m) {
+                    vendor = resolveVendorString(resolved)
+                }
+            }
+            let roleStr = lookupKey(["role", "type", "devicetype", "device_role", "category"]) ?? ""
+            let role = roleStr.isEmpty ? inferRoleFromVendor(vendor) : resolveRoleString(roleStr)
+            let site = lookupKey(["site", "location", "facility", "datacenter", "dc", "building"])
+            let platform = lookupKey(["platform", "os"])
+            let model = lookupKey(["model", "hardware"])
+
+            let tags: [String] = {
+                if let tagArray = dict["tags"] as? [String] {
+                    return tagArray
+                }
+                if let tagStr = lookupKey(["tags", "labels"]) {
+                    return tagStr.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+                }
+                return []
+            }()
+
+            do {
+                if var existing = try getDevice(byIP: ip) {
+                    existing.displayName = name
+                    existing.hostname = host
+                    if let m = mac { existing.macAddress = m }
+                    if vendor != .generic { existing.vendor = vendor }
+                    existing.role = role
+                    if let s = site { existing.site = s }
+                    if let p = platform { existing.platform = p }
+                    if let m = model { existing.model = m }
+                    for t in tags where !existing.tags.contains(t) { existing.tags.append(t) }
+                    try updateDevice(existing)
+                    updated += 1
+                } else {
+                    let newDev = NetworkDevice(
+                        id: UUID(),
+                        displayName: name,
+                        hostname: host,
+                        managementIP: ip,
+                        macAddress: mac,
+                        vendor: vendor,
+                        role: role,
+                        platform: platform,
+                        model: model,
+                        site: site,
+                        tags: tags,
+                        status: .unknown,
+                        lastSeen: Date()
+                    )
+                    try createDevice(newDev)
+                    added += 1
+                }
+            } catch {
+                errors.append("Item #\(idx) (\(ip)): \(error.localizedDescription)")
+            }
+        }
+
+        return DeviceImportResult(totalProcessed: jsonArray.count, addedCount: added, updatedCount: updated, errors: errors)
+    }
+
+    // MARK: - Topology Node Position Persistence
+
+    public func saveNodePosition(preset: String, nodeId: String, position: CGPoint) throws {
+        lock.lock()
+        defer { lock.unlock() }
+
+        let sql = """
+        INSERT INTO topology_node_positions (preset_id, node_id, x, y)
+        VALUES (?, ?, ?, ?)
+        ON CONFLICT(preset_id, node_id) DO UPDATE SET x = excluded.x, y = excluded.y;
+        """
+        let stmt = try database.prepare(sql: sql)
+        defer { sqlite3_finalize(stmt) }
+
+        sqlite3_bind_text(stmt, 1, (preset as NSString).utf8String, -1, nil)
+        sqlite3_bind_text(stmt, 2, (nodeId as NSString).utf8String, -1, nil)
+        sqlite3_bind_double(stmt, 3, Double(position.x))
+        sqlite3_bind_double(stmt, 4, Double(position.y))
+
+        if sqlite3_step(stmt) != SQLITE_DONE {
+            let err = String(cString: sqlite3_errmsg(database.rawHandle))
+            throw DeviceManagerError.databaseError("Failed to save node position: \(err)")
+        }
+    }
+
+    public func loadNodePositions(preset: String) throws -> [String: CGPoint] {
+        lock.lock()
+        defer { lock.unlock() }
+
+        let sql = "SELECT node_id, x, y FROM topology_node_positions WHERE preset_id = ?;"
+        let stmt = try database.prepare(sql: sql)
+        defer { sqlite3_finalize(stmt) }
+
+        sqlite3_bind_text(stmt, 1, (preset as NSString).utf8String, -1, nil)
+        var positions: [String: CGPoint] = [:]
+        while sqlite3_step(stmt) == SQLITE_ROW {
+            guard let nodeCStr = sqlite3_column_text(stmt, 0) else { continue }
+            let nodeId = String(cString: nodeCStr)
+            let x = sqlite3_column_double(stmt, 1)
+            let y = sqlite3_column_double(stmt, 2)
+            positions[nodeId] = CGPoint(x: x, y: y)
+        }
+        return positions
+    }
+
+    public func clearNodePositions(preset: String) throws {
+        lock.lock()
+        defer { lock.unlock() }
+
+        let sql = "DELETE FROM topology_node_positions WHERE preset_id = ?;"
+        let stmt = try database.prepare(sql: sql)
+        defer { sqlite3_finalize(stmt) }
+
+        sqlite3_bind_text(stmt, 1, (preset as NSString).utf8String, -1, nil)
+        _ = sqlite3_step(stmt)
+    }
+
+    // MARK: - Resolution Helpers
+
+    private func resolveVendorString(_ str: String) -> DeviceVendor {
+        if let exact = DeviceVendor(rawValue: str) { return exact }
+        let lower = str.lowercased()
+        for v in DeviceVendor.allCases {
+            if v.rawValue.lowercased() == lower { return v }
+        }
+        for v in DeviceVendor.allCases {
+            if lower.contains(v.rawValue.lowercased()) { return v }
+        }
+        return .generic
+    }
+
+    private func resolveRoleString(_ str: String) -> DeviceRole {
+        if let exact = DeviceRole(rawValue: str) { return exact }
+        let lower = str.lowercased()
+        for r in DeviceRole.allCases {
+            if r.rawValue.lowercased() == lower { return r }
+        }
+        if lower.contains("switch") { return .switchRole }
+        if lower.contains("router") || lower.contains("gateway") { return .router }
+        if lower.contains("firewall") || lower.contains("sec") { return .firewall }
+        if lower.contains("ap") || lower.contains("access point") || lower.contains("wifi") { return .accessPoint }
+        if lower.contains("server") { return .server }
+        if lower.contains("workstation") || lower.contains("pc") || lower.contains("mac") || lower.contains("laptop") { return .workstation }
+        return .other
+    }
+
+    private func inferRoleFromVendor(_ vendor: DeviceVendor) -> DeviceRole {
+        switch vendor {
+        case .cisco, .arista, .juniper: return .switchRole
+        case .linksys, .netgear, .tpLink, .asus, .avm, .zyxel, .dlink: return .router
+        case .ubiquiti: return .accessPoint
+        case .paloAlto, .fortinet: return .firewall
+        case .apple, .dell, .lenovo, .microsoft: return .workstation
+        case .linux, .vmware, .synology, .qnap: return .server
+        default: return .switchRole
+        }
     }
 
     // MARK: - Private Parsers
