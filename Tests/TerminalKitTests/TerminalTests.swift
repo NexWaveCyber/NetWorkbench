@@ -641,6 +641,56 @@ struct TerminalTests {
         let lastLine = session.lines.last?.text ?? ""
         #expect(lastLine.contains("Progress: 100%"))
     }
+
+    @Test("Terminal Session handles character-by-character interactive streaming without line fragmentation")
+    func testCharacterByCharacterStreaming() {
+        let session = TerminalSession(
+            title: "Interactive Streaming Test",
+            connectionType: .localShell
+        )
+
+        // 1. Initial shell prompt arrives without trailing newline
+        session.appendOutput("user@mac ~ % ")
+        #expect(session.lines.count == 1)
+        #expect(session.lines.first?.text == "user@mac ~ % ")
+
+        // 2. User types keystrokes character-by-character: 'u', 'n', 'a', 'm', 'e'
+        let keystrokes = ["u", "n", "a", "m", "e"]
+        for char in keystrokes {
+            session.appendOutput(char)
+        }
+
+        // Must stay on the SAME line without creating separate rows
+        #expect(session.lines.count == 1)
+        #expect(session.lines.first?.text == "user@mac ~ % uname")
+
+        // 3. User hits backspace twice, then types "p"
+        session.appendOutput("\u{08} \u{08}\u{08} \u{08}")
+        #expect(session.lines.count == 1)
+        #expect(session.lines.first?.text == "user@mac ~ % una")
+
+        session.appendOutput("p")
+        #expect(session.lines.count == 1)
+        #expect(session.lines.first?.text == "user@mac ~ % unap")
+
+        // 4. User hits Return (\r\n) -> commits line 1
+        session.appendOutput("\r\n")
+        #expect(session.lines.count == 1)
+        #expect(session.lines.first?.text == "user@mac ~ % unap")
+
+        // 5. Command output arrives with newlines
+        session.appendOutput("Darwin Kernel Version 23.6.0\r\nuser@mac ~ % ")
+        #expect(session.lines.count == 3)
+        #expect(session.lines[0].text == "user@mac ~ % unap")
+        #expect(session.lines[1].text == "Darwin Kernel Version 23.6.0")
+        #expect(session.lines[2].text == "user@mac ~ % ")
+
+        // 6. Next keystrokes accumulate on prompt line 3
+        session.appendOutput("l")
+        session.appendOutput("s")
+        #expect(session.lines.count == 3)
+        #expect(session.lines[2].text == "user@mac ~ % ls")
+    }
 }
 
 

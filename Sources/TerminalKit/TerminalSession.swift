@@ -18,6 +18,9 @@ public final class TerminalSession: Identifiable, @unchecked Sendable {
     private var ptyRunner: PTYProcessRunner?
     private var simulatedCLI: SimulatedDeviceCLI?
     private let logQueue = DispatchQueue(label: "com.nexwave.terminal.logging", qos: .utility)
+    private var isLastLineOpen: Bool = false
+    private var activeANSIStyle: ANSIStyle = .default
+    private var pendingCR: Bool = false
 
     public init(
         id: UUID = UUID(),
@@ -306,6 +309,9 @@ public final class TerminalSession: Identifiable, @unchecked Sendable {
     /// Clear output buffer
     public func clear() {
         lines.removeAll()
+        isLastLineOpen = false
+        activeANSIStyle = .default
+        pendingCR = false
     }
 
     /// Filter and search transcript lines by query
@@ -339,29 +345,65 @@ public final class TerminalSession: Identifiable, @unchecked Sendable {
     public func appendOutput(_ chunk: String) {
         // Continuous session logging
         writeToLogFile(chunk)
+        guard !chunk.isEmpty else { return }
 
-        // Parse chunk into styled lines preserving ANSI SGR color attributes
-        let parsed = ANSISGRParser.shared.parseLines(from: chunk)
-        guard !parsed.isEmpty else { return }
+        var raw = chunk
 
-        // Process keywords in batch
-        let processedLines: [TerminalLine]
-        if syntaxHighlightConfig.isEnabled {
-            processedLines = parsed.map { TerminalKeywordHighlighter.shared.highlight(line: $0, config: syntaxHighlightConfig) }
-        } else {
-            processedLines = parsed
-        }
-
-        // Handle in-place overwrite if chunk began with \r and previous line exists
-        if chunk.hasPrefix("\r") && !lines.isEmpty {
-            if let first = processedLines.first {
-                lines[lines.count - 1] = first
-                if processedLines.count > 1 {
-                    lines.append(contentsOf: processedLines.dropFirst())
+        // Handle CR split across chunk boundary: if previous chunk ended with \r
+        if pendingCR {
+            pendingCR = false
+            if raw.hasPrefix("\n") {
+                // The previous \r and this \n formed \r\n (a newline)
+                raw.removeFirst()
+                if isLastLineOpen {
+                    isLastLineOpen = false
+                } else {
+                    appendEmptyLine()
+                }
+                guard !raw.isEmpty else { return }
+            } else {
+                // The previous \r was a standalone carriage return!
+                if isLastLineOpen && !lines.isEmpty {
+                    lines[lines.count - 1] = TerminalLine(
+                        id: lines[lines.count - 1].id,
+                        text: "",
+                        spans: [],
+                        isCommandInput: lines[lines.count - 1].isCommandInput,
+                        timestamp: lines[lines.count - 1].timestamp
+                    )
                 }
             }
-        } else {
-            lines.append(contentsOf: processedLines)
+        }
+
+        // Check if current chunk ends with a standalone \r that might form \r\n in next chunk
+        if raw.hasSuffix("\r") {
+            pendingCR = true
+            raw.removeLast()
+            if raw.isEmpty { return }
+        }
+
+        // Normalize \r\n to \n
+        let normalized = raw.replacingOccurrences(of: "\r\n", with: "\n")
+        let endsInNewline = normalized.hasSuffix("\n")
+        var rawComponents = normalized.components(separatedBy: "\n")
+
+        if endsInNewline && !rawComponents.isEmpty && rawComponents.last == "" {
+            rawComponents.removeLast()
+        }
+        guard !rawComponents.isEmpty else {
+            if endsInNewline {
+                if isLastLineOpen {
+                    isLastLineOpen = false
+                } else {
+                    appendEmptyLine()
+                }
+            }
+            return
+        }
+
+        for (index, rawComp) in rawComponents.enumerated() {
+            let isTerminated = (index < rawComponents.count - 1) || endsInNewline
+            processLineSegment(rawComp, isTerminated: isTerminated)
         }
 
         // Amortized trimming: trim excess in proportional batches to eliminate O(N) shifts on every line
@@ -371,10 +413,155 @@ public final class TerminalSession: Identifiable, @unchecked Sendable {
         }
     }
 
+    private func processLineSegment(_ rawComp: String, isTerminated: Bool) {
+        var comp = rawComp.replacingOccurrences(of: "\u{08} \u{08}", with: "\u{08}")
+
+        // Check for carriage return within or at start of segment
+        let isCarriageReturnReset = comp.hasPrefix("\r")
+        if comp.contains("\r") {
+            let parts = comp.components(separatedBy: "\r")
+            comp = parts.last ?? ""
+        }
+
+        let (leadingBackspaces, resolvedText) = resolveBackspaces(in: comp)
+
+        if isLastLineOpen && !lines.isEmpty {
+            let lastIndex = lines.count - 1
+            let existingLine = lines[lastIndex]
+
+            if isCarriageReturnReset {
+                // Standalone \r: overwrite line from column 0
+                let (newSpans, updatedStyle) = ANSISGRParser.shared.parseSpans(from: resolvedText, initialStyle: .default)
+                self.activeANSIStyle = updatedStyle
+                let plainText = newSpans.map(\.text).joined()
+                let updatedLine = TerminalLine(
+                    id: existingLine.id,
+                    text: plainText,
+                    spans: newSpans,
+                    isCommandInput: existingLine.isCommandInput,
+                    timestamp: existingLine.timestamp
+                )
+                let highlighted = syntaxHighlightConfig.isEnabled ?
+                    TerminalKeywordHighlighter.shared.highlight(line: updatedLine, config: syntaxHighlightConfig) : updatedLine
+                lines[lastIndex] = highlighted
+            } else {
+                var currentText = existingLine.text
+                var currentSpans = existingLine.spans
+                if leadingBackspaces > 0 {
+                    let removeCount = min(leadingBackspaces, currentText.count)
+                    currentText = String(currentText.dropLast(removeCount))
+                    currentSpans = trimSpans(currentSpans, count: removeCount)
+                }
+
+                if !resolvedText.isEmpty {
+                    let (newSpans, updatedStyle) = ANSISGRParser.shared.parseSpans(from: resolvedText, initialStyle: activeANSIStyle)
+                    self.activeANSIStyle = updatedStyle
+                    let mergedSpans = mergeSpans(existing: currentSpans, appending: newSpans)
+                    let updatedText = currentText + newSpans.map(\.text).joined()
+                    let updatedLine = TerminalLine(
+                        id: existingLine.id,
+                        text: updatedText,
+                        spans: mergedSpans,
+                        isCommandInput: existingLine.isCommandInput,
+                        timestamp: existingLine.timestamp
+                    )
+                    let highlighted = syntaxHighlightConfig.isEnabled ?
+                        TerminalKeywordHighlighter.shared.highlight(line: updatedLine, config: syntaxHighlightConfig) : updatedLine
+                    lines[lastIndex] = highlighted
+                } else if leadingBackspaces > 0 {
+                    let updatedLine = TerminalLine(
+                        id: existingLine.id,
+                        text: currentText,
+                        spans: currentSpans,
+                        isCommandInput: existingLine.isCommandInput,
+                        timestamp: existingLine.timestamp
+                    )
+                    lines[lastIndex] = updatedLine
+                }
+            }
+
+            if isTerminated {
+                isLastLineOpen = false
+            }
+        } else {
+            // New line
+            let (spans, updatedStyle) = ANSISGRParser.shared.parseSpans(from: resolvedText, initialStyle: activeANSIStyle)
+            self.activeANSIStyle = updatedStyle
+            let plainText = spans.map(\.text).joined()
+            let newLine = TerminalLine(text: plainText, spans: spans)
+            let highlighted = syntaxHighlightConfig.isEnabled ?
+                TerminalKeywordHighlighter.shared.highlight(line: newLine, config: syntaxHighlightConfig) : newLine
+            lines.append(highlighted)
+
+            isLastLineOpen = !isTerminated
+        }
+    }
+
+    private func appendEmptyLine() {
+        let emptyLine = TerminalLine(text: "", spans: [ANSISpan(text: "")])
+        lines.append(emptyLine)
+        isLastLineOpen = false
+    }
+
+    private func mergeSpans(existing: [ANSISpan], appending newSpans: [ANSISpan]) -> [ANSISpan] {
+        guard !newSpans.isEmpty else { return existing }
+        guard !existing.isEmpty else { return newSpans }
+
+        var result = existing
+        for newSpan in newSpans {
+            guard !newSpan.text.isEmpty else { continue }
+            if let last = result.last, last.style == newSpan.style {
+                result[result.count - 1] = ANSISpan(
+                    id: last.id,
+                    text: last.text + newSpan.text,
+                    style: last.style
+                )
+            } else {
+                result.append(newSpan)
+            }
+        }
+        return result
+    }
+
+    private func trimSpans(_ spans: [ANSISpan], count: Int) -> [ANSISpan] {
+        var toRemove = count
+        var result = spans
+
+        while toRemove > 0 && !result.isEmpty {
+            let last = result.removeLast()
+            if last.text.count <= toRemove {
+                toRemove -= last.text.count
+            } else {
+                let newText = String(last.text.dropLast(toRemove))
+                result.append(ANSISpan(id: last.id, text: newText, style: last.style))
+                toRemove = 0
+            }
+        }
+        return result
+    }
+
+    private func resolveBackspaces(in text: String) -> (leadingBackspaces: Int, resolvedText: String) {
+        var leading = 0
+        var chars: [Character] = []
+        for ch in text {
+            if ch == "\u{08}" || ch == "\u{7F}" {
+                if !chars.isEmpty {
+                    chars.removeLast()
+                } else {
+                    leading += 1
+                }
+            } else {
+                chars.append(ch)
+            }
+        }
+        return (leading, String(chars))
+    }
+
     public func appendLine(_ line: TerminalLine) {
         let processed = syntaxHighlightConfig.isEnabled ?
             TerminalKeywordHighlighter.shared.highlight(line: line, config: syntaxHighlightConfig) : line
         lines.append(processed)
+        isLastLineOpen = false
         let excessThreshold = max(20, min(200, maxBufferedLines / 10))
         if lines.count > maxBufferedLines + excessThreshold {
             lines.removeFirst(lines.count - maxBufferedLines)
