@@ -102,6 +102,7 @@ public struct TerminalWorkbenchView: View {
     @State private var isRunningScript: Bool = false
     @State private var scriptCurrentLineIndex: Int = 0
     @State private var scriptTotalLines: Int = 0
+    @State private var scriptExecutionError: String? = nil
 
     // New Session Form States
     @State private var newSessionType: Int = 0 // 0: SSH, 1: Telnet / TCP, 2: Serial, 3: Simulation, 4: Local Shell
@@ -358,6 +359,10 @@ public struct TerminalWorkbenchView: View {
                     .keyboardShortcut("u", modifiers: [.command, .shift])
                 Button("") { showProfileVaultSheet.toggle() }
                     .keyboardShortcut("p", modifiers: [.command, .shift])
+                Button("") { showSSHKeyStudioSheet.toggle() }
+                    .keyboardShortcut("k", modifiers: [.command, .shift])
+                Button("") { showPacedPasteSheet.toggle() }
+                    .keyboardShortcut("r", modifiers: [.command, .shift])
             }
             .opacity(0)
             .allowsHitTesting(false)
@@ -657,6 +662,8 @@ public struct TerminalWorkbenchView: View {
                             Label(activeSession?.isRecording == true ? "Stop Asciinema Recording" : "Record Session (.cast)",
                                   systemImage: activeSession?.isRecording == true ? "stop.circle.fill" : "record.circle")
                         }
+                        .disabled(activeSession == nil)
+
                         if let s = activeSession, case .serial = s.connectionType {
                             Button(action: { showModemSignalSheet = true }) {
                                 Label("Modem Signal Lines (DTR/RTS)", systemImage: "waveform.path.badge.plus")
@@ -665,6 +672,8 @@ public struct TerminalWorkbenchView: View {
                         Button(action: sendHardwareBreak) {
                             Label("Send Hardware Break (ROMMON)", systemImage: "bolt.badge.clock")
                         }
+                        .disabled(activeSession == nil)
+
                         Button(action: { showPacedPasteSheet = true }) {
                             Label("Paced Script Runner", systemImage: "doc.text.fill")
                         }
@@ -674,21 +683,54 @@ public struct TerminalWorkbenchView: View {
                     }
 
                     Section("External Terminal Bridge") {
-                        if let session = activeSession, case .ssh(let host, let port, let user, _, _, _, _) = session.connectionType {
-                            Button("Open in macOS Terminal") {
-                                let cmd = ExternalTerminalBridge.shared.sshCommand(host: host, port: port, username: user)
-                                ExternalTerminalBridge.shared.launchInTerminalApp(command: cmd)
-                            }
-                            if ExternalTerminalBridge.shared.isITermInstalled {
-                                Button("Open in iTerm2") {
+                        if let session = activeSession {
+                            switch session.connectionType {
+                            case .ssh(let host, let port, let user, _, _, _, _):
+                                Button("Open SSH in macOS Terminal") {
                                     let cmd = ExternalTerminalBridge.shared.sshCommand(host: host, port: port, username: user)
-                                    ExternalTerminalBridge.shared.launchInITerm2(command: cmd)
+                                    ExternalTerminalBridge.shared.launchInTerminalApp(command: cmd)
                                 }
-                            }
-                            Button("Copy SSH Command") {
-                                let cmd = ExternalTerminalBridge.shared.sshCommand(host: host, port: port, username: user)
-                                NSPasteboard.general.clearContents()
-                                NSPasteboard.general.setString(cmd, forType: .string)
+                                if ExternalTerminalBridge.shared.isITermInstalled {
+                                    Button("Open SSH in iTerm2") {
+                                        let cmd = ExternalTerminalBridge.shared.sshCommand(host: host, port: port, username: user)
+                                        ExternalTerminalBridge.shared.launchInITerm2(command: cmd)
+                                    }
+                                }
+                                Button("Copy SSH Command") {
+                                    let cmd = ExternalTerminalBridge.shared.sshCommand(host: host, port: port, username: user)
+                                    NSPasteboard.general.clearContents()
+                                    NSPasteboard.general.setString(cmd, forType: .string)
+                                }
+                            case .telnet(let host, let port):
+                                Button("Open Telnet in macOS Terminal") {
+                                    let cmd = ExternalTerminalBridge.shared.telnetCommand(host: host, port: port)
+                                    ExternalTerminalBridge.shared.launchInTerminalApp(command: cmd)
+                                }
+                                if ExternalTerminalBridge.shared.isITermInstalled {
+                                    Button("Open Telnet in iTerm2") {
+                                        let cmd = ExternalTerminalBridge.shared.telnetCommand(host: host, port: port)
+                                        ExternalTerminalBridge.shared.launchInITerm2(command: cmd)
+                                    }
+                                }
+                                Button("Copy Telnet Command") {
+                                    let cmd = ExternalTerminalBridge.shared.telnetCommand(host: host, port: port)
+                                    NSPasteboard.general.clearContents()
+                                    NSPasteboard.general.setString(cmd, forType: .string)
+                                }
+                            case .serial(let path, let baud, _, _, _):
+                                Button("Open Serial in macOS Terminal") {
+                                    let cmd = ExternalTerminalBridge.shared.serialScreenCommand(devicePath: path, baudRate: baud)
+                                    ExternalTerminalBridge.shared.launchInTerminalApp(command: cmd)
+                                }
+                                Button("Copy Screen Command") {
+                                    let cmd = ExternalTerminalBridge.shared.serialScreenCommand(devicePath: path, baudRate: baud)
+                                    NSPasteboard.general.clearContents()
+                                    NSPasteboard.general.setString(cmd, forType: .string)
+                                }
+                            default:
+                                Button("Open macOS Terminal.app") {
+                                    ExternalTerminalBridge.shared.launchInTerminalApp(command: "echo 'NexWave Terminal Active'")
+                                }
                             }
                         } else {
                             Button("Open macOS Terminal.app") {
@@ -2329,12 +2371,12 @@ public struct TerminalWorkbenchView: View {
 
                 Picker("Folder", selection: $selectedVaultFolder) {
                     Text("All Folders").tag("All")
-                    Text("Data Center").tag("Data Center")
-                    Text("Campus Access").tag("Campus Access")
-                    Text("Lab Rack").tag("Lab Rack")
+                    ForEach(state.terminalManager.folders) { folder in
+                        Text(folder.name).tag(folder.name)
+                    }
                 }
                 .pickerStyle(.menu)
-                .frame(width: 140)
+                .frame(width: 150)
             }
             .padding(8)
             .background(Theme.cardBackground)
@@ -2368,7 +2410,16 @@ public struct TerminalWorkbenchView: View {
                                     Text(profile.connectionType.uppercased())
                                         .font(.system(size: 9, weight: .bold))
                                         .foregroundColor(Theme.neonCyan)
-                                    Text(profile.host.isEmpty ? profile.serialPath : "\(profile.username)@\(profile.host):\(profile.port)")
+                                    let endpointText: String = {
+                                        if !profile.serialPath.isEmpty {
+                                            return "\(profile.serialPath) (\(profile.serialBaud) baud)"
+                                        } else if profile.username.isEmpty {
+                                            return "\(profile.host):\(profile.port)"
+                                        } else {
+                                            return "\(profile.username)@\(profile.host):\(profile.port)"
+                                        }
+                                    }()
+                                    Text(endpointText)
                                         .font(Theme.monoText(10))
                                         .foregroundColor(.secondary)
                                 }
@@ -2423,6 +2474,46 @@ public struct TerminalWorkbenchView: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
+            if let err = scriptExecutionError {
+                HStack(alignment: .top, spacing: 8) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundColor(Theme.solarAmber)
+                        .font(.system(size: 13))
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Execution Paused Due to Network Device Error")
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundColor(.white)
+                        Text(err)
+                            .font(Theme.monoText(10))
+                            .foregroundColor(Theme.solarAmber)
+                    }
+                    Spacer()
+                    Button("Dismiss") {
+                        scriptExecutionError = nil
+                    }
+                    .buttonStyle(.plain)
+                    .font(.system(size: 10))
+                    .foregroundColor(.secondary)
+                }
+                .padding(8)
+                .background(Theme.solarAmber.opacity(0.12))
+                .cornerRadius(6)
+                .overlay(RoundedRectangle(cornerRadius: 6).stroke(Theme.solarAmber.opacity(0.3), lineWidth: 1))
+            }
+
+            if activeSession == nil {
+                HStack(spacing: 6) {
+                    Image(systemName: "info.circle.fill")
+                        .foregroundStyle(Theme.neonCyan)
+                    Text("No active terminal tab selected. Open or select a session tab before transmitting scripts.")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                }
+                .padding(8)
+                .background(Theme.cardBackground)
+                .cornerRadius(6)
+            }
+
             TextEditor(text: $scriptText)
                 .font(Theme.monoText(11))
                 .frame(height: 180)
@@ -2461,7 +2552,7 @@ public struct TerminalWorkbenchView: View {
                 .buttonStyle(.borderedProminent)
                 .tint(Theme.cyanPulse)
                 .foregroundStyle(Color.black)
-                .disabled(scriptText.isEmpty || isRunningScript)
+                .disabled(scriptText.isEmpty || isRunningScript || activeSession == nil)
             }
         }
         .padding(20)
@@ -2662,22 +2753,51 @@ public struct TerminalWorkbenchView: View {
         guard !rawLines.isEmpty else { return }
 
         isRunningScript = true
+        scriptExecutionError = nil
         scriptTotalLines = rawLines.count
         scriptCurrentLineIndex = 0
 
         Task {
+            var caughtError: String? = nil
             for (idx, line) in rawLines.enumerated() {
                 guard isRunningScript else { break }
-                await MainActor.run {
+                let lineCountBefore = await MainActor.run { () -> Int in
                     scriptCurrentLineIndex = idx + 1
+                    let c = session.lines.count
                     session.sendCommand(line)
+                    return c
                 }
+
                 try? await Task.sleep(nanoseconds: UInt64(scriptDelayMs * 1_000_000))
+
+                if stopOnError {
+                    let foundError = await MainActor.run { () -> String? in
+                        let currentLines = session.lines
+                        let newCount = max(0, currentLines.count - lineCountBefore)
+                        let inspected = currentLines.suffix(max(1, newCount))
+                        for l in inspected {
+                            let t = l.text.trimmingCharacters(in: .whitespaces)
+                            if t.hasPrefix("% ") || t.contains("% Invalid") || t.contains("% Incomplete") || t.contains("% Ambiguous") || t.contains("% Unknown") || t.contains("% Error") || t.contains("% Bad") {
+                                return t
+                            }
+                        }
+                        return nil
+                    }
+                    if let err = foundError {
+                        caughtError = err
+                        break
+                    }
+                }
             }
+
             await MainActor.run {
                 isRunningScript = false
-                showPacedPasteSheet = false
-                scriptText = ""
+                if let err = caughtError {
+                    scriptExecutionError = err
+                } else {
+                    showPacedPasteSheet = false
+                    scriptText = ""
+                }
             }
         }
     }
@@ -3867,6 +3987,16 @@ public struct TerminalWorkbenchView: View {
                 .foregroundStyle(.secondary)
 
             HStack(spacing: 8) {
+                if !localKeys.isEmpty {
+                    Picker("Key", selection: $selectedKeyForDeploy) {
+                        ForEach(localKeys) { key in
+                            Text(key.name).tag(key.publicKeyPath)
+                        }
+                    }
+                    .pickerStyle(.menu)
+                    .frame(width: 140)
+                }
+
                 TextField("Server Host (IP / Domain)", text: $deployHost)
                     .textFieldStyle(.roundedBorder)
                 TextField("Port", text: $deployPort)
@@ -3877,12 +4007,18 @@ public struct TerminalWorkbenchView: View {
                     .frame(width: 80)
 
                 Button(isDeployingKey ? "Deploying..." : "Deploy Key") {
-                    if let firstKey = localKeys.first {
-                        deploySelectedKey(firstKey: firstKey)
+                    let keyToDeploy = localKeys.first(where: { $0.publicKeyPath == selectedKeyForDeploy }) ?? localKeys.first
+                    if let key = keyToDeploy {
+                        deploySelectedKey(targetKey: key)
                     }
                 }
                 .buttonStyle(.bordered)
                 .disabled(deployHost.isEmpty || localKeys.isEmpty || isDeployingKey)
+            }
+            .onAppear {
+                if selectedKeyForDeploy.isEmpty, let first = localKeys.first {
+                    selectedKeyForDeploy = first.publicKeyPath
+                }
             }
 
             if let msg = deployStatusMsg {
@@ -3893,13 +4029,13 @@ public struct TerminalWorkbenchView: View {
         }
     }
 
-    private func deploySelectedKey(firstKey: SSHKeyInfo) {
+    private func deploySelectedKey(targetKey: SSHKeyInfo) {
         guard !deployHost.isEmpty else { return }
         isDeployingKey = true
         let host = deployHost
         let port = Int(deployPort) ?? 22
         let user = deployUser
-        let path = firstKey.publicKeyPath
+        let path = targetKey.publicKeyPath
         Task {
             do {
                 let res = try await state.terminalManager.keyStudio.deployKeyToServer(

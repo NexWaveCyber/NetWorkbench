@@ -33,6 +33,11 @@ public struct ExternalTerminalBridge: Sendable {
         "screen \(devicePath) \(baudRate)"
     }
 
+    /// Generate telnet command for external shell
+    public func telnetCommand(host: String, port: Int = 23) -> String {
+        "telnet \(host) \(port)"
+    }
+
     /// Open connection in macOS Terminal.app via AppleScript
     @MainActor
     public func launchInTerminalApp(command: String) {
