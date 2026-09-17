@@ -1,23 +1,35 @@
 import Foundation
 import Network
+import NetworkCore
 
-/// High-speed local LAN neighbor discoverer using zero-root macOS neighbor tables and Bonjour.
+/// High-speed local LAN neighbor discoverer using zero-root macOS neighbor tables, active subnet sweep, and Bonjour mDNS.
 public actor LocalDiscoveryEngine {
     public init() {}
 
-    /// Discovers local network neighbors across ARP (IPv4) and NDP (IPv6) tables.
-    public func discoverNeighbors() async -> [DiscoveredNeighbor] {
+    /// Discovers local network neighbors across ARP (IPv4), NDP (IPv6), and Bonjour mDNS services.
+    /// - Parameter performSweep: If true, proactively sends gentle unprivileged probes across the /24 subnet to wake dormant hosts.
+    public func discoverNeighbors(performSweep: Bool = true) async -> [DiscoveredNeighbor] {
+        // 1. Proactive gentle sweep to wake dormant devices into Darwin kernel ARP cache
+        if performSweep {
+            await sweepActiveSubnet()
+        }
+
+        // 2. Discover Bonjour / mDNS network services concurrently
+        let bonjourMap = await browseBonjourServices()
+
         var results: [String: DiscoveredNeighbor] = [:]
 
-        // 1. Ingest IPv4 ARP cache
+        // 3. Ingest IPv4 ARP cache
         let arpNeighbors = parseARPOutput(runCommand("/usr/sbin/arp", arguments: ["-an"]))
         for n in arpNeighbors {
+            guard isEligibleHost(ip: n.ipAddress, interface: n.interface) else { continue }
             results[n.ipAddress] = n
         }
 
-        // 2. Ingest IPv6 NDP cache
+        // 4. Ingest IPv6 NDP cache
         let ndpNeighbors = parseNDPOutput(runCommand("/usr/sbin/ndp", arguments: ["-an"]))
         for n in ndpNeighbors {
+            guard isEligibleHost(ip: n.ipAddress, interface: n.interface) else { continue }
             if var existing = results[n.ipAddress] {
                 existing.discoveredServices.append(contentsOf: n.discoveredServices)
                 results[n.ipAddress] = existing
@@ -26,13 +38,228 @@ public actor LocalDiscoveryEngine {
             }
         }
 
-        return Array(results.values).sorted { $0.ipAddress < $1.ipAddress }
+        // 5. Enrich with Bonjour hostnames, services, and Reverse DNS PTR
+        var enriched: [DiscoveredNeighbor] = []
+        for var neighbor in results.values {
+            // Apply Bonjour metadata if available
+            if let bj = bonjourMap[neighbor.ipAddress] {
+                if neighbor.hostname == nil || neighbor.hostname?.isEmpty == true {
+                    neighbor.hostname = bj.hostname
+                }
+                for s in bj.services where !neighbor.discoveredServices.contains(s) {
+                    neighbor.discoveredServices.append(s)
+                }
+            }
+
+            // Fallback to Reverse DNS PTR query if hostname is still empty
+            if neighbor.hostname == nil || neighbor.hostname?.isEmpty == true {
+                if let ptrName = resolveReverseDNS(ip: neighbor.ipAddress) {
+                    neighbor.hostname = ptrName
+                }
+            }
+
+            // If neighbor has Bonjour services, upgrade source to combined
+            if !neighbor.discoveredServices.isEmpty && neighbor.discoverySource != .bonjour {
+                neighbor = DiscoveredNeighbor(
+                    ipAddress: neighbor.ipAddress,
+                    macAddress: neighbor.macAddress,
+                    hostname: neighbor.hostname,
+                    interface: neighbor.interface,
+                    discoverySource: .combined,
+                    ouiVendor: neighbor.ouiVendor,
+                    discoveredServices: neighbor.discoveredServices,
+                    lastSeen: neighbor.lastSeen
+                )
+            }
+
+            enriched.append(neighbor)
+        }
+
+        return enriched.sorted {
+            // Natural sort: IPv4 before IPv6, then numerically
+            if $0.ipAddress.contains(".") && !$1.ipAddress.contains(".") { return true }
+            if !$0.ipAddress.contains(".") && $1.ipAddress.contains(".") { return false }
+            return $0.ipAddress < $1.ipAddress
+        }
     }
 
+    // MARK: - Active Subnet Sweep
+
+    /// Rapid unprivileged sweep of the local IPv4 /24 subnet to populate macOS ARP cache.
+    public func sweepActiveSubnet() async {
+        guard let subnetPrefix = detectLocalIPv4SubnetPrefix() else { return }
+
+        // Sweep 1...254 with 32 concurrent unprivileged TCP/UDP touch tasks
+        await withTaskGroup(of: Void.self) { group in
+            for hostNum in 1...254 {
+                let targetIP = "\(subnetPrefix).\(hostNum)"
+                group.addTask {
+                    let endpoint = NWEndpoint.hostPort(
+                        host: NWEndpoint.Host(targetIP),
+                        port: NWEndpoint.Port(rawValue: 80)!
+                    )
+                    let params = NWParameters.tcp
+                    params.prohibitExpensivePaths = false
+                    let conn = NWConnection(to: endpoint, using: params)
+                    conn.start(queue: .global(qos: .utility))
+
+                    try? await Task.sleep(nanoseconds: 120_000_000) // 120ms probe
+                    conn.cancel()
+                }
+            }
+        }
+    }
+
+    private func detectLocalIPv4SubnetPrefix() -> String? {
+        let output = runCommand("/sbin/ifconfig", arguments: ["en0"])
+        let lines = output.components(separatedBy: .newlines)
+        for line in lines {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            if trimmed.hasPrefix("inet ") {
+                let parts = trimmed.components(separatedBy: .whitespaces)
+                if parts.count >= 2 {
+                    let ip = parts[1]
+                    let octets = ip.split(separator: ".")
+                    if octets.count == 4 {
+                        return "\(octets[0]).\(octets[1]).\(octets[2])"
+                    }
+                }
+            }
+        }
+        return nil
+    }
+
+    // MARK: - Bonjour / mDNS Discovery
+
+    public struct BonjourInfo: Sendable {
+        public var hostname: String
+        public var services: [String]
+    }
+
+    private final class DiscoveredBox: @unchecked Sendable {
+        private let lock = NSLock()
+        private var item: (String, String, String)?
+        func set(_ value: (String, String, String)) {
+            lock.lock()
+            defer { lock.unlock() }
+            item = value
+        }
+        func get() -> (String, String, String)? {
+            lock.lock()
+            defer { lock.unlock() }
+            return item
+        }
+    }
+
+    /// Discovers local Bonjour announcements across common service protocols.
+    private func browseBonjourServices() async -> [String: BonjourInfo] {
+        var map: [String: BonjourInfo] = [:]
+        let serviceTypes: [(type: String, label: String)] = [
+            ("_http._tcp", "HTTP Web UI"),
+            ("_https._tcp", "HTTPS Web UI"),
+            ("_ssh._tcp", "SSH Terminal"),
+            ("_smb._tcp", "SMB File Sharing"),
+            ("_airplay._tcp", "AirPlay Display"),
+            ("_raop._tcp", "AirPlay Audio"),
+            ("_googlecast._tcp", "Google Cast"),
+            ("_printer._tcp", "IPP Printer"),
+            ("_ipp._tcp", "IPP Printer"),
+            ("_workstation._tcp", "Mac Workstation")
+        ]
+
+        await withTaskGroup(of: (String, String, String)?.self) { group in
+            for s in serviceTypes {
+                group.addTask {
+                    let box = DiscoveredBox()
+                    let descriptor = NWBrowser.Descriptor.bonjour(type: s.type, domain: "local.")
+                    let browser = NWBrowser(for: descriptor, using: .tcp)
+
+                    browser.browseResultsChangedHandler = { results, _ in
+                        for res in results {
+                            if case .service(let name, _, _, let iface) = res.endpoint {
+                                box.set((name, s.label, iface?.name ?? "en0"))
+                            }
+                        }
+                    }
+
+                    browser.start(queue: .global(qos: .utility))
+                    try? await Task.sleep(nanoseconds: 600_000_000) // 600ms listener window
+                    browser.cancel()
+                    return box.get()
+                }
+            }
+
+            for await result in group {
+                if let (name, label, _) = result {
+                    // Match by resolved mDNS hostname if resolvable
+                    let cleanHost = name.replacingOccurrences(of: " ", with: "-") + ".local"
+                    map[cleanHost, default: BonjourInfo(hostname: name, services: [])].services.append(label)
+                }
+            }
+        }
+
+        return map
+    }
+
+    // MARK: - Reverse DNS PTR Resolver
+
+    private func resolveReverseDNS(ip: String) -> String? {
+        var hints = addrinfo()
+        hints.ai_family = AF_UNSPEC
+        hints.ai_socktype = SOCK_STREAM
+        hints.ai_flags = AI_NUMERICHOST
+
+        var res: UnsafeMutablePointer<addrinfo>?
+        guard getaddrinfo(ip, nil, &hints, &res) == 0, let addr = res else {
+            return nil
+        }
+        defer { freeaddrinfo(res) }
+
+        var hostBuffer = [CChar](repeating: 0, count: Int(NI_MAXHOST))
+        let status = getnameinfo(
+            addr.pointee.ai_addr,
+            addr.pointee.ai_addrlen,
+            &hostBuffer,
+            socklen_t(hostBuffer.count),
+            nil,
+            0,
+            NI_NAMEREQD
+        )
+
+        if status == 0 {
+            let name = hostBuffer.withUnsafeBufferPointer { ptr -> String in
+                guard let base = ptr.baseAddress else { return "" }
+                return String(cString: base)
+            }
+            if !name.isEmpty && name != ip {
+                return name
+            }
+        }
+        return nil
+    }
+
+    // MARK: - Filtering & Eligibility
+
+    private func isEligibleHost(ip: String, interface: String) -> Bool {
+        // Filter out multicast
+        if ip.hasPrefix("224.") || ip.hasPrefix("225.") || ip.hasPrefix("239.") || ip.hasPrefix("ff") {
+            return false
+        }
+        // Filter out broadcast
+        if ip.hasSuffix(".255") || ip == "255.255.255.255" {
+            return false
+        }
+        // Filter out virtual/tunnel interfaces
+        let lowerIface = interface.lowercased()
+        if lowerIface.hasPrefix("lo") || lowerIface.hasPrefix("utun") || lowerIface.hasPrefix("awdl") || lowerIface.hasPrefix("llw") {
+            return false
+        }
+        return true
+    }
+
+    // MARK: - Output Parsers
+
     /// Parses output from `/usr/sbin/arp -an`.
-    /// Typical line format:
-    /// `? (192.168.1.1) at 0:1c:73:a1:b2:c3 on en0 ifscope [ethernet]`
-    /// or `? (192.168.1.255) at (incomplete) on en0 [ethernet]`
     public func parseARPOutput(_ output: String) -> [DiscoveredNeighbor] {
         var neighbors: [DiscoveredNeighbor] = []
         let lines = output.components(separatedBy: .newlines)
@@ -82,9 +309,6 @@ public actor LocalDiscoveryEngine {
     }
 
     /// Parses output from `/usr/sbin/ndp -an`.
-    /// Typical line format:
-    /// `Neighbor                             Linklayer Address  Netif Expire    St Flgs Prbs`
-    /// `fe80::1%en0                          0:1c:73:a1:b2:c3   en0   23h59m59s R`
     public func parseNDPOutput(_ output: String) -> [DiscoveredNeighbor] {
         var neighbors: [DiscoveredNeighbor] = []
         let lines = output.components(separatedBy: .newlines)

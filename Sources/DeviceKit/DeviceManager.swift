@@ -34,10 +34,10 @@ public final class DeviceManager: @unchecked Sendable {
 
         let sql = """
         INSERT INTO devices (
-            id, display_name, hostname, management_ip, vendor, role,
+            id, display_name, hostname, management_ip, mac_address, vendor, role,
             platform, model, site, environment_id, tags, status,
             credential_ref, snmp_community, snmp_port, snmp_version, last_seen
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
         """
 
         let stmt = try database.prepare(sql: sql)
@@ -47,6 +47,104 @@ public final class DeviceManager: @unchecked Sendable {
         sqlite3_bind_text(stmt, 2, (device.displayName as NSString).utf8String, -1, nil)
         sqlite3_bind_text(stmt, 3, (device.hostname as NSString).utf8String, -1, nil)
         sqlite3_bind_text(stmt, 4, (device.managementIP as NSString).utf8String, -1, nil)
+
+        if let mac = device.macAddress {
+            sqlite3_bind_text(stmt, 5, (mac as NSString).utf8String, -1, nil)
+        } else { sqlite3_bind_null(stmt, 5) }
+
+        sqlite3_bind_text(stmt, 6, (device.vendor.rawValue as NSString).utf8String, -1, nil)
+        sqlite3_bind_text(stmt, 7, (device.role.rawValue as NSString).utf8String, -1, nil)
+
+        if let plat = device.platform {
+            sqlite3_bind_text(stmt, 8, (plat as NSString).utf8String, -1, nil)
+        } else { sqlite3_bind_null(stmt, 8) }
+
+        if let mdl = device.model {
+            sqlite3_bind_text(stmt, 9, (mdl as NSString).utf8String, -1, nil)
+        } else { sqlite3_bind_null(stmt, 9) }
+
+        if let ste = device.site {
+            sqlite3_bind_text(stmt, 10, (ste as NSString).utf8String, -1, nil)
+        } else { sqlite3_bind_null(stmt, 10) }
+
+        if let env = device.environmentId {
+            sqlite3_bind_text(stmt, 11, (env as NSString).utf8String, -1, nil)
+        } else { sqlite3_bind_null(stmt, 11) }
+
+        let tagsJoined = device.tags.joined(separator: ",")
+        sqlite3_bind_text(stmt, 12, (tagsJoined as NSString).utf8String, -1, nil)
+        sqlite3_bind_text(stmt, 13, (device.status.rawValue as NSString).utf8String, -1, nil)
+
+        if let cred = device.credentialRef {
+            sqlite3_bind_text(stmt, 14, (cred.uuidString as NSString).utf8String, -1, nil)
+        } else { sqlite3_bind_null(stmt, 14) }
+
+        if let snmp = device.snmpConfig {
+            sqlite3_bind_text(stmt, 15, (snmp.community as NSString).utf8String, -1, nil)
+            sqlite3_bind_int(stmt, 16, Int32(snmp.port))
+            sqlite3_bind_text(stmt, 17, (snmp.version as NSString).utf8String, -1, nil)
+        } else {
+            sqlite3_bind_null(stmt, 15)
+            sqlite3_bind_null(stmt, 16)
+            sqlite3_bind_null(stmt, 17)
+        }
+
+        if let lastSeen = device.lastSeen {
+            sqlite3_bind_double(stmt, 18, lastSeen.timeIntervalSince1970)
+        } else { sqlite3_bind_null(stmt, 18) }
+
+        if sqlite3_step(stmt) != SQLITE_DONE {
+            let err = String(cString: sqlite3_errmsg(database.rawHandle))
+            throw DeviceManagerError.databaseError("Failed to insert device: \(err)")
+        }
+    }
+
+    public func listDevices() throws -> [NetworkDevice] {
+        lock.lock()
+        defer { lock.unlock() }
+
+        let sql = """
+        SELECT id, display_name, hostname, management_ip, mac_address, vendor, role,
+               platform, model, site, environment_id, tags, status,
+               credential_ref, snmp_community, snmp_port, snmp_version, last_seen
+        FROM devices ORDER BY display_name ASC;
+        """
+
+        let stmt = try database.prepare(sql: sql)
+        defer { sqlite3_finalize(stmt) }
+
+        var devices: [NetworkDevice] = []
+        while sqlite3_step(stmt) == SQLITE_ROW {
+            if let dev = parseDevice(from: stmt) {
+                devices.append(dev)
+            }
+        }
+        return devices
+    }
+
+    public func updateDevice(_ device: NetworkDevice) throws {
+        lock.lock()
+        defer { lock.unlock() }
+
+        let sql = """
+        UPDATE devices SET
+            display_name = ?, hostname = ?, management_ip = ?, mac_address = ?, vendor = ?, role = ?,
+            platform = ?, model = ?, site = ?, environment_id = ?, tags = ?, status = ?,
+            credential_ref = ?, snmp_community = ?, snmp_port = ?, snmp_version = ?, last_seen = ?
+        WHERE id = ?;
+        """
+
+        let stmt = try database.prepare(sql: sql)
+        defer { sqlite3_finalize(stmt) }
+
+        sqlite3_bind_text(stmt, 1, (device.displayName as NSString).utf8String, -1, nil)
+        sqlite3_bind_text(stmt, 2, (device.hostname as NSString).utf8String, -1, nil)
+        sqlite3_bind_text(stmt, 3, (device.managementIP as NSString).utf8String, -1, nil)
+
+        if let mac = device.macAddress {
+            sqlite3_bind_text(stmt, 4, (mac as NSString).utf8String, -1, nil)
+        } else { sqlite3_bind_null(stmt, 4) }
+
         sqlite3_bind_text(stmt, 5, (device.vendor.rawValue as NSString).utf8String, -1, nil)
         sqlite3_bind_text(stmt, 6, (device.role.rawValue as NSString).utf8String, -1, nil)
 
@@ -88,95 +186,7 @@ public final class DeviceManager: @unchecked Sendable {
             sqlite3_bind_double(stmt, 17, lastSeen.timeIntervalSince1970)
         } else { sqlite3_bind_null(stmt, 17) }
 
-        if sqlite3_step(stmt) != SQLITE_DONE {
-            let err = String(cString: sqlite3_errmsg(database.rawHandle))
-            throw DeviceManagerError.databaseError("Failed to insert device: \(err)")
-        }
-    }
-
-    public func listDevices() throws -> [NetworkDevice] {
-        lock.lock()
-        defer { lock.unlock() }
-
-        let sql = """
-        SELECT id, display_name, hostname, management_ip, vendor, role,
-               platform, model, site, environment_id, tags, status,
-               credential_ref, snmp_community, snmp_port, snmp_version, last_seen
-        FROM devices ORDER BY display_name ASC;
-        """
-
-        let stmt = try database.prepare(sql: sql)
-        defer { sqlite3_finalize(stmt) }
-
-        var devices: [NetworkDevice] = []
-        while sqlite3_step(stmt) == SQLITE_ROW {
-            if let dev = parseDevice(from: stmt) {
-                devices.append(dev)
-            }
-        }
-        return devices
-    }
-
-    public func updateDevice(_ device: NetworkDevice) throws {
-        lock.lock()
-        defer { lock.unlock() }
-
-        let sql = """
-        UPDATE devices SET
-            display_name = ?, hostname = ?, management_ip = ?, vendor = ?, role = ?,
-            platform = ?, model = ?, site = ?, environment_id = ?, tags = ?, status = ?,
-            credential_ref = ?, snmp_community = ?, snmp_port = ?, snmp_version = ?, last_seen = ?
-        WHERE id = ?;
-        """
-
-        let stmt = try database.prepare(sql: sql)
-        defer { sqlite3_finalize(stmt) }
-
-        sqlite3_bind_text(stmt, 1, (device.displayName as NSString).utf8String, -1, nil)
-        sqlite3_bind_text(stmt, 2, (device.hostname as NSString).utf8String, -1, nil)
-        sqlite3_bind_text(stmt, 3, (device.managementIP as NSString).utf8String, -1, nil)
-        sqlite3_bind_text(stmt, 4, (device.vendor.rawValue as NSString).utf8String, -1, nil)
-        sqlite3_bind_text(stmt, 5, (device.role.rawValue as NSString).utf8String, -1, nil)
-
-        if let plat = device.platform {
-            sqlite3_bind_text(stmt, 6, (plat as NSString).utf8String, -1, nil)
-        } else { sqlite3_bind_null(stmt, 6) }
-
-        if let mdl = device.model {
-            sqlite3_bind_text(stmt, 7, (mdl as NSString).utf8String, -1, nil)
-        } else { sqlite3_bind_null(stmt, 7) }
-
-        if let ste = device.site {
-            sqlite3_bind_text(stmt, 8, (ste as NSString).utf8String, -1, nil)
-        } else { sqlite3_bind_null(stmt, 8) }
-
-        if let env = device.environmentId {
-            sqlite3_bind_text(stmt, 9, (env as NSString).utf8String, -1, nil)
-        } else { sqlite3_bind_null(stmt, 9) }
-
-        let tagsJoined = device.tags.joined(separator: ",")
-        sqlite3_bind_text(stmt, 10, (tagsJoined as NSString).utf8String, -1, nil)
-        sqlite3_bind_text(stmt, 11, (device.status.rawValue as NSString).utf8String, -1, nil)
-
-        if let cred = device.credentialRef {
-            sqlite3_bind_text(stmt, 12, (cred.uuidString as NSString).utf8String, -1, nil)
-        } else { sqlite3_bind_null(stmt, 12) }
-
-        if let snmp = device.snmpConfig {
-            sqlite3_bind_text(stmt, 13, (snmp.community as NSString).utf8String, -1, nil)
-            sqlite3_bind_int(stmt, 14, Int32(snmp.port))
-            sqlite3_bind_text(stmt, 15, (snmp.version as NSString).utf8String, -1, nil)
-        } else {
-            sqlite3_bind_null(stmt, 13)
-            sqlite3_bind_null(stmt, 14)
-            sqlite3_bind_null(stmt, 15)
-        }
-
-        if let lastSeen = device.lastSeen {
-            sqlite3_bind_double(stmt, 16, lastSeen.timeIntervalSince1970)
-        } else { sqlite3_bind_null(stmt, 16) }
-
-        sqlite3_bind_text(stmt, 17, (device.id.uuidString as NSString).utf8String, -1, nil)
+        sqlite3_bind_text(stmt, 18, (device.id.uuidString as NSString).utf8String, -1, nil)
 
         if sqlite3_step(stmt) != SQLITE_DONE {
             let err = String(cString: sqlite3_errmsg(database.rawHandle))
@@ -204,7 +214,7 @@ public final class DeviceManager: @unchecked Sendable {
         defer { lock.unlock() }
 
         let sql = """
-        SELECT id, display_name, hostname, management_ip, vendor, role,
+        SELECT id, display_name, hostname, management_ip, mac_address, vendor, role,
                platform, model, site, environment_id, tags, status,
                credential_ref, snmp_community, snmp_port, snmp_version, last_seen
         FROM devices WHERE id = ? LIMIT 1;
@@ -355,37 +365,38 @@ public final class DeviceManager: @unchecked Sendable {
         let displayName = String(cString: nameStr)
         let hostname = String(cString: hostStr)
         let managementIP = String(cString: ipStr)
+        let macAddress = sqlite3_column_text(stmt, 4).map { String(cString: $0) }
 
-        let vendorStr = sqlite3_column_text(stmt, 4).map { String(cString: $0) } ?? "Generic"
+        let vendorStr = sqlite3_column_text(stmt, 5).map { String(cString: $0) } ?? "Generic"
         let vendor = DeviceVendor(rawValue: vendorStr) ?? .generic
 
-        let roleStr = sqlite3_column_text(stmt, 5).map { String(cString: $0) } ?? "Switch"
+        let roleStr = sqlite3_column_text(stmt, 6).map { String(cString: $0) } ?? "Switch"
         let role = DeviceRole(rawValue: roleStr) ?? .switchRole
 
-        let platform = sqlite3_column_text(stmt, 6).map { String(cString: $0) }
-        let model = sqlite3_column_text(stmt, 7).map { String(cString: $0) }
-        let site = sqlite3_column_text(stmt, 8).map { String(cString: $0) }
-        let envId = sqlite3_column_text(stmt, 9).map { String(cString: $0) }
+        let platform = sqlite3_column_text(stmt, 7).map { String(cString: $0) }
+        let model = sqlite3_column_text(stmt, 8).map { String(cString: $0) }
+        let site = sqlite3_column_text(stmt, 9).map { String(cString: $0) }
+        let envId = sqlite3_column_text(stmt, 10).map { String(cString: $0) }
 
-        let tagsStr = sqlite3_column_text(stmt, 10).map { String(cString: $0) } ?? ""
+        let tagsStr = sqlite3_column_text(stmt, 11).map { String(cString: $0) } ?? ""
         let tags = tagsStr.isEmpty ? [] : tagsStr.components(separatedBy: ",")
 
-        let statusStr = sqlite3_column_text(stmt, 11).map { String(cString: $0) } ?? "Unknown"
+        let statusStr = sqlite3_column_text(stmt, 12).map { String(cString: $0) } ?? "Unknown"
         let status = DeviceStatus(rawValue: statusStr) ?? .unknown
 
-        let credRef = sqlite3_column_text(stmt, 12).flatMap { UUID(uuidString: String(cString: $0)) }
+        let credRef = sqlite3_column_text(stmt, 13).flatMap { UUID(uuidString: String(cString: $0)) }
 
         var snmp: SNMPDeviceConfig? = nil
-        if let communityCStr = sqlite3_column_text(stmt, 13) {
+        if let communityCStr = sqlite3_column_text(stmt, 14) {
             let comm = String(cString: communityCStr)
-            let port = Int(sqlite3_column_int(stmt, 14))
-            let ver = sqlite3_column_text(stmt, 15).map { String(cString: $0) } ?? "v2c"
+            let port = Int(sqlite3_column_int(stmt, 15))
+            let ver = sqlite3_column_text(stmt, 16).map { String(cString: $0) } ?? "v2c"
             snmp = SNMPDeviceConfig(community: comm, port: port == 0 ? 161 : port, version: ver)
         }
 
         var lastSeen: Date? = nil
-        if sqlite3_column_type(stmt, 16) != SQLITE_NULL {
-            lastSeen = Date(timeIntervalSince1970: sqlite3_column_double(stmt, 16))
+        if sqlite3_column_type(stmt, 17) != SQLITE_NULL {
+            lastSeen = Date(timeIntervalSince1970: sqlite3_column_double(stmt, 17))
         }
 
         return NetworkDevice(
@@ -393,6 +404,7 @@ public final class DeviceManager: @unchecked Sendable {
             displayName: displayName,
             hostname: hostname,
             managementIP: managementIP,
+            macAddress: macAddress,
             vendor: vendor,
             role: role,
             platform: platform,

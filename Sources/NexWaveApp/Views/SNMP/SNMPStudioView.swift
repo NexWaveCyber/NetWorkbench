@@ -101,6 +101,14 @@ public struct SNMPStudioView: View {
         .background(Theme.secondaryBackground)
         .navigationTitle("SNMP Studio")
         .task {
+            if !state.activeSNMPTarget.isEmpty {
+                targetHost = state.activeSNMPTarget
+                targetPort = state.activeSNMPPort
+                community = state.activeSNMPCommunity
+                if state.activeSNMPVersion == "v1" { snmpVersion = .v1 }
+                else if state.activeSNMPVersion == "v3" { snmpVersion = .v3 }
+                else { snmpVersion = .v2c }
+            }
             if interfaces.isEmpty {
                 loadInitialInterfaceSamples()
             }

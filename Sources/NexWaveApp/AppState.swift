@@ -73,11 +73,18 @@ public final class AppState: @unchecked Sendable {
 
     // Phase 3: Device Management & Discovery
     public let deviceManager: DeviceManager
+    public let deviceAuditor: DeviceAuditor = DeviceAuditor()
     public var managedDevices: [NetworkDevice] = []
     public var selectedDevice: NetworkDevice? = nil
     public var discoveredNeighbors: [DiscoveredNeighbor] = []
     public var isDiscoveringNeighbors: Bool = false
     public var lastNeighborDiscoveryTime: Date? = nil
+
+    // SNMP Studio target handoff
+    public var activeSNMPTarget: String = "192.168.1.1"
+    public var activeSNMPPort: String = "161"
+    public var activeSNMPCommunity: String = "public"
+    public var activeSNMPVersion: String = "v2c"
 
     // Phase 6: Terminal & Console Sessions
     public let terminalManager: TerminalManager = TerminalManager()
@@ -316,5 +323,95 @@ public final class AppState: @unchecked Sendable {
         } catch {
             self.toastMessage = "Failed to delete device: \(error.localizedDescription)"
         }
+    }
+
+    public func addDeviceToTimeline(device: NetworkDevice) {
+        let config = MonitorTargetConfig(
+            target: device.managementIP,
+            name: "\(device.displayName) (\(device.role.rawValue))",
+            intervalSeconds: 2.5,
+            latencyThresholdMs: 60.0,
+            packetLossThresholdPct: 5.0,
+            isEnabled: true,
+            probeProtocol: .icmp
+        )
+        do {
+            try timeSeriesRepository.insertOrUpdateTarget(config: config)
+            Task {
+                await monitorService.addConfig(config)
+            }
+            self.toastMessage = "Added \(device.displayName) to Timeline & SLA Monitor"
+        } catch {
+            self.toastMessage = "Failed to add to monitor: \(error.localizedDescription)"
+        }
+    }
+
+    public func jumpToSNMPStudio(device: NetworkDevice) {
+        self.activeSNMPTarget = device.managementIP
+        if let snmp = device.snmpConfig {
+            self.activeSNMPCommunity = snmp.community
+            self.activeSNMPPort = "\(snmp.port)"
+            self.activeSNMPVersion = snmp.version
+        }
+        self.selectedWorkspace = .snmp
+        self.toastMessage = "Opened SNMP Studio for \(device.displayName)"
+    }
+
+    public func exportFleetToCSV() -> String {
+        var csv = "ID,Name,Hostname,Management IP,MAC Address,Vendor,Role,Status,Site,Tags,SNMP,Last Seen\n"
+        for d in managedDevices {
+            let idStr = d.id.uuidString
+            let name = "\"\(d.displayName.replacingOccurrences(of: "\"", with: "\"\""))\""
+            let host = "\"\(d.hostname.replacingOccurrences(of: "\"", with: "\"\""))\""
+            let ip = d.managementIP
+            let mac = d.macAddress ?? "N/A"
+            let vendor = d.vendor.rawValue
+            let role = d.role.rawValue
+            let status = d.status.rawValue
+            let site = "\"\(d.site?.replacingOccurrences(of: "\"", with: "\"\"") ?? "")\""
+            let tags = "\"\(d.tags.joined(separator: "; "))\""
+            let snmp = d.snmpConfig != nil ? "\(d.snmpConfig!.version):\(d.snmpConfig!.port)" : "None"
+            let lastSeen = d.lastSeen?.ISO8601Format() ?? "Never"
+            csv += "\(idStr),\(name),\(host),\(ip),\(mac),\(vendor),\(role),\(status),\(site),\(tags),\(snmp),\(lastSeen)\n"
+        }
+        return csv
+    }
+
+    public func exportFleetToJSON() -> String {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        encoder.dateEncodingStrategy = .iso8601
+        guard let data = try? encoder.encode(managedDevices),
+              let str = String(data: data, encoding: .utf8) else {
+            return "{}"
+        }
+        return str
+    }
+
+    public func exportDiscoveredToCSV() -> String {
+        var csv = "IP Address,MAC Address,Resolved Vendor,Interface,Source,Hostname,Discovered Services,Last Seen\n"
+        for n in discoveredNeighbors {
+            let ip = n.ipAddress
+            let mac = n.macAddress
+            let vendor = "\"\(n.ouiVendor ?? "Generic")\""
+            let iface = n.interface
+            let source = n.discoverySource.rawValue
+            let host = "\"\(n.hostname ?? "")\""
+            let services = "\"\(n.discoveredServices.joined(separator: "; "))\""
+            let lastSeen = n.lastSeen.ISO8601Format()
+            csv += "\(ip),\(mac),\(vendor),\(iface),\(source),\(host),\(services),\(lastSeen)\n"
+        }
+        return csv
+    }
+
+    public func exportDiscoveredToJSON() -> String {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        encoder.dateEncodingStrategy = .iso8601
+        guard let data = try? encoder.encode(discoveredNeighbors),
+              let str = String(data: data, encoding: .utf8) else {
+            return "{}"
+        }
+        return str
     }
 }

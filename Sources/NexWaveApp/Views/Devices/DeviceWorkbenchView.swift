@@ -2,6 +2,7 @@ import SwiftUI
 import DeviceKit
 import NetworkCore
 import TerminalKit
+import AppKit
 
 public struct DeviceWorkbenchView: View {
     @Bindable var state: AppState
@@ -11,6 +12,7 @@ public struct DeviceWorkbenchView: View {
     @State private var isShowingAddSheet: Bool = false
     @State private var neighborToEnrol: DiscoveredNeighbor? = nil
     @State private var selectedDeviceForBaseline: NetworkDevice? = nil
+    @State private var selectedDeviceForAudit: NetworkDevice? = nil
 
     public enum DeviceTab: String, CaseIterable, Identifiable {
         case managed = "Managed Fleet"
@@ -142,6 +144,12 @@ public struct DeviceWorkbenchView: View {
                 set: { if !$0 { selectedDeviceForBaseline = nil } }
             ))
         }
+        .sheet(item: $selectedDeviceForAudit) { device in
+            DeviceAuditSheet(state: state, device: device, isPresented: Binding(
+                get: { selectedDeviceForAudit != nil },
+                set: { if !$0 { selectedDeviceForAudit = nil } }
+            ))
+        }
     }
 
     // MARK: - Header Bar
@@ -209,6 +217,50 @@ public struct DeviceWorkbenchView: View {
                 }
                 .buttonStyle(.plain)
                 .disabled(state.isDiscoveringNeighbors)
+
+                Menu {
+                    Button(action: {
+                        let csv = state.exportFleetToCSV()
+                        exportStringToFile(content: csv, defaultName: "managed_fleet_\(Date().formatted(date: .numeric, time: .omitted).replacingOccurrences(of: "/", with: "-")).csv", fileExtension: "csv")
+                    }) {
+                        Label("Export Fleet (CSV)...", systemImage: "doc.text")
+                    }
+                    Button(action: {
+                        let json = state.exportFleetToJSON()
+                        exportStringToFile(content: json, defaultName: "managed_fleet_\(Date().formatted(date: .numeric, time: .omitted).replacingOccurrences(of: "/", with: "-")).json", fileExtension: "json")
+                    }) {
+                        Label("Export Fleet (JSON)...", systemImage: "curlybraces")
+                    }
+                    Divider()
+                    Button(action: {
+                        let csv = state.exportDiscoveredToCSV()
+                        exportStringToFile(content: csv, defaultName: "discovered_lan_\(Date().formatted(date: .numeric, time: .omitted).replacingOccurrences(of: "/", with: "-")).csv", fileExtension: "csv")
+                    }) {
+                        Label("Export LAN Neighbors (CSV)...", systemImage: "antenna.radiowaves.left.and.right")
+                    }
+                    Button(action: {
+                        let json = state.exportDiscoveredToJSON()
+                        exportStringToFile(content: json, defaultName: "discovered_lan_\(Date().formatted(date: .numeric, time: .omitted).replacingOccurrences(of: "/", with: "-")).json", fileExtension: "json")
+                    }) {
+                        Label("Export LAN Neighbors (JSON)...", systemImage: "curlybraces")
+                    }
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "square.and.arrow.up")
+                            .font(.system(size: 12, weight: .semibold))
+                        Text("Export")
+                            .font(.system(size: 12, weight: .semibold))
+                    }
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 8)
+                    .background(Color.primary.opacity(0.06))
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8)
+                            .stroke(Theme.borderLight, lineWidth: 1)
+                    )
+                }
+                .menuStyle(.borderlessButton)
 
                 Button(action: { isShowingAddSheet = true }) {
                     HStack(spacing: 6) {
@@ -416,14 +468,45 @@ public struct DeviceWorkbenchView: View {
                 }
 
                 if let mac = device.macAddress {
-                    HStack {
+                    HStack(spacing: 6) {
                         Text("MAC ADDRESS")
                             .font(.system(size: 10, weight: .bold, design: .monospaced))
                             .foregroundStyle(.secondary)
                         Spacer()
                         Text(mac)
                             .font(.system(size: 11, weight: .medium, design: .monospaced))
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(.primary)
+
+                        Button(action: {
+                            NSPasteboard.general.clearContents()
+                            NSPasteboard.general.setString(mac, forType: .string)
+                            state.toastMessage = "MAC copied: \(mac)"
+                        }) {
+                            Image(systemName: "doc.on.doc")
+                                .font(.system(size: 10))
+                                .foregroundStyle(.secondary)
+                        }
+                        .buttonStyle(.plain)
+                        .help("Copy MAC Address")
+
+                        if OUIResolver.isLocallyAdministered(mac: mac) {
+                            Text("Private Wi-Fi")
+                                .font(.system(size: 9, weight: .bold, design: .monospaced))
+                                .padding(.horizontal, 5)
+                                .padding(.vertical, 1)
+                                .background(Theme.quantumViolet.opacity(0.15))
+                                .foregroundStyle(Theme.quantumViolet)
+                                .clipShape(Capsule())
+                                .help("IEEE 802 Locally Administered / Private MAC")
+                        } else if let vendor = OUIResolver.lookup(mac: mac) {
+                            Text(vendor)
+                                .font(.system(size: 9, weight: .medium))
+                                .padding(.horizontal, 5)
+                                .padding(.vertical, 1)
+                                .background(Color.primary.opacity(0.06))
+                                .foregroundStyle(.secondary)
+                                .clipShape(Capsule())
+                        }
                     }
                 }
 
@@ -471,7 +554,7 @@ public struct DeviceWorkbenchView: View {
                 .background(Theme.borderLight)
 
             // Action Buttons
-            HStack(spacing: 8) {
+            HStack(spacing: 6) {
                 Button(action: {
                     state.targetInput = device.ipAddress
                     state.updateTargetClassification(device.ipAddress)
@@ -482,13 +565,13 @@ public struct DeviceWorkbenchView: View {
                         }
                     }
                 }) {
-                    HStack(spacing: 5) {
+                    HStack(spacing: 4) {
                         Image(systemName: "stethoscope")
                             .font(.system(size: 11))
                         Text("Diagnose")
                             .font(.system(size: 11, weight: .semibold))
                     }
-                    .padding(.horizontal, 10)
+                    .padding(.horizontal, 8)
                     .padding(.vertical, 5)
                     .background(Theme.electricAzure.opacity(0.12))
                     .foregroundStyle(Theme.electricAzure)
@@ -497,49 +580,87 @@ public struct DeviceWorkbenchView: View {
                 .buttonStyle(.plain)
 
                 Button(action: {
-                    state.selectedWorkspace = .snmp
+                    selectedDeviceForAudit = device
                 }) {
-                    HStack(spacing: 5) {
+                    HStack(spacing: 4) {
+                        Image(systemName: "gauge.with.needle")
+                            .font(.system(size: 11))
+                        Text("Audit")
+                            .font(.system(size: 11, weight: .semibold))
+                    }
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 5)
+                    .background(Theme.signalEmerald.opacity(0.12))
+                    .foregroundStyle(Theme.signalEmerald)
+                    .clipShape(RoundedRectangle(cornerRadius: 6))
+                }
+                .buttonStyle(.plain)
+                .help("Audit live telemetry vs recorded performance baseline")
+
+                Button(action: {
+                    state.addDeviceToTimeline(device: device)
+                }) {
+                    HStack(spacing: 4) {
+                        Image(systemName: "waveform.path.ecg")
+                            .font(.system(size: 11))
+                        Text("Monitor")
+                            .font(.system(size: 11, weight: .semibold))
+                    }
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 5)
+                    .background(Theme.solarAmber.opacity(0.12))
+                    .foregroundStyle(Theme.solarAmber)
+                    .clipShape(RoundedRectangle(cornerRadius: 6))
+                }
+                .buttonStyle(.plain)
+                .help("Add device to Timeline Monitor for SLA tracking")
+
+                Button(action: {
+                    state.jumpToSNMPStudio(device: device)
+                }) {
+                    HStack(spacing: 4) {
                         Image(systemName: "chart.bar.xaxis")
                             .font(.system(size: 11))
                         Text("SNMP")
                             .font(.system(size: 11, weight: .semibold))
                     }
-                    .padding(.horizontal, 10)
+                    .padding(.horizontal, 8)
                     .padding(.vertical, 5)
                     .background(Theme.neonCyan.opacity(0.12))
                     .foregroundStyle(Theme.neonCyan)
                     .clipShape(RoundedRectangle(cornerRadius: 6))
                 }
                 .buttonStyle(.plain)
+                .help("Open SNMP Studio pre-populated for this device")
 
                 Button(action: {
                     selectedDeviceForBaseline = device
                 }) {
-                    HStack(spacing: 5) {
+                    HStack(spacing: 4) {
                         Image(systemName: "chart.line.uptrend.xyaxis")
                             .font(.system(size: 11))
                         Text("Baseline")
                             .font(.system(size: 11, weight: .semibold))
                     }
-                    .padding(.horizontal, 10)
+                    .padding(.horizontal, 8)
                     .padding(.vertical, 5)
                     .background(Color.primary.opacity(0.06))
                     .clipShape(RoundedRectangle(cornerRadius: 6))
                 }
                 .buttonStyle(.plain)
+                .help("View or capture performance baselines")
 
                 Button(action: {
                     state.terminalManager.openSSHSession(host: device.ipAddress)
                     state.selectedWorkspace = .terminal
                 }) {
-                    HStack(spacing: 5) {
+                    HStack(spacing: 4) {
                         Image(systemName: "terminal.fill")
                             .font(.system(size: 11))
-                        Text("Terminal")
+                        Text("SSH")
                             .font(.system(size: 11, weight: .semibold))
                     }
-                    .padding(.horizontal, 10)
+                    .padding(.horizontal, 8)
                     .padding(.vertical, 5)
                     .background(Theme.quantumViolet.opacity(0.12))
                     .foregroundStyle(Theme.quantumViolet)
@@ -679,19 +800,19 @@ public struct DeviceWorkbenchView: View {
                 VStack(spacing: 0) {
                     // Table Header
                     HStack(spacing: 12) {
-                        Text("IP ADDRESS")
-                            .frame(width: 140, alignment: .leading)
+                        Text("IP ADDRESS / HOSTNAME")
+                            .frame(width: 170, alignment: .leading)
                         Text("MAC ADDRESS")
-                            .frame(width: 150, alignment: .leading)
+                            .frame(width: 160, alignment: .leading)
                         Text("VENDOR / OUI")
-                            .frame(width: 130, alignment: .leading)
+                            .frame(width: 140, alignment: .leading)
                         Text("INTERFACE")
-                            .frame(width: 90, alignment: .leading)
+                            .frame(width: 80, alignment: .leading)
                         Text("SOURCE")
                             .frame(width: 90, alignment: .leading)
                         Spacer()
                         Text("ACTION")
-                            .frame(width: 120, alignment: .trailing)
+                            .frame(width: 140, alignment: .trailing)
                     }
                     .font(.system(size: 10, weight: .bold, design: .monospaced))
                     .foregroundStyle(.secondary)
@@ -705,36 +826,67 @@ public struct DeviceWorkbenchView: View {
                     // Table Rows
                     ForEach(state.discoveredNeighbors) { neighbor in
                         HStack(spacing: 12) {
-                            HStack(spacing: 6) {
-                                Circle()
-                                    .fill(Theme.signalEmerald)
-                                    .frame(width: 6, height: 6)
-                                Text(neighbor.ip)
-                                    .font(.system(size: 12, weight: .semibold, design: .monospaced))
-                                    .foregroundStyle(.primary)
+                            VStack(alignment: .leading, spacing: 2) {
+                                HStack(spacing: 6) {
+                                    Circle()
+                                        .fill(Theme.signalEmerald)
+                                        .frame(width: 6, height: 6)
+                                    Text(neighbor.ip)
+                                        .font(.system(size: 12, weight: .semibold, design: .monospaced))
+                                        .foregroundStyle(.primary)
+                                }
+                                if let host = neighbor.hostname, !host.isEmpty {
+                                    Text(host)
+                                        .font(.system(size: 10))
+                                        .foregroundStyle(.secondary)
+                                        .lineLimit(1)
+                                }
                             }
-                            .frame(width: 140, alignment: .leading)
-
-                            Text(neighbor.mac)
-                                .font(.system(size: 11, weight: .medium, design: .monospaced))
-                                .foregroundStyle(.secondary)
-                                .frame(width: 150, alignment: .leading)
+                            .frame(width: 170, alignment: .leading)
 
                             HStack(spacing: 4) {
-                                Text(neighbor.vendor.rawValue)
+                                Text(neighbor.mac)
+                                    .font(.system(size: 11, weight: .medium, design: .monospaced))
+                                    .foregroundStyle(.secondary)
+
+                                Button(action: {
+                                    NSPasteboard.general.clearContents()
+                                    NSPasteboard.general.setString(neighbor.mac, forType: .string)
+                                    state.toastMessage = "MAC copied: \(neighbor.mac)"
+                                }) {
+                                    Image(systemName: "doc.on.doc")
+                                        .font(.system(size: 9))
+                                        .foregroundStyle(.secondary)
+                                }
+                                .buttonStyle(.plain)
+                                .help("Copy MAC Address")
+
+                                if OUIResolver.isLocallyAdministered(mac: neighbor.mac) {
+                                    Image(systemName: "lock.shield")
+                                        .font(.system(size: 10))
+                                        .foregroundStyle(Theme.quantumViolet)
+                                        .help("IEEE 802 Locally Administered / Private Wi-Fi MAC")
+                                }
+                            }
+                            .frame(width: 160, alignment: .leading)
+
+                            HStack(spacing: 4) {
+                                let vendorName = neighbor.ouiVendor ?? neighbor.vendor.rawValue
+                                Text(vendorName)
                                     .font(.system(size: 11, weight: .medium))
                                     .padding(.horizontal, 6)
                                     .padding(.vertical, 2)
                                     .background(vendorColor(neighbor.vendor).opacity(0.12))
                                     .foregroundStyle(vendorColor(neighbor.vendor))
                                     .clipShape(Capsule())
+                                    .lineLimit(1)
                             }
-                            .frame(width: 130, alignment: .leading)
+                            .frame(width: 140, alignment: .leading)
 
                             Text(neighbor.interface)
                                 .font(.system(size: 11, design: .monospaced))
                                 .foregroundStyle(.secondary)
-                                .frame(width: 90, alignment: .leading)
+                                .frame(width: 80, alignment: .leading)
 
                             Text(neighbor.source.rawValue)
                                 .font(.system(size: 10, weight: .semibold, design: .monospaced))
@@ -751,24 +903,44 @@ public struct DeviceWorkbenchView: View {
                                 }
                                 .font(.system(size: 11, weight: .semibold))
                                 .foregroundStyle(Theme.signalEmerald)
-                                .frame(width: 120, alignment: .trailing)
+                                .frame(width: 140, alignment: .trailing)
                             } else {
-                                Button(action: {
-                                    neighborToEnrol = neighbor
-                                }) {
-                                    HStack(spacing: 4) {
-                                        Image(systemName: "plus.circle.fill")
-                                        Text("Enrol")
+                                HStack(spacing: 6) {
+                                    Button(action: {
+                                        state.targetInput = neighbor.ip
+                                        state.updateTargetClassification(neighbor.ip)
+                                        state.selectedWorkspace = .diagnose
+                                        if let target = state.classifiedTarget {
+                                            Task { await state.runDiagnosis(target: target) }
+                                        }
+                                    }) {
+                                        Image(systemName: "stethoscope")
+                                            .font(.system(size: 10))
+                                            .padding(5)
+                                            .background(Theme.electricAzure.opacity(0.12))
+                                            .foregroundStyle(Theme.electricAzure)
+                                            .clipShape(Circle())
                                     }
-                                    .font(.system(size: 11, weight: .semibold))
-                                    .padding(.horizontal, 10)
-                                    .padding(.vertical, 4)
-                                    .background(Theme.neonCyan.opacity(0.15))
-                                    .foregroundStyle(Theme.neonCyan)
-                                    .clipShape(Capsule())
+                                    .buttonStyle(.plain)
+                                    .help("Quick Diagnose this IP")
+
+                                    Button(action: {
+                                        neighborToEnrol = neighbor
+                                    }) {
+                                        HStack(spacing: 4) {
+                                            Image(systemName: "plus.circle.fill")
+                                            Text("Enrol")
+                                        }
+                                        .font(.system(size: 11, weight: .semibold))
+                                        .padding(.horizontal, 10)
+                                        .padding(.vertical, 4)
+                                        .background(Theme.neonCyan.opacity(0.15))
+                                        .foregroundStyle(Theme.neonCyan)
+                                        .clipShape(Capsule())
+                                    }
+                                    .buttonStyle(.plain)
                                 }
-                                .buttonStyle(.plain)
-                                .frame(width: 120, alignment: .trailing)
+                                .frame(width: 140, alignment: .trailing)
                             }
                         }
                         .padding(.horizontal, 16)
@@ -1098,17 +1270,25 @@ struct DeviceBaselineSheet: View {
     @Binding var isPresented: Bool
 
     @State private var baselines: [DeviceBaseline] = []
-    @State private var isCreatingBaseline: Bool = false
+    @State private var isProbingLive: Bool = false
+    @State private var probeMessage: String = ""
     @State private var latencyInput: String = "1.8"
     @State private var portsInput: String = "22, 80, 443, 161"
+    @State private var notesInput: String = ""
+    @State private var lastLiveSample: DeviceBaselineSample? = nil
 
     var body: some View {
         VStack(spacing: 0) {
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Performance Baselines: \(device.name)")
-                        .font(.system(size: 16, weight: .bold))
-                    Text("Track historical telemetry baselines to detect degradation and regressions.")
+                    HStack(spacing: 8) {
+                        Text("Performance Baselines: \(device.name)")
+                            .font(.system(size: 16, weight: .bold))
+                        Text(device.ipAddress)
+                            .font(.system(size: 11, weight: .medium, design: .monospaced))
+                            .foregroundStyle(Theme.neonCyan)
+                    }
+                    Text("Automated live probes establish SLA reference metrics for latency, jitter, loss, and port surface.")
                         .font(.system(size: 12))
                         .foregroundStyle(.secondary)
                 }
@@ -1119,18 +1299,105 @@ struct DeviceBaselineSheet: View {
                 }
                 .buttonStyle(.plain)
             }
-            .padding(16)
+            .padding(18)
             .background(Theme.cardBackground)
 
             Divider()
 
             ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
-                    // Create Baseline Form
+                VStack(alignment: .leading, spacing: 18) {
+                    // Automated Live Active Probe Card
+                    VStack(alignment: .leading, spacing: 12) {
+                        HStack {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("AUTOMATED ACTIVE TELEMETRY PROBE")
+                                    .font(.system(size: 10, weight: .bold, design: .monospaced))
+                                    .foregroundStyle(Theme.neonCyan)
+                                Text("Executes Darwin non-root ICMP ping train (5 probes) and concurrent TCP scan across enterprise service ports.")
+                                    .font(.system(size: 11))
+                                    .foregroundStyle(.secondary)
+                            }
+                            Spacer()
+
+                            Button(action: runLiveProbe) {
+                                HStack(spacing: 6) {
+                                    if isProbingLive {
+                                        ProgressView()
+                                            .controlSize(.small)
+                                    } else {
+                                        Image(systemName: "bolt.fill")
+                                            .font(.system(size: 11))
+                                    }
+                                    Text(isProbingLive ? "Probing..." : "Run Live Probe")
+                                        .font(.system(size: 11, weight: .bold))
+                                }
+                                .padding(.horizontal, 14)
+                                .padding(.vertical, 7)
+                                .background(Theme.cyanGlowGradient)
+                                .foregroundStyle(.black)
+                                .clipShape(RoundedRectangle(cornerRadius: 6))
+                            }
+                            .buttonStyle(.plain)
+                            .disabled(isProbingLive)
+                        }
+
+                        if !probeMessage.isEmpty {
+                            Text(probeMessage)
+                                .font(.system(size: 11, weight: .medium, design: .monospaced))
+                                .foregroundStyle(Theme.neonCyan)
+                        }
+
+                        if let sample = lastLiveSample {
+                            VStack(alignment: .leading, spacing: 8) {
+                                HStack(spacing: 16) {
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text("AVG LATENCY").font(.system(size: 9, weight: .bold, design: .monospaced)).foregroundStyle(.secondary)
+                                        Text(String(format: "%.2f ms", sample.avgLatencyMs)).font(.system(size: 14, weight: .bold, design: .monospaced)).foregroundStyle(Theme.signalEmerald)
+                                    }
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text("JITTER").font(.system(size: 9, weight: .bold, design: .monospaced)).foregroundStyle(.secondary)
+                                        Text(String(format: "%.2f ms", sample.jitterMs)).font(.system(size: 14, weight: .bold, design: .monospaced)).foregroundStyle(.primary)
+                                    }
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text("PACKET LOSS").font(.system(size: 9, weight: .bold, design: .monospaced)).foregroundStyle(.secondary)
+                                        Text(String(format: "%.1f%%", sample.packetLossPct)).font(.system(size: 14, weight: .bold, design: .monospaced)).foregroundStyle(sample.packetLossPct > 0 ? Theme.amberWarning : Theme.signalEmerald)
+                                    }
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text("DISCOVERED PORTS").font(.system(size: 9, weight: .bold, design: .monospaced)).foregroundStyle(.secondary)
+                                        Text(sample.openPorts.isEmpty ? "None" : sample.openPorts.map(String.init).joined(separator: ", ")).font(.system(size: 13, weight: .bold, design: .monospaced)).foregroundStyle(Theme.neonCyan)
+                                    }
+                                }
+                                .padding(10)
+                                .background(Theme.cardBackground)
+                                .clipShape(RoundedRectangle(cornerRadius: 6))
+
+                                Button(action: {
+                                    saveLiveSample(sample)
+                                }) {
+                                    HStack(spacing: 6) {
+                                        Image(systemName: "checkmark.circle.fill")
+                                        Text("Save Live Sample as Baseline Reference")
+                                    }
+                                    .font(.system(size: 11, weight: .bold))
+                                    .padding(.horizontal, 12)
+                                    .padding(.vertical, 6)
+                                    .background(Theme.signalEmerald.opacity(0.15))
+                                    .foregroundStyle(Theme.signalEmerald)
+                                    .clipShape(RoundedRectangle(cornerRadius: 6))
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                    }
+                    .padding(14)
+                    .background(Color.primary.opacity(0.03))
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
+
+                    // Manual Adjustment Section
                     VStack(alignment: .leading, spacing: 10) {
-                        Text("CAPTURE NEW TELEMETRY BASELINE")
+                        Text("MANUAL BASELINE SPECIFICATION")
                             .font(.system(size: 10, weight: .bold, design: .monospaced))
-                            .foregroundStyle(Theme.neonCyan)
+                            .foregroundStyle(.secondary)
 
                         HStack(spacing: 12) {
                             VStack(alignment: .leading, spacing: 2) {
@@ -1140,13 +1407,19 @@ struct DeviceBaselineSheet: View {
                             }
 
                             VStack(alignment: .leading, spacing: 2) {
-                                Text("Open Ports").font(.system(size: 10))
-                                TextField("22, 80, 443", text: $portsInput)
+                                Text("Open Ports (CSV)").font(.system(size: 10))
+                                TextField("22, 80, 443, 161", text: $portsInput)
                                     .textFieldStyle(.roundedBorder)
                             }
 
-                            Button(action: recordBaseline) {
-                                Text("Capture")
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Notes").font(.system(size: 10))
+                                TextField("e.g. Core Switch Q3 Audit", text: $notesInput)
+                                    .textFieldStyle(.roundedBorder)
+                            }
+
+                            Button(action: recordManualBaseline) {
+                                Text("Record")
                                     .font(.system(size: 11, weight: .semibold))
                                     .padding(.horizontal, 12)
                                     .padding(.vertical, 6)
@@ -1159,7 +1432,7 @@ struct DeviceBaselineSheet: View {
                         }
                     }
                     .padding(14)
-                    .background(Color.primary.opacity(0.03))
+                    .background(Color.primary.opacity(0.02))
                     .clipShape(RoundedRectangle(cornerRadius: 8))
 
                     // Historical Baselines List
@@ -1168,17 +1441,24 @@ struct DeviceBaselineSheet: View {
                         .foregroundStyle(.secondary)
 
                     if baselines.isEmpty {
-                        Text("No recorded baselines yet for this device.")
+                        Text("No recorded baselines yet for this device. Click 'Run Live Probe' above to generate one.")
                             .font(.system(size: 12))
                             .foregroundStyle(.secondary)
                             .padding(.vertical, 10)
                     } else {
                         ForEach(baselines) { baseline in
                             HStack {
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(baseline.createdAt.formatted(date: .abbreviated, time: .shortened))
-                                        .font(.system(size: 11, weight: .semibold))
-                                    Text("Latency: \(String(format: "%.2f ms", baseline.pingLatencyMs)) • Ports: \(baseline.openPorts.map(String.init).joined(separator: ", "))")
+                                VStack(alignment: .leading, spacing: 3) {
+                                    HStack(spacing: 8) {
+                                        Text(baseline.createdAt.formatted(date: .abbreviated, time: .shortened))
+                                            .font(.system(size: 11, weight: .semibold))
+                                        if !baseline.notes.isEmpty {
+                                            Text("• \(baseline.notes)")
+                                                .font(.system(size: 11))
+                                                .foregroundStyle(.secondary)
+                                        }
+                                    }
+                                    Text("Latency: \(String(format: "%.2f ms", baseline.pingLatencyMs)) • Loss: \(String(format: "%.1f%%", baseline.packetLossPercent)) • Ports: \(baseline.openPorts.map(String.init).joined(separator: ", "))")
                                         .font(.system(size: 10, design: .monospaced))
                                         .foregroundStyle(.secondary)
                                 }
@@ -1205,7 +1485,7 @@ struct DeviceBaselineSheet: View {
             .padding(16)
             .background(Theme.cardBackground)
         }
-        .frame(width: 520, height: 420)
+        .frame(width: 580, height: 520)
         .task {
             loadBaselines()
         }
@@ -1215,17 +1495,495 @@ struct DeviceBaselineSheet: View {
         baselines = (try? state.deviceManager.listBaselines(forDeviceId: device.id)) ?? []
     }
 
-    private func recordBaseline() {
+    private func runLiveProbe() {
+        Task {
+            isProbingLive = true
+            probeMessage = "Probing \(device.ipAddress) with ICMP ping train & enterprise TCP scan..."
+            let sample = await state.deviceAuditor.probeLiveBaseline(
+                ipAddress: device.ipAddress,
+                pingCount: 5,
+                snmpConfig: device.snmpConfig
+            )
+            lastLiveSample = sample
+            latencyInput = String(format: "%.2f", sample.avgLatencyMs)
+            portsInput = sample.openPorts.map(String.init).joined(separator: ", ")
+            isProbingLive = false
+            probeMessage = "Live probe complete: \(String(format: "%.2f ms", sample.avgLatencyMs)) latency, \(sample.openPorts.count) open ports."
+        }
+    }
+
+    private func saveLiveSample(_ sample: DeviceBaselineSample) {
+        let baseline = DeviceBaseline(
+            deviceId: device.id,
+            createdAt: sample.measuredAt,
+            avgLatencyMs: sample.avgLatencyMs,
+            packetLossPct: sample.packetLossPct,
+            openPorts: sample.openPorts,
+            snmpSysDescr: sample.snmpSysDescr,
+            notes: "Automated live telemetry capture"
+        )
+        try? state.deviceManager.saveBaseline(baseline)
+        loadBaselines()
+        state.toastMessage = "Recorded live baseline for \(device.displayName)"
+    }
+
+    private func recordManualBaseline() {
         let lat = Double(latencyInput) ?? 1.5
         let ports = portsInput.split(separator: ",").compactMap { Int($0.trimmingCharacters(in: .whitespaces)) }
         let baseline = DeviceBaseline(
             deviceId: device.id,
-            pingLatencyMs: lat,
-            jitterMs: 0.2,
-            packetLossPercent: 0.0,
-            openPorts: ports
+            createdAt: Date(),
+            avgLatencyMs: lat,
+            packetLossPct: 0.0,
+            openPorts: ports,
+            snmpSysDescr: device.snmpConfig != nil ? "SNMP Agent" : nil,
+            notes: notesInput.isEmpty ? "Manual baseline entry" : notesInput
         )
         try? state.deviceManager.saveBaseline(baseline)
         loadBaselines()
+        state.toastMessage = "Saved baseline for \(device.displayName)"
+    }
+}
+
+// MARK: - Device Audit Sheet (Live Drift & Health Score)
+struct DeviceAuditSheet: View {
+    @Bindable var state: AppState
+    let device: NetworkDevice
+    @Binding var isPresented: Bool
+
+    @State private var isAuditing: Bool = true
+    @State private var baseline: DeviceBaseline? = nil
+    @State private var latestSample: DeviceBaselineSample? = nil
+    @State private var comparisonResult: BaselineComparisonResult? = nil
+    @State private var statusMessage: String = "Initiating telemetry probe..."
+
+    var body: some View {
+        VStack(spacing: 0) {
+            // Header
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(spacing: 8) {
+                        Text("Active Telemetry Audit: \(device.name)")
+                            .font(.system(size: 16, weight: .bold))
+                        Text(device.ipAddress)
+                            .font(.system(size: 11, weight: .medium, design: .monospaced))
+                            .foregroundStyle(Theme.neonCyan)
+                    }
+                    Text("Real-time telemetry drift assessment comparing live performance against recorded baseline.")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                Button(action: { isPresented = false }) {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(18)
+            .background(Theme.cardBackground)
+
+            Divider()
+
+            ScrollView {
+                VStack(alignment: .leading, spacing: 20) {
+                    if isAuditing {
+                        VStack(spacing: 16) {
+                            ProgressView()
+                                .controlSize(.large)
+                            Text(statusMessage)
+                                .font(.system(size: 13, weight: .medium, design: .monospaced))
+                                .foregroundStyle(Theme.neonCyan)
+                            Text("Pinging target, calculating jitter/loss, and scanning enterprise port surface...")
+                                .font(.system(size: 11))
+                                .foregroundStyle(.secondary)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(50)
+                    } else if let comparison = comparisonResult, let base = baseline, let sample = latestSample {
+                        // Top Health Score Card
+                        HStack(spacing: 24) {
+                            // Circular Gauge
+                            ZStack {
+                                Circle()
+                                    .stroke(Color.primary.opacity(0.08), lineWidth: 8)
+                                Circle()
+                                    .trim(from: 0, to: CGFloat(comparison.overallHealthScore) / 100.0)
+                                    .stroke(scoreColor(comparison.overallHealthScore), style: StrokeStyle(lineWidth: 8, lineCap: .round))
+                                    .rotationEffect(.degrees(-90))
+                                VStack(spacing: 2) {
+                                    Text("\(comparison.overallHealthScore)%")
+                                        .font(.system(size: 24, weight: .bold, design: .monospaced))
+                                        .foregroundStyle(scoreColor(comparison.overallHealthScore))
+                                    Text(scoreTitle(comparison.overallHealthScore))
+                                        .font(.system(size: 9, weight: .bold))
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                            .frame(width: 90, height: 90)
+
+                            VStack(alignment: .leading, spacing: 6) {
+                                HStack(spacing: 8) {
+                                    Text("HEALTH AUDIT RESULT")
+                                        .font(.system(size: 10, weight: .bold, design: .monospaced))
+                                        .foregroundStyle(scoreColor(comparison.overallHealthScore))
+                                    Text("•")
+                                        .foregroundStyle(.secondary)
+                                    Text("Baseline from \(base.createdAt.formatted(date: .abbreviated, time: .shortened))")
+                                        .font(.system(size: 10))
+                                        .foregroundStyle(.secondary)
+                                }
+
+                                if comparison.overallHealthScore >= 90 {
+                                    Text("Device telemetry is fully compliant with performance baseline.")
+                                        .font(.system(size: 13, weight: .medium))
+                                } else if comparison.overallHealthScore >= 70 {
+                                    Text("Moderate performance drift detected. Latency or packet loss degraded.")
+                                        .font(.system(size: 13, weight: .medium))
+                                        .foregroundStyle(Theme.solarAmber)
+                                } else {
+                                    Text("Critical performance regression or unexpected port drift detected!")
+                                        .font(.system(size: 13, weight: .bold))
+                                        .foregroundStyle(Theme.crimsonCritical)
+                                }
+
+                                HStack(spacing: 12) {
+                                    Button("Adopt Current as New Baseline") {
+                                        adoptNewBaseline(sample)
+                                    }
+                                    .buttonStyle(.bordered)
+                                    .controlSize(.small)
+
+                                    Button("Re-Audit Now") {
+                                        Task { await runAudit() }
+                                    }
+                                    .buttonStyle(.bordered)
+                                    .controlSize(.small)
+                                }
+                            }
+                        }
+                        .padding(16)
+                        .background(Theme.cardBackground)
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 12)
+                                .stroke(Theme.borderLight, lineWidth: 1)
+                        )
+
+                        // 3 Comparative Cards
+                        HStack(spacing: 12) {
+                            // Latency Delta Card
+                            VStack(alignment: .leading, spacing: 8) {
+                                HStack {
+                                    Text("LATENCY DRIFT")
+                                        .font(.system(size: 9, weight: .bold, design: .monospaced))
+                                        .foregroundStyle(.secondary)
+                                    Spacer()
+                                    Text(comparison.isLatencyDegraded ? "DEGRADED" : "NOMINAL")
+                                        .font(.system(size: 9, weight: .bold))
+                                        .foregroundStyle(comparison.isLatencyDegraded ? Theme.solarAmber : Theme.signalEmerald)
+                                }
+
+                                HStack(alignment: .lastTextBaseline, spacing: 6) {
+                                    Text(String(format: "%+.2f ms", comparison.latencyDeltaMs))
+                                        .font(.system(size: 18, weight: .bold, design: .monospaced))
+                                        .foregroundStyle(comparison.isLatencyDegraded ? Theme.solarAmber : Theme.signalEmerald)
+                                }
+
+                                Text("Base: \(String(format: "%.2f ms", base.avgLatencyMs)) → Live: \(String(format: "%.2f ms", sample.avgLatencyMs))")
+                                    .font(.system(size: 10, design: .monospaced))
+                                    .foregroundStyle(.secondary)
+                            }
+                            .padding(12)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(Theme.cardBackground)
+                            .clipShape(RoundedRectangle(cornerRadius: 10))
+
+                            // Packet Loss Delta Card
+                            VStack(alignment: .leading, spacing: 8) {
+                                HStack {
+                                    Text("PACKET LOSS")
+                                        .font(.system(size: 9, weight: .bold, design: .monospaced))
+                                        .foregroundStyle(.secondary)
+                                    Spacer()
+                                    Text(comparison.isLossDegraded ? "LOSS DETECTED" : "ZERO LOSS")
+                                        .font(.system(size: 9, weight: .bold))
+                                        .foregroundStyle(comparison.isLossDegraded ? Theme.crimsonCritical : Theme.signalEmerald)
+                                }
+
+                                HStack(alignment: .lastTextBaseline, spacing: 6) {
+                                    Text(String(format: "%+.1f%%", comparison.lossDeltaPct))
+                                        .font(.system(size: 18, weight: .bold, design: .monospaced))
+                                        .foregroundStyle(comparison.isLossDegraded ? Theme.crimsonCritical : Theme.signalEmerald)
+                                }
+
+                                Text("Base: \(String(format: "%.1f%%", base.packetLossPct)) → Live: \(String(format: "%.1f%%", sample.packetLossPct))")
+                                    .font(.system(size: 10, design: .monospaced))
+                                    .foregroundStyle(.secondary)
+                            }
+                            .padding(12)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(Theme.cardBackground)
+                            .clipShape(RoundedRectangle(cornerRadius: 10))
+
+                            // Jitter Card
+                            VStack(alignment: .leading, spacing: 8) {
+                                HStack {
+                                    Text("JITTER")
+                                        .font(.system(size: 9, weight: .bold, design: .monospaced))
+                                        .foregroundStyle(.secondary)
+                                    Spacer()
+                                    Text("STABILITY")
+                                        .font(.system(size: 9, weight: .bold))
+                                        .foregroundStyle(Theme.neonCyan)
+                                }
+
+                                Text(String(format: "%.2f ms", sample.jitterMs))
+                                    .font(.system(size: 18, weight: .bold, design: .monospaced))
+                                    .foregroundStyle(.primary)
+
+                                Text("Range: \(String(format: "%.1f-%.1f ms", sample.minLatencyMs, sample.maxLatencyMs))")
+                                    .font(.system(size: 10, design: .monospaced))
+                                    .foregroundStyle(.secondary)
+                            }
+                            .padding(12)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(Theme.cardBackground)
+                            .clipShape(RoundedRectangle(cornerRadius: 10))
+                        }
+
+                        // Port Surface Drift Card
+                        VStack(alignment: .leading, spacing: 10) {
+                            Text("PORT SURFACE INTEGRITY")
+                                .font(.system(size: 10, weight: .bold, design: .monospaced))
+                                .foregroundStyle(.secondary)
+
+                            HStack(spacing: 8) {
+                                Text("Baseline Ports:")
+                                    .font(.system(size: 11, weight: .medium))
+                                    .foregroundStyle(.secondary)
+                                Text(base.openPorts.isEmpty ? "None" : base.openPorts.map(String.init).joined(separator: ", "))
+                                    .font(.system(size: 11, design: .monospaced))
+                            }
+
+                            HStack(spacing: 8) {
+                                Text("Live Open Ports:")
+                                    .font(.system(size: 11, weight: .medium))
+                                    .foregroundStyle(.secondary)
+                                Text(sample.openPorts.isEmpty ? "None" : sample.openPorts.map(String.init).joined(separator: ", "))
+                                    .font(.system(size: 11, design: .monospaced))
+                                    .foregroundStyle(Theme.signalEmerald)
+                            }
+
+                            if !comparison.missingPorts.isEmpty {
+                                HStack(spacing: 8) {
+                                    Image(systemName: "exclamationmark.triangle.fill")
+                                        .foregroundStyle(Theme.crimsonCritical)
+                                    Text("Missing Expected Ports: \(comparison.missingPorts.map(String.init).joined(separator: ", "))")
+                                        .font(.system(size: 11, weight: .bold))
+                                        .foregroundStyle(Theme.crimsonCritical)
+                                }
+                            }
+
+                            if !comparison.unexpectedPorts.isEmpty {
+                                HStack(spacing: 8) {
+                                    Image(systemName: "shield.slash.fill")
+                                        .foregroundStyle(Theme.solarAmber)
+                                    Text("Unexpected Newly Opened Ports: \(comparison.unexpectedPorts.map(String.init).joined(separator: ", "))")
+                                        .font(.system(size: 11, weight: .bold))
+                                        .foregroundStyle(Theme.solarAmber)
+                                }
+                            }
+                        }
+                        .padding(14)
+                        .background(Theme.cardBackground)
+                        .clipShape(RoundedRectangle(cornerRadius: 10))
+
+                    } else if let sample = latestSample {
+                        // No baseline case
+                        VStack(alignment: .leading, spacing: 14) {
+                            HStack(spacing: 10) {
+                                Image(systemName: "exclamationmark.circle.fill")
+                                    .foregroundStyle(Theme.solarAmber)
+                                    .font(.system(size: 20))
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("No Historical Baseline Recorded")
+                                        .font(.system(size: 14, weight: .bold))
+                                    Text("A live active probe was performed. Save this sample as the baseline reference to enable drift auditing.")
+                                        .font(.system(size: 12))
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+
+                            HStack(spacing: 16) {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("AVG LATENCY").font(.system(size: 9, weight: .bold, design: .monospaced)).foregroundStyle(.secondary)
+                                    Text(String(format: "%.2f ms", sample.avgLatencyMs)).font(.system(size: 14, weight: .bold, design: .monospaced)).foregroundStyle(Theme.signalEmerald)
+                                }
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("JITTER").font(.system(size: 9, weight: .bold, design: .monospaced)).foregroundStyle(.secondary)
+                                    Text(String(format: "%.2f ms", sample.jitterMs)).font(.system(size: 14, weight: .bold, design: .monospaced))
+                                }
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("PACKET LOSS").font(.system(size: 9, weight: .bold, design: .monospaced)).foregroundStyle(.secondary)
+                                    Text(String(format: "%.1f%%", sample.packetLossPct)).font(.system(size: 14, weight: .bold, design: .monospaced))
+                                }
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("OPEN PORTS").font(.system(size: 9, weight: .bold, design: .monospaced)).foregroundStyle(.secondary)
+                                    Text(sample.openPorts.isEmpty ? "None" : sample.openPorts.map(String.init).joined(separator: ", ")).font(.system(size: 13, weight: .bold, design: .monospaced)).foregroundStyle(Theme.neonCyan)
+                                }
+                            }
+                            .padding(12)
+                            .background(Color.primary.opacity(0.04))
+                            .clipShape(RoundedRectangle(cornerRadius: 8))
+
+                            Button(action: {
+                                adoptNewBaseline(sample)
+                            }) {
+                                HStack(spacing: 6) {
+                                    Image(systemName: "checkmark.circle.fill")
+                                    Text("Save as Initial Baseline Reference")
+                                }
+                                .font(.system(size: 12, weight: .bold))
+                                .padding(.horizontal, 16)
+                                .padding(.vertical, 8)
+                                .background(Theme.cyanGlowGradient)
+                                .foregroundStyle(.black)
+                                .clipShape(RoundedRectangle(cornerRadius: 6))
+                            }
+                            .buttonStyle(.plain)
+                        }
+                        .padding(18)
+                        .background(Theme.cardBackground)
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                    }
+                }
+                .padding(20)
+            }
+
+            Divider()
+
+            // Footer Actions
+            HStack {
+                Button("Close") { isPresented = false }
+                    .buttonStyle(.plain)
+
+                Spacer()
+
+                Button(action: {
+                    state.addDeviceToTimeline(device: device)
+                    isPresented = false
+                }) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "waveform.path.ecg")
+                        Text("Add to SLA Monitor")
+                    }
+                    .font(.system(size: 12, weight: .semibold))
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                    .background(Theme.solarAmber.opacity(0.15))
+                    .foregroundStyle(Theme.solarAmber)
+                    .clipShape(RoundedRectangle(cornerRadius: 6))
+                }
+                .buttonStyle(.plain)
+
+                Button(action: {
+                    state.targetInput = device.ipAddress
+                    state.updateTargetClassification(device.ipAddress)
+                    state.selectedWorkspace = .diagnose
+                    isPresented = false
+                    if let target = state.classifiedTarget {
+                        Task { await state.runDiagnosis(target: target) }
+                    }
+                }) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "stethoscope")
+                        Text("Full Diagnosis")
+                    }
+                    .font(.system(size: 12, weight: .semibold))
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                    .background(Theme.electricAzure.opacity(0.15))
+                    .foregroundStyle(Theme.electricAzure)
+                    .clipShape(RoundedRectangle(cornerRadius: 6))
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(16)
+            .background(Theme.cardBackground)
+        }
+        .frame(width: 620, height: 560)
+        .task {
+            await runAudit()
+        }
+    }
+
+    private func runAudit() async {
+        isAuditing = true
+        statusMessage = "Pinging \(device.ipAddress) & auditing telemetry drift..."
+        let baselines = (try? state.deviceManager.listBaselines(forDeviceId: device.id)) ?? []
+        baseline = baselines.first
+
+        if let base = baseline {
+            let (sample, comparison) = await state.deviceAuditor.auditDevice(
+                device: device,
+                baseline: base,
+                manager: state.deviceManager
+            )
+            latestSample = sample
+            comparisonResult = comparison
+        } else {
+            let sample = await state.deviceAuditor.probeLiveBaseline(
+                ipAddress: device.ipAddress,
+                pingCount: 5,
+                snmpConfig: device.snmpConfig
+            )
+            latestSample = sample
+            comparisonResult = nil
+        }
+        isAuditing = false
+    }
+
+    private func adoptNewBaseline(_ sample: DeviceBaselineSample) {
+        let newBaseline = DeviceBaseline(
+            deviceId: device.id,
+            createdAt: sample.measuredAt,
+            avgLatencyMs: sample.avgLatencyMs,
+            packetLossPct: sample.packetLossPct,
+            openPorts: sample.openPorts,
+            snmpSysDescr: sample.snmpSysDescr,
+            notes: "Adopted from live audit"
+        )
+        try? state.deviceManager.saveBaseline(newBaseline)
+        Task { await runAudit() }
+        state.toastMessage = "New baseline reference adopted for \(device.displayName)"
+    }
+
+    private func scoreColor(_ score: Int) -> Color {
+        if score >= 90 { return Theme.signalEmerald }
+        if score >= 70 { return Theme.solarAmber }
+        return Theme.crimsonCritical
+    }
+
+    private func scoreTitle(_ score: Int) -> String {
+        if score >= 90 { return "NOMINAL" }
+        if score >= 70 { return "DRIFT" }
+        return "DEGRADED"
+    }
+}
+
+// MARK: - Save Panel Helper
+@MainActor
+private func exportStringToFile(content: String, defaultName: String, fileExtension: String) {
+    let panel = NSSavePanel()
+    panel.title = "Export \(defaultName)"
+    panel.nameFieldStringValue = defaultName
+    panel.canCreateDirectories = true
+    if panel.runModal() == .OK, let url = panel.url {
+        do {
+            try content.write(to: url, atomically: true, encoding: .utf8)
+        } catch {
+            print("Failed to save: \(error)")
+        }
     }
 }

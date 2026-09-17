@@ -7,7 +7,7 @@ import Foundation
 @Suite("DeviceKit Tests")
 struct DeviceKitTests {
 
-    @Test("OUI Vendor Resolution")
+    @Test("OUI Vendor Resolution and Private MAC Detection")
     func testOUIResolution() {
         #expect(OUIResolver.resolve(mac: "00:00:0c:12:34:56") == "Cisco Systems")
         #expect(OUIResolver.resolve(mac: "00-1C-73-AA-BB-CC") == "Arista Networks")
@@ -17,7 +17,15 @@ struct DeviceKitTests {
         #expect(OUIResolver.resolve(mac: "00:09:0f:55:44:33") == "Fortinet")
         #expect(OUIResolver.resolve(mac: "00:0c:29:1a:2b:3c") == "VMware")
         #expect(OUIResolver.resolve(mac: "b8:27:eb:11:22:33") == "Raspberry Pi")
-        #expect(OUIResolver.resolve(mac: "aa:bb:cc:dd:ee:ff") == nil)
+
+        // Private / Randomized MAC detection (bit 1 of first octet is set)
+        #expect(OUIResolver.isLocallyAdministered(mac: "aa:bb:cc:dd:ee:ff") == true)
+        #expect(OUIResolver.isLocallyAdministered(mac: "02:00:00:00:00:00") == true)
+        #expect(OUIResolver.isLocallyAdministered(mac: "00:00:0c:12:34:56") == false)
+        #expect(OUIResolver.resolve(mac: "aa:bb:cc:dd:ee:ff") == "Private MAC (Locally Administered)")
+
+        // Non-locally-administered unassigned MAC
+        #expect(OUIResolver.resolve(mac: "00:00:01:dd:ee:ff") == nil)
 
         #expect(OUIResolver.inferVendor(mac: "00:00:0c:00:00:00") == .cisco)
         #expect(OUIResolver.inferVendor(mac: "00:1c:73:00:00:00") == .arista)
@@ -74,17 +82,18 @@ struct DeviceKitTests {
         #expect(neighbors[1].ouiVendor == "Apple")
     }
 
-    @Test("Device CRUD and Baselines in SQLite")
+    @Test("Device CRUD and MAC Address Persistence in SQLite")
     func testDeviceCRUDAndBaselines() throws {
         let tempDBPath = FileManager.default.temporaryDirectory.appendingPathComponent("test_device_\(UUID().uuidString).sqlite").path
         let db = try SQLiteDatabase(path: tempDBPath)
         let manager = DeviceManager(database: db)
 
-        // Create
+        // Create with MAC Address
         let device = NetworkDevice(
             displayName: "Core-Switch-01",
             hostname: "core-sw01.corp.internal",
             managementIP: "10.0.0.1",
+            macAddress: "00:1c:73:aa:bb:cc",
             vendor: .cisco,
             role: .switchRole,
             platform: "IOS-XE",
@@ -97,10 +106,11 @@ struct DeviceKitTests {
 
         try manager.createDevice(device)
 
-        // List
+        // List & verify MAC persistence
         let list = try manager.listDevices()
         #expect(list.count == 1)
         #expect(list[0].displayName == "Core-Switch-01")
+        #expect(list[0].macAddress == "00:1c:73:aa:bb:cc")
         #expect(list[0].vendor == .cisco)
         #expect(list[0].tags.count == 3)
         #expect(list[0].snmpConfig?.community == "corp-snmp")
@@ -108,11 +118,13 @@ struct DeviceKitTests {
         // Update
         var updated = list[0]
         updated.displayName = "Core-Switch-01-Renamed"
+        updated.macAddress = "00:1c:73:aa:bb:dd"
         updated.status = .online
         try manager.updateDevice(updated)
 
         let reList = try manager.listDevices()
         #expect(reList[0].displayName == "Core-Switch-01-Renamed")
+        #expect(reList[0].macAddress == "00:1c:73:aa:bb:dd")
 
         // Baselines
         let baseline = DeviceBaseline(
@@ -149,6 +161,42 @@ struct DeviceKitTests {
         #expect(try manager.listDevices().isEmpty)
 
         // Cleanup
+        try? FileManager.default.removeItem(atPath: tempDBPath)
+    }
+
+    @Test("DeviceAuditor Active Probe and Baseline Drift Audit")
+    func testDeviceAuditorProbe() async throws {
+        let auditor = DeviceAuditor()
+        // Probe localhost (127.0.0.1) with ping train & ports
+        let sample = await auditor.probeLiveBaseline(
+            ipAddress: "127.0.0.1",
+            customPorts: [80, 443],
+            pingCount: 2
+        )
+
+        #expect(sample.avgLatencyMs >= 0.0)
+        #expect(sample.packetLossPct >= 0.0 && sample.packetLossPct <= 100.0)
+
+        // Test drift audit against a synthetic baseline
+        let device = NetworkDevice(
+            name: "Loopback-Test",
+            ipAddress: "127.0.0.1",
+            macAddress: "00:00:00:00:00:01"
+        )
+        let baseline = DeviceBaseline(
+            deviceId: device.id,
+            avgLatencyMs: 1.0,
+            packetLossPct: 0.0,
+            openPorts: []
+        )
+
+        let tempDBPath = FileManager.default.temporaryDirectory.appendingPathComponent("test_audit_\(UUID().uuidString).sqlite").path
+        let db = try SQLiteDatabase(path: tempDBPath)
+        let manager = DeviceManager(database: db)
+
+        let auditResult = await auditor.auditDevice(device: device, baseline: baseline, manager: manager)
+        #expect(auditResult.comparison.overallHealthScore >= 0 && auditResult.comparison.overallHealthScore <= 100)
+
         try? FileManager.default.removeItem(atPath: tempDBPath)
     }
 }

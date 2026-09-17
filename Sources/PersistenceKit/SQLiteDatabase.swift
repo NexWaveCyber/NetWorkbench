@@ -130,6 +130,7 @@ public final class SQLiteDatabase: @unchecked Sendable {
             display_name TEXT NOT NULL,
             hostname TEXT NOT NULL,
             management_ip TEXT NOT NULL,
+            mac_address TEXT,
             vendor TEXT NOT NULL,
             role TEXT NOT NULL DEFAULT 'switch',
             platform TEXT,
@@ -199,6 +200,7 @@ public final class SQLiteDatabase: @unchecked Sendable {
 
         // Safe column additions for schema upgrades
         let alterStatements = [
+            "ALTER TABLE devices ADD COLUMN mac_address TEXT;",
             "ALTER TABLE devices ADD COLUMN role TEXT NOT NULL DEFAULT 'switch';",
             "ALTER TABLE devices ADD COLUMN status TEXT NOT NULL DEFAULT 'unknown';",
             "ALTER TABLE devices ADD COLUMN snmp_community TEXT;",

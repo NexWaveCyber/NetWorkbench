@@ -50,7 +50,7 @@ let package = Package(
         ),
         .target(
             name: "DeviceKit",
-            dependencies: ["NetworkCore", "PersistenceKit", "SecurityKit"],
+            dependencies: ["NetworkCore", "PersistenceKit", "SecurityKit", "PingEngine"],
             path: "Sources/DeviceKit"
         ),
 

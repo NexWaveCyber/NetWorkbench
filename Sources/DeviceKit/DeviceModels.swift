@@ -67,6 +67,7 @@ public struct NetworkDevice: Identifiable, Codable, Sendable, Hashable {
     public var displayName: String
     public var hostname: String
     public var managementIP: String
+    public var macAddress: String?
     public var vendor: DeviceVendor
     public var role: DeviceRole
     public var platform: String?
@@ -84,6 +85,7 @@ public struct NetworkDevice: Identifiable, Codable, Sendable, Hashable {
         displayName: String,
         hostname: String,
         managementIP: String,
+        macAddress: String? = nil,
         vendor: DeviceVendor = .generic,
         role: DeviceRole = .switchRole,
         platform: String? = nil,
@@ -100,6 +102,7 @@ public struct NetworkDevice: Identifiable, Codable, Sendable, Hashable {
         self.displayName = displayName
         self.hostname = hostname
         self.managementIP = managementIP
+        self.macAddress = macAddress
         self.vendor = vendor
         self.role = role
         self.platform = platform
@@ -244,10 +247,6 @@ extension NetworkDevice {
         set { managementIP = newValue }
     }
 
-    public var macAddress: String? {
-        get { nil }
-    }
-
     public var location: String? {
         get { site }
         set { site = newValue }
@@ -270,6 +269,7 @@ extension NetworkDevice {
         self.displayName = name
         self.hostname = hostname ?? name
         self.managementIP = ipAddress
+        self.macAddress = macAddress
         self.vendor = vendor
         self.role = role
         self.platform = nil
