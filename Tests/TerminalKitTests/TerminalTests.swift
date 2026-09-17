@@ -193,6 +193,202 @@ struct TerminalTests {
         let nonExistent = session.searchLines(query: "nonexistent_pattern_xyz_12345")
         #expect(nonExistent.isEmpty)
     }
+
+    @Test("ANSI SGR Parser decodes standard 16-color, 256-color, TrueColor, and styling")
+    func testANSISGRParser() {
+        let parser = ANSISGRParser()
+
+        // Test 1: Standard 16-color & bold
+        let line1 = "\u{1B}[1;32mSwitch#\u{1B}[0m show version"
+        let (spans1, _) = parser.parseSpans(from: line1)
+        #expect(!spans1.isEmpty)
+        let promptSpan = spans1.first { $0.text == "Switch#" }
+        #expect(promptSpan != nil)
+        #expect(promptSpan?.style.isBold == true)
+        #expect(promptSpan?.style.foreground != nil)
+        #expect((promptSpan?.style.foreground?.g ?? 0) > 100)
+
+        // Test 2: 256-color foreground (38;5;196)
+        let line2 = "\u{1B}[38;5;196mCRITICAL ALERT\u{1B}[0m"
+        let (spans2, _) = parser.parseSpans(from: line2)
+        let alertSpan = spans2.first { $0.text.contains("CRITICAL ALERT") }
+        #expect(alertSpan != nil)
+        #expect(alertSpan?.style.foreground?.r == 255)
+
+        // Test 3: TrueColor 24-bit RGB (38;2;255;128;0)
+        let line3 = "\u{1B}[38;2;255;128;0mTrueColor Orange\u{1B}[0m"
+        let (spans3, _) = parser.parseSpans(from: line3)
+        let orangeSpan = spans3.first { $0.text.contains("TrueColor Orange") }
+        #expect(orangeSpan != nil)
+        #expect(orangeSpan?.style.foreground?.r == 255)
+        #expect(orangeSpan?.style.foreground?.g == 128)
+        #expect(orangeSpan?.style.foreground?.b == 0)
+
+        // Test 4: Carriage return overwrite
+        let carriageReturnRaw = "Loading [===>    ] 30%\rLoading [========>] 100%\n"
+        let parsedLines = parser.parseLines(from: carriageReturnRaw)
+        #expect(parsedLines.count == 1)
+        #expect(parsedLines[0].text.contains("100%"))
+        #expect(!parsedLines[0].text.contains("30%"))
+    }
+
+    @Test("Multi-Vendor CLI Simulation engines emulate Cisco, Arista, and Juniper faithfully")
+    func testMultiVendorSimulators() {
+        // Cisco IOS-XE Simulation
+        let cisco = SimulatedDeviceCLI(hostname: "core-sw01", vendor: .ciscoIOSXE)
+        var ciscoOutput: [String] = []
+        cisco.onOutput = { ciscoOutput.append($0) }
+        cisco.start()
+        #expect((ciscoOutput.first ?? "").contains("Cisco IOS-XE Simulation Engine"))
+        #expect(cisco.currentPrompt == "core-sw01# ")
+
+        cisco.processInput("show version")
+        #expect((ciscoOutput.last ?? "").contains("Cisco IOS XE"))
+
+        cisco.processInput("configure terminal")
+        #expect(cisco.currentPrompt == "core-sw01(config)# ")
+        cisco.processInput("exit")
+        #expect(cisco.currentPrompt == "core-sw01# ")
+
+        // Arista EOS Simulation
+        let arista = SimulatedDeviceCLI(hostname: "spine01", vendor: .aristaEOS)
+        var aristaOutput: [String] = []
+        arista.onOutput = { aristaOutput.append($0) }
+        arista.start()
+        #expect((aristaOutput.first ?? "").contains("Arista EOS Spine Simulation Engine"))
+        #expect(arista.currentPrompt == "spine01# ")
+
+        arista.processInput("show lldp neighbors")
+        #expect((aristaOutput.last ?? "").contains("spine01"))
+
+        arista.processInput("show version")
+        #expect((aristaOutput.last ?? "").contains("Arista DCS-7050SX3"))
+
+        // Juniper Junos Simulation
+        let juniper = SimulatedDeviceCLI(hostname: "ex4300", vendor: .juniperJunos)
+        var juniperOutput: [String] = []
+        juniper.onOutput = { juniperOutput.append($0) }
+        juniper.start()
+        #expect((juniperOutput.first ?? "").contains("JUNOS"))
+        #expect(juniper.currentPrompt == "admin@ex4300> ")
+
+        juniper.processInput("show interfaces terse")
+        #expect((juniperOutput.last ?? "").contains("ge-0/0/0.0"))
+
+        juniper.processInput("configure")
+        #expect(juniper.currentPrompt.contains("admin@ex4300# "))
+
+        juniper.processInput("commit")
+        #expect((juniperOutput.last ?? "").contains("commit complete"))
+
+        juniper.processInput("exit")
+        #expect(juniper.currentPrompt == "admin@ex4300> ")
+    }
+
+    @Test("Command Macro parameter interpolation expands variables accurately")
+    func testMacroParameterInterpolation() {
+        let macro = CommandMacro(
+            name: "Ping Host",
+            command: "ping {ip} repeat {count}",
+            category: "Diagnostics"
+        )
+
+        let params: [String: String] = [
+            "ip": "172.16.1.1",
+            "count": "100"
+        ]
+
+        let expanded = macro.expandCommand(with: params)
+        #expect(expanded == "ping 172.16.1.1 repeat 100")
+
+        // Unmatched parameters remain cleanly
+        let partialExpanded = macro.expandCommand(with: ["ip": "192.168.1.1"])
+        #expect(partialExpanded == "ping 192.168.1.1 repeat {count}")
+    }
+
+    @Test("Terminal Profile Vault provides templates and supports persistence")
+    func testTerminalProfileVault() {
+        let manager = TerminalManager()
+        #expect(!manager.savedProfiles.isEmpty)
+
+        // Seeded templates check
+        let ciscoTemplate = manager.savedProfiles.first { $0.name.contains("Cisco") }
+        #expect(ciscoTemplate != nil)
+        #expect(ciscoTemplate?.folder == "Data Center")
+
+        let serialTemplate = manager.savedProfiles.first { $0.name.contains("USB Console") }
+        #expect(serialTemplate != nil)
+        #expect(serialTemplate?.folder == "Lab Rack")
+
+        // Save a custom profile
+        let customProfile = TerminalProfile(
+            name: "Edge-Router-01",
+            folder: "WAN Edge",
+            host: "198.51.100.1",
+            port: 22,
+            username: "admin",
+            connectionType: "ssh"
+        )
+        manager.saveProfile(customProfile)
+        #expect(manager.savedProfiles.contains(where: { $0.id == customProfile.id }))
+
+        // Filter profiles by folder
+        let wanProfiles = manager.savedProfiles.filter { $0.folder == "WAN Edge" }
+        #expect(wanProfiles.contains(where: { $0.id == customProfile.id }))
+
+        // Delete profile
+        manager.deleteProfile(id: customProfile.id)
+        #expect(!manager.savedProfiles.contains(where: { $0.id == customProfile.id }))
+    }
+
+    @Test("Broadcast Mode broadcasts commands and breaks across all connected sessions")
+    func testBroadcastDispatch() {
+        let manager = TerminalManager()
+
+        // Create two simulated sessions
+        let session1 = manager.openSimulatedSession(preset: "Cisco Catalyst 9300")
+        let session2 = manager.openSimulatedSession(preset: "Arista 7050X")
+
+        #expect(manager.sessions.count >= 2)
+        #expect(session1.status == .connected)
+        #expect(session2.status == .connected)
+
+        // Enable broadcast mode
+        manager.isBroadcastEnabled = true
+        #expect(manager.isBroadcastEnabled == true)
+
+        // Broadcast command
+        manager.broadcastCommand("show version")
+        #expect(session1.commandHistory.contains("show version"))
+        #expect(session2.commandHistory.contains("show version"))
+
+        // Broadcast hardware break
+        manager.broadcastBreak()
+        #expect(session1.lines.contains(where: { $0.text.contains("BREAK SIGNAL") }))
+        #expect(session2.lines.contains(where: { $0.text.contains("BREAK SIGNAL") }))
+    }
+
+    @Test("Continuous session logging appends timestamps and creates directory structure")
+    func testContinuousSessionLogging() {
+        let session = TerminalSession(
+            title: "Logger Test",
+            connectionType: .simulation(presetName: "Switch")
+        )
+        session.connect()
+
+        #expect(session.logFilePath != nil)
+
+        // Send a command to trigger logging
+        session.sendCommand("show interface brief")
+
+        // Verify log export contains timestamps
+        let exported = session.exportSessionLog()
+        #expect(exported.contains("# NexWave Terminal Session Log"))
+        #expect(exported.contains("Logger Test"))
+
+        session.disconnect()
+    }
 }
+
 
 

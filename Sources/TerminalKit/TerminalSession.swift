@@ -1,7 +1,7 @@
 import Foundation
 import NetworkCore
 
-/// Represents an active interactive terminal session tab with line buffering and ANSI handling
+/// Represents an active interactive terminal session tab with streaming ANSI SGR rendition and PTY control
 @Observable
 public final class TerminalSession: Identifiable, @unchecked Sendable {
     public let id: UUID
@@ -10,10 +10,13 @@ public final class TerminalSession: Identifiable, @unchecked Sendable {
     public var status: SessionStatus = .disconnected
     public var lines: [TerminalLine] = []
     public var commandHistory: [String] = []
+    public var logFilePath: URL? = nil
+    public var showTimestamps: Bool = false
 
-    private let maxBufferedLines: Int = 3000
+    private let maxBufferedLines: Int = 4000
     private var ptyRunner: PTYProcessRunner?
     private var simulatedCLI: SimulatedDeviceCLI?
+    private let logQueue = DispatchQueue(label: "com.nexwave.terminal.logging", qos: .utility)
 
     public init(
         id: UUID = UUID(),
@@ -29,6 +32,7 @@ public final class TerminalSession: Identifiable, @unchecked Sendable {
     public func connect() {
         guard status == .disconnected || status == .terminated(exitCode: 0) else { return }
         status = .connecting("Establishing connection...")
+        initSessionLogFile()
 
         switch connectionType {
         case .ssh(let host, let port, let username, let identityFile, let password):
@@ -54,7 +58,7 @@ public final class TerminalSession: Identifiable, @unchecked Sendable {
                 appendOutput("[Failed to start SSH session: \(error.localizedDescription)]\n")
             }
 
-        case .serial(let path, let baud, _, _, _):
+        case .serial(let path, let baud, let dataBits, let parity, let stopBits):
             let runner = PTYProcessRunner()
             self.ptyRunner = runner
 
@@ -68,14 +72,27 @@ public final class TerminalSession: Identifiable, @unchecked Sendable {
             }
 
             do {
-                // On macOS, `/usr/bin/screen <path> <baud>` is the standard POSIX console wrapper
-                let screenURL = URL(fileURLWithPath: "/usr/bin/screen")
-                try runner.launch(executableURL: screenURL, arguments: [path, "\(baud)"])
+                // Try direct POSIX serial communication first
+                try runner.launchDirectSerial(
+                    devicePath: path,
+                    baudRate: baud,
+                    dataBits: dataBits,
+                    parity: parity,
+                    stopBits: stopBits
+                )
                 self.status = .connected
-                appendOutput("[Serial console session opened on \(path) at \(baud) baud]\n")
+                appendOutput("[Direct POSIX serial session opened on \(path) at \(baud) bps (\(dataBits)\(parity.rawValue.prefix(1))\(stopBits))]\n")
             } catch {
-                self.status = .error(error.localizedDescription)
-                appendOutput("[Serial error: \(error.localizedDescription)]\n")
+                // Fallback to /usr/bin/screen if direct opening fails
+                do {
+                    let screenURL = URL(fileURLWithPath: "/usr/bin/screen")
+                    try runner.launch(executableURL: screenURL, arguments: [path, "\(baud)"])
+                    self.status = .connected
+                    appendOutput("[Serial console session opened via screen on \(path) at \(baud) baud]\n")
+                } catch {
+                    self.status = .error(error.localizedDescription)
+                    appendOutput("[Serial error: \(error.localizedDescription)]\n")
+                }
             }
 
         case .telnet(let host, let port):
@@ -121,7 +138,7 @@ public final class TerminalSession: Identifiable, @unchecked Sendable {
             }
 
         case .simulation(let preset):
-            let sim = SimulatedDeviceCLI(hostname: preset.lowercased().replacingOccurrences(of: " ", with: "-"))
+            let sim = SimulatedDeviceCLI(presetName: preset)
             self.simulatedCLI = sim
 
             sim.onOutput = { [weak self] chunk in
@@ -148,7 +165,29 @@ public final class TerminalSession: Identifiable, @unchecked Sendable {
         }
     }
 
-    /// Send raw character (e.g. Ctrl+C = 0x03)
+    /// Send raw character directly (character-by-character interactive mode)
+    public func sendRawCharacter(_ char: Character) {
+        let text = String(char)
+        if let sim = simulatedCLI {
+            if char == "\n" || char == "\r" {
+                sim.processInput("")
+            } else if char == "?" {
+                sim.processInput("?")
+            }
+        } else if let runner = ptyRunner {
+            runner.send(text: text)
+        }
+    }
+
+    /// Send raw byte sequence
+    public func sendRawBytes(_ bytes: [UInt8]) {
+        guard let runner = ptyRunner else { return }
+        for b in bytes {
+            runner.sendControlCharacter(b)
+        }
+    }
+
+    /// Send standard control key combination (e.g. Ctrl+C = 0x03, Ctrl+Z = 0x1A)
     public func sendControl(_ charCode: UInt8) {
         if charCode == 0x03 { // Ctrl+C
             appendLine(TerminalLine(text: "^C", isCommandInput: true))
@@ -157,6 +196,17 @@ public final class TerminalSession: Identifiable, @unchecked Sendable {
             }
         }
         ptyRunner?.sendControlCharacter(charCode)
+    }
+
+    /// Send hardware serial break signal to trigger Cisco ROMMON mode or loader prompt
+    public func sendBreak(durationMs: Int = 350) {
+        appendLine(TerminalLine(text: "[>>> SENDING SERIAL HARDWARE BREAK SIGNAL (ROMMON) <<<]", isCommandInput: true))
+        ptyRunner?.sendBreak(durationMs: durationMs)
+    }
+
+    /// Inform PTY of updated column and row geometry
+    public func resize(cols: Int, rows: Int) {
+        ptyRunner?.resize(cols: cols, rows: rows)
     }
 
     /// Disconnect session and release handles
@@ -180,7 +230,7 @@ public final class TerminalSession: Identifiable, @unchecked Sendable {
         return lines.filter { $0.text.localizedCaseInsensitiveContains(trimmed) }
     }
 
-    /// Export whole session transcript to string
+    /// Export whole session transcript to plain string
     public func exportTranscript() -> String {
         lines.map { $0.text }.joined(separator: "\n")
     }
@@ -199,18 +249,16 @@ public final class TerminalSession: Identifiable, @unchecked Sendable {
         return log
     }
 
-    // MARK: - Output Buffering & Parsing
+    // MARK: - Output Buffering & Streaming ANSI Parser
 
     private func appendOutput(_ chunk: String) {
-        // Strip ANSI cursor control characters while preserving lines
-        let clean = stripAnsiEscapeSequences(from: chunk)
-        let splitLines = clean.components(separatedBy: "\n")
+        // Continuous session logging
+        writeToLogFile(chunk)
 
-        for line in splitLines {
-            let sanitized = line.replacingOccurrences(of: "\r", with: "")
-            if !sanitized.isEmpty {
-                appendLine(TerminalLine(text: sanitized))
-            }
+        // Parse chunk into styled lines preserving ANSI SGR color attributes
+        let parsed = ANSISGRParser.shared.parseLines(from: chunk)
+        for line in parsed {
+            appendLine(line)
         }
     }
 
@@ -221,10 +269,41 @@ public final class TerminalSession: Identifiable, @unchecked Sendable {
         }
     }
 
-    /// Clean ANSI escape sequences for smooth rendering
+    /// Strip ANSI escape sequences for plain-text search and exports
     public func stripAnsiEscapeSequences(from input: String) -> String {
-        // Matches standard CSI escape codes: ESC [ ... [a-zA-Z]
         let regex = #"\x1B\[[0-9;]*[a-zA-Z]"#
         return input.replacingOccurrences(of: regex, with: "", options: .regularExpression)
+    }
+
+    // MARK: - Continuous Session Logging
+
+    private func initSessionLogFile() {
+        let fm = FileManager.default
+        let appSupport = fm.urls(for: .applicationSupportDirectory, in: .userDomainMask).first ?? URL(fileURLWithPath: NSTemporaryDirectory())
+        let logsDir = appSupport.appendingPathComponent("NexWave/TerminalLogs", isDirectory: true)
+
+        try? fm.createDirectory(at: logsDir, withIntermediateDirectories: true)
+
+        let safeTitle = title.replacingOccurrences(of: "[^a-zA-Z0-9_-]", with: "_", options: .regularExpression)
+        let df = DateFormatter()
+        df.dateFormat = "yyyyMMdd_HHmmss"
+        let timestamp = df.string(from: Date())
+
+        let fileURL = logsDir.appendingPathComponent("\(safeTitle)_\(timestamp).log")
+        self.logFilePath = fileURL
+
+        let header = "# NexWave Terminal Session Log Started: \(ISO8601DateFormatter().string(from: Date()))\n# Target: \(title)\n# ------------------------------------------------------------\n"
+        try? header.write(to: fileURL, atomically: true, encoding: .utf8)
+    }
+
+    private func writeToLogFile(_ chunk: String) {
+        guard let url = logFilePath, let data = chunk.data(using: .utf8) else { return }
+        logQueue.async {
+            if let handle = try? FileHandle(forWritingTo: url) {
+                defer { try? handle.close() }
+                handle.seekToEndOfFile()
+                handle.write(data)
+            }
+        }
     }
 }

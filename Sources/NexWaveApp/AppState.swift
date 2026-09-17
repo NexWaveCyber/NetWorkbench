@@ -128,7 +128,7 @@ public final class AppState: @unchecked Sendable {
     public var activeSNMPVersion: String = "v2c"
 
     // Phase 6: Terminal & Console Sessions
-    public let terminalManager: TerminalManager = TerminalManager()
+    public var terminalManager: TerminalManager = TerminalManager()
 
     // Phase 7: Time-Series & Continuous Monitoring
     public let timeSeriesRepository: TimeSeriesRepository
