@@ -20,6 +20,7 @@ public struct TerminalWorkbenchView: View {
     @State private var isSearching: Bool = false
     @State private var searchQuery: String = ""
     @State private var focusedPane: Int = 0 // 0: Primary, 1: Secondary, 2: Pane 3, 3: Pane 4
+    @FocusState private var focusedPaneState: Int?
 
     // Quick Connect
     @State private var quickConnectInput: String = ""
@@ -193,6 +194,48 @@ public struct TerminalWorkbenchView: View {
                         color: Color(hex: activeSession?.status.badgeColorHex ?? "#8E8E93"),
                         icon: activeSession?.status == .connected ? "antenna.radiowaves.left.and.right" : nil
                     )
+
+                    if let s = activeSession {
+                        if s.status != .connected && s.status != .connecting("Establishing connection...") {
+                            Button(action: {
+                                s.connect()
+                            }) {
+                                HStack(spacing: 4) {
+                                    Image(systemName: "arrow.clockwise")
+                                    Text("Reconnect")
+                                }
+                                .font(.system(size: 10, weight: .bold))
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 3)
+                                .background(Theme.neonCyan.opacity(0.18))
+                                .foregroundStyle(Theme.neonCyan)
+                                .clipShape(RoundedRectangle(cornerRadius: 5))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 5)
+                                        .stroke(Theme.neonCyan.opacity(0.6), lineWidth: 1)
+                                )
+                            }
+                            .buttonStyle(.plain)
+                            .help("Reconnect this session")
+                        } else if s.status == .connected {
+                            Button(action: {
+                                s.disconnect()
+                            }) {
+                                HStack(spacing: 4) {
+                                    Image(systemName: "power")
+                                    Text("Disconnect")
+                                }
+                                .font(.system(size: 10, weight: .semibold))
+                                .padding(.horizontal, 7)
+                                .padding(.vertical, 3)
+                                .background(Color.red.opacity(0.18))
+                                .foregroundStyle(Color.red)
+                                .clipShape(RoundedRectangle(cornerRadius: 5))
+                            }
+                            .buttonStyle(.plain)
+                            .help("Disconnect active session")
+                        }
+                    }
                 }
                 Text("Direct PTY SSH, POSIX Serial Console, and Cisco/Arista/Junos Multi-Vendor CLI")
                     .font(.system(size: 11))
@@ -748,6 +791,13 @@ public struct TerminalWorkbenchView: View {
                                 }
                             }
                         }
+                        // Interactive Cursor Indicator
+                        HStack(spacing: 2) {
+                            Text("▋")
+                                .font(Theme.monoText(fontSize, weight: .bold))
+                                .foregroundStyle(isFocused ? Color(hex: selectedTheme.promptColorHex) : Color.secondary.opacity(0.35))
+                        }
+
                         Color.clear
                             .frame(height: 1)
                             .id("bottomAnchor_\(paneIndex)")
@@ -763,24 +813,41 @@ public struct TerminalWorkbenchView: View {
                 }
             }
             .contentShape(Rectangle())
+            .focusable()
+            .focusEffectDisabled()
+            .focused($focusedPaneState, equals: paneIndex)
+            .onKeyPress { press in
+                handleDirectKeyPress(press, session: session)
+            }
             .onTapGesture {
                 focusedPane = paneIndex
+                focusedPaneState = paneIndex
             }
 
             Divider().overlay(Theme.borderLight)
 
             // Interactive Bottom Input Bar
+            let askingPassword = isPasswordPrompt(session)
             HStack(spacing: 8) {
                 Text("\(session.title) #")
                     .font(Theme.monoText(11, weight: .bold))
                     .foregroundStyle(Color(hex: selectedTheme.promptColorHex))
 
-                TextField("Enter command (e.g. show ip route, ping, conf t)...", text: $inputCommand)
-                    .font(Theme.monoText(12))
-                    .textFieldStyle(.plain)
-                    .onSubmit {
-                        submitCommand(to: session)
-                    }
+                if askingPassword {
+                    SecureField("Remote host password / passphrase (press Enter to send)...", text: $inputCommand)
+                        .font(Theme.monoText(12))
+                        .textFieldStyle(.plain)
+                        .onSubmit {
+                            submitCommand(to: session)
+                        }
+                } else {
+                    TextField("Enter command (or click terminal canvas to type directly)...", text: $inputCommand)
+                        .font(Theme.monoText(12))
+                        .textFieldStyle(.plain)
+                        .onSubmit {
+                            submitCommand(to: session)
+                        }
+                }
 
                 // Quick keys
                 HStack(spacing: 4) {
@@ -1272,7 +1339,6 @@ public struct TerminalWorkbenchView: View {
     // MARK: - Actions & Helpers
 
     private func submitCommand(to targetSession: TerminalSession) {
-        guard !inputCommand.isEmpty else { return }
         let cmd = inputCommand
         inputCommand = ""
 
@@ -1281,6 +1347,70 @@ public struct TerminalWorkbenchView: View {
         } else {
             targetSession.sendCommand(cmd)
         }
+    }
+
+    private func isPasswordPrompt(_ session: TerminalSession) -> Bool {
+        guard let last = session.lines.last?.text.lowercased() else { return false }
+        return last.contains("password:") || last.contains("password for") || last.contains("passphrase:")
+    }
+
+    private func handleDirectKeyPress(_ press: KeyPress, session: TerminalSession) -> KeyPress.Result {
+        // Handle Ctrl combinations (Ctrl+C, Ctrl+D, Ctrl+Z, etc.)
+        if press.modifiers.contains(.control) {
+            let charStr = press.characters.lowercased()
+            if let first = charStr.first, let ascii = first.asciiValue {
+                if ascii >= 97 && ascii <= 122 {
+                    let code = ascii - 96
+                    session.sendControl(code)
+                    return .handled
+                }
+            }
+        }
+
+        switch press.key {
+        case .return:
+            if state.terminalManager.isBroadcastEnabled {
+                state.terminalManager.broadcastText("\r")
+            } else {
+                session.sendRawString("\r")
+            }
+            return .handled
+        case .delete:
+            if state.terminalManager.isBroadcastEnabled {
+                state.terminalManager.broadcastText("\u{7F}")
+            } else {
+                session.sendRawString("\u{7F}")
+            }
+            return .handled
+        case .escape:
+            session.sendRawString("\u{1B}")
+            return .handled
+        case .tab:
+            session.sendRawString("\t")
+            return .handled
+        case .upArrow:
+            session.sendRawString("\u{1B}[A")
+            return .handled
+        case .downArrow:
+            session.sendRawString("\u{1B}[B")
+            return .handled
+        case .rightArrow:
+            session.sendRawString("\u{1B}[C")
+            return .handled
+        case .leftArrow:
+            session.sendRawString("\u{1B}[D")
+            return .handled
+        default:
+            if !press.characters.isEmpty && !press.modifiers.contains(.command) {
+                if state.terminalManager.isBroadcastEnabled {
+                    state.terminalManager.broadcastText(press.characters)
+                } else {
+                    session.sendRawString(press.characters)
+                }
+                return .handled
+            }
+        }
+        return .ignored
     }
 
     private func executeMacro(_ macro: CommandMacro) {

@@ -6,7 +6,7 @@ import NetworkCore
 public final class TerminalSession: Identifiable, @unchecked Sendable {
     public let id: UUID
     public var title: String
-    public let connectionType: TerminalConnectionType
+    public var connectionType: TerminalConnectionType
     public var status: SessionStatus = .disconnected
     public var lines: [TerminalLine] = []
     public var commandHistory: [String] = []
@@ -29,9 +29,22 @@ public final class TerminalSession: Identifiable, @unchecked Sendable {
         self.title = title ?? connectionType.title
     }
 
-    /// Start the connection session
+    /// Start or reconnect the connection session
     public func connect() {
-        guard status == .disconnected || status == .terminated(exitCode: 0) else { return }
+        switch status {
+        case .connected, .connecting:
+            return
+        default:
+            break
+        }
+
+        ptyRunner?.terminate()
+        ptyRunner = nil
+        simulatedCLI = nil
+
+        if !lines.isEmpty {
+            appendOutput("\n[Reconnecting to \(title)...]\n")
+        }
         status = .connecting("Establishing connection...")
         initSessionLogFile()
 
@@ -191,10 +204,16 @@ public final class TerminalSession: Identifiable, @unchecked Sendable {
     /// Send a user input line or command to the session
     public func sendCommand(_ command: String) {
         let trimmed = command.trimmingCharacters(in: .newlines)
+        let isPassword = lines.last?.text.lowercased().contains("password:") == true ||
+                         lines.last?.text.lowercased().contains("password for") == true ||
+                         lines.last?.text.lowercased().contains("passphrase:") == true
+
         if !trimmed.isEmpty {
-            commandHistory.append(trimmed)
-            // Log command visually with marker
-            appendLine(TerminalLine(text: trimmed, isCommandInput: true))
+            if !isPassword {
+                commandHistory.append(trimmed)
+                // Log command visually with marker
+                appendLine(TerminalLine(text: trimmed, isCommandInput: true))
+            }
         }
 
         if let sim = simulatedCLI {
@@ -212,6 +231,17 @@ public final class TerminalSession: Identifiable, @unchecked Sendable {
                 sim.processInput("")
             } else if char == "?" {
                 sim.processInput("?")
+            }
+        } else if let runner = ptyRunner {
+            runner.send(text: text)
+        }
+    }
+
+    /// Send raw string directly to PTY or simulator without command line formatting
+    public func sendRawString(_ text: String) {
+        if simulatedCLI != nil {
+            for char in text {
+                sendRawCharacter(char)
             }
         } else if let runner = ptyRunner {
             runner.send(text: text)

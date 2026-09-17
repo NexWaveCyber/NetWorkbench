@@ -270,6 +270,8 @@ public final class PTYProcessRunner: @unchecked Sendable {
         let thread = Thread { [weak self] in
             var buffer = [UInt8](repeating: 0, count: 4096)
 
+            var promptAccumulator = ""
+
             while let self = self, self.isRunning {
                 var pfd = pollfd(fd: fd, events: Int16(POLLIN), revents: 0)
                 let pollRes = Darwin.poll(&pfd, 1, 200) // 200ms timeout prevents infinite kernel blocking
@@ -283,10 +285,12 @@ public final class PTYProcessRunner: @unchecked Sendable {
                             if let string = String(data: data, encoding: .utf8) ?? String(data: data, encoding: .ascii) {
                                 // Check if SSH host is prompting for password and we have a pending credential
                                 if let pass = self.pendingPassword, !pass.isEmpty {
-                                    let lower = string.lowercased()
+                                    promptAccumulator += string
+                                    let lower = promptAccumulator.lowercased()
                                     if lower.contains("password:") || lower.contains("password for") || lower.contains("passphrase:") {
                                         self.pendingPassword = nil
-                                        DispatchQueue.global().asyncAfter(deadline: .now() + 0.1) { [weak self] in
+                                        promptAccumulator = ""
+                                        DispatchQueue.global().asyncAfter(deadline: .now() + 0.05) { [weak self] in
                                             self?.send(text: "\(pass)\n")
                                         }
                                     }

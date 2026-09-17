@@ -73,14 +73,26 @@ public final class TerminalManager: @unchecked Sendable {
         enableLegacyCiphers: Bool = false,
         autoConnect: Bool = true
     ) -> TerminalSession {
+        // If an existing session to the same host/port/user exists, update its credentials and reconnect if requested
         if let existing = sessions.first(where: {
             if case .ssh(let h, let p, let u, _, _, _, _) = $0.connectionType {
                 return h == host && p == port && u == username
             }
             return false
         }) {
+            existing.title = "\(username)@\(host)"
+            existing.connectionType = .ssh(
+                host: host,
+                port: port,
+                username: username,
+                identityFile: identityFile,
+                password: password,
+                jumpHost: jumpHost,
+                enableLegacyCiphers: enableLegacyCiphers
+            )
             activeSessionId = existing.id
-            if autoConnect && existing.status == .disconnected {
+            if autoConnect {
+                existing.disconnect()
                 existing.connect()
             }
             return existing
@@ -218,6 +230,13 @@ public final class TerminalManager: @unchecked Sendable {
     public func broadcastCommand(_ command: String) {
         for session in sessions where session.status == .connected {
             session.sendCommand(command)
+        }
+    }
+
+    /// Broadcasts raw interactive text across all connected terminal sessions
+    public func broadcastText(_ text: String) {
+        for session in sessions where session.status == .connected {
+            session.sendRawString(text)
         }
     }
 
