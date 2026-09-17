@@ -1688,6 +1688,7 @@ public struct TerminalWorkbenchView: View {
                     if let editingId = folderEditingId {
                         state.terminalManager.renameFolder(id: editingId, newName: folderNameInput)
                         state.terminalManager.setFolderColor(id: editingId, colorHex: folderColorHexInput)
+                        state.terminalManager.moveFolder(id: editingId, toParentId: folderParentIdInput)
                         copyToastMessage = "Updated folder '\(folderNameInput)'"
                     } else {
                         state.terminalManager.createFolder(
@@ -2483,7 +2484,7 @@ public struct TerminalWorkbenchView: View {
 
             // Dynamic Hierarchical Tree of Saved Folders & Sessions
             ScrollView {
-                LazyVStack(alignment: .leading, spacing: 3) {
+                VStack(alignment: .leading, spacing: 3) {
                     if !sessionSearchQuery.isEmpty || selectedProtocolFilter != "ALL" {
                         searchResultsListView
                     } else {
@@ -2560,10 +2561,18 @@ public struct TerminalWorkbenchView: View {
 
             // Library Options Menu (⋯)
             Menu {
-                Button(action: { state.terminalManager.expandAllFolders() }) {
+                Button(action: {
+                    withAnimation(.easeInOut(duration: 0.18)) {
+                        state.terminalManager.expandAllFolders()
+                    }
+                }) {
                     Label("Expand All Folders", systemImage: "arrow.up.left.and.arrow.down.right")
                 }
-                Button(action: { state.terminalManager.collapseAllFolders() }) {
+                Button(action: {
+                    withAnimation(.easeInOut(duration: 0.18)) {
+                        state.terminalManager.collapseAllFolders()
+                    }
+                }) {
                     Label("Collapse All Folders", systemImage: "arrow.down.right.and.arrow.up.left")
                 }
                 Divider()
@@ -2779,61 +2788,120 @@ public struct TerminalWorkbenchView: View {
         }
     }
 
+    // MARK: - Tree Button Styles
+
+    private struct FolderTreeRowButtonStyle: ButtonStyle {
+        @State private var isHovered = false
+
+        func makeBody(configuration: Configuration) -> some View {
+            configuration.label
+                .background(
+                    RoundedRectangle(cornerRadius: 5)
+                        .fill(
+                            configuration.isPressed
+                                ? Theme.neonCyan.opacity(0.18)
+                                : (isHovered ? Theme.cardBackground.opacity(0.85) : Theme.cardBackground.opacity(0.35))
+                        )
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 5)
+                        .stroke(
+                            isHovered ? Theme.borderLight.opacity(0.8) : Color.clear,
+                            lineWidth: 0.75
+                        )
+                )
+                .contentShape(Rectangle())
+                .onHover { hovering in
+                    isHovered = hovering
+                }
+        }
+    }
+
+    private struct SessionProfileRowButtonStyle: ButtonStyle {
+        @State private var isHovered = false
+
+        func makeBody(configuration: Configuration) -> some View {
+            configuration.label
+                .background(
+                    RoundedRectangle(cornerRadius: 5)
+                        .fill(
+                            configuration.isPressed
+                                ? Theme.neonCyan.opacity(0.2)
+                                : (isHovered ? Theme.cardBackground.opacity(0.9) : Theme.cardBackground.opacity(0.7))
+                        )
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 5)
+                        .stroke(
+                            isHovered ? Theme.neonCyan.opacity(0.5) : Theme.borderLight.opacity(0.4),
+                            lineWidth: isHovered ? 0.75 : 0.5
+                        )
+                )
+                .contentShape(Rectangle())
+                .onHover { hovering in
+                    isHovered = hovering
+                }
+        }
+    }
+
     // MARK: - Folder Row in Tree
 
     private func folderTreeRow(folder: SessionFolder, level: Int) -> AnyView {
+        let liveFolder = state.terminalManager.folders.first(where: { $0.id == folder.id }) ?? folder
         let childFolders = state.terminalManager.folders.filter { $0.parentId == folder.id }
         let directProfiles = state.terminalManager.savedProfiles.filter { $0.folderId == folder.id }
 
         return AnyView(
             VStack(alignment: .leading, spacing: 2) {
-                HStack(spacing: 5) {
-                    // Expand / Collapse Chevron
-                    Button(action: {
+                // Entire row is an interactive button with smooth hover & instant toggle
+                Button(action: {
+                    withAnimation(.easeInOut(duration: 0.16)) {
                         state.terminalManager.toggleFolderExpansion(id: folder.id)
-                    }) {
-                        Image(systemName: folder.isExpanded ? "chevron.down" : "chevron.right")
+                    }
+                }) {
+                    HStack(spacing: 5) {
+                        // Expand / Collapse Chevron
+                        Image(systemName: liveFolder.isExpanded ? "chevron.down" : "chevron.right")
                             .font(.system(size: 9, weight: .bold))
                             .foregroundStyle(.secondary)
                             .frame(width: 14, height: 14)
+
+                        // Colored Folder Icon
+                        Image(systemName: liveFolder.isExpanded ? "folder.fill" : "folder")
+                            .font(.system(size: 11))
+                            .foregroundStyle(Color(hex: liveFolder.iconColorHex ?? "#F59E0B"))
+
+                        // Folder Title
+                        Text(liveFolder.name)
+                            .font(Theme.monoText(10, weight: .bold))
+                            .foregroundStyle(.primary)
+                            .lineLimit(1)
+
+                        Spacer(minLength: 4)
+
+                        // Session Count Badge
+                        let count = directProfiles.count
+                        Text("\(count)")
+                            .font(.system(size: 9, weight: .medium))
+                            .foregroundStyle(.secondary.opacity(0.8))
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 1)
+                            .background(Theme.surfaceBackground.opacity(0.8))
+                            .clipShape(Capsule())
                     }
-                    .buttonStyle(.plain)
-
-                    // Colored Folder Icon
-                    Image(systemName: folder.isExpanded ? "folder.fill" : "folder")
-                        .font(.system(size: 11))
-                        .foregroundStyle(Color(hex: folder.iconColorHex ?? "#F59E0B"))
-
-                    // Folder Title
-                    Text(folder.name)
-                        .font(Theme.monoText(10, weight: .bold))
-                        .foregroundStyle(.primary)
-                        .lineLimit(1)
-
-                    Spacer()
-
-                    // Session Count Badge
-                    let count = directProfiles.count
-                    Text("\(count)")
-                        .font(.system(size: 9, weight: .medium))
-                        .foregroundStyle(.secondary.opacity(0.8))
-                        .padding(.horizontal, 5)
-                        .padding(.vertical, 1)
-                        .background(Theme.cardBackground)
-                        .clipShape(Capsule())
+                    .padding(.leading, CGFloat(level * 12 + 6))
+                    .padding(.trailing, 6)
+                    .padding(.vertical, 4)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .contentShape(Rectangle())
                 }
-                .padding(.leading, CGFloat(level * 12 + 4))
-                .padding(.trailing, 6)
-                .padding(.vertical, 3)
-                .background(Theme.cardBackground.opacity(0.3))
-                .clipShape(RoundedRectangle(cornerRadius: 5))
-                .contentShape(Rectangle())
+                .buttonStyle(FolderTreeRowButtonStyle())
                 .contextMenu {
-                    folderContextMenu(for: folder)
+                    folderContextMenu(for: liveFolder)
                 }
 
                 // Expanded Children
-                if folder.isExpanded {
+                if liveFolder.isExpanded {
                     // Subfolders
                     ForEach(childFolders) { subfolder in
                         folderTreeRow(folder: subfolder, level: level + 1)
@@ -2974,19 +3042,15 @@ public struct TerminalWorkbenchView: View {
                     }
                 }
 
-                Spacer()
+                Spacer(minLength: 4)
             }
             .padding(.leading, CGFloat(level * 12 + 6))
             .padding(.trailing, 6)
             .padding(.vertical, 4)
-            .background(Theme.cardBackground.opacity(0.7))
-            .clipShape(RoundedRectangle(cornerRadius: 5))
-            .overlay(
-                RoundedRectangle(cornerRadius: 5)
-                    .stroke(Theme.borderLight.opacity(0.4), lineWidth: 0.5)
-            )
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(SessionProfileRowButtonStyle())
         .contextMenu {
             sessionProfileContextMenu(for: profile)
         }

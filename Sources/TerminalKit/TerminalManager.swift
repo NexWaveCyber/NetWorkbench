@@ -487,6 +487,28 @@ public final class TerminalManager: @unchecked Sendable {
         }
     }
 
+    public func moveFolder(id: UUID, toParentId: UUID?) {
+        // Prevent cyclical nesting: target parent cannot be the folder itself or any of its descendants
+        var descendantIds: Set<UUID> = [id]
+        var added = true
+        while added {
+            added = false
+            for f in folders where !descendantIds.contains(f.id) {
+                if let pid = f.parentId, descendantIds.contains(pid) {
+                    descendantIds.insert(f.id)
+                    added = true
+                }
+            }
+        }
+        if let target = toParentId, descendantIds.contains(target) {
+            return
+        }
+        if let idx = folders.firstIndex(where: { $0.id == id }) {
+            folders[idx].parentId = toParentId
+            persistFolders()
+        }
+    }
+
     public func expandAllFolders() {
         for idx in folders.indices {
             folders[idx].isExpanded = true
