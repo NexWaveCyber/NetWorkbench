@@ -33,6 +33,7 @@ public struct TerminalWorkbenchView: View {
     @State private var showTerminalSettingsSheet: Bool = false
     @State private var settingsTargetSessionId: UUID? = nil
     @State private var settingsScope: Int = 0 // 0: Global Defaults, 1: Active Tab Override
+    @State private var showMacrosBar: Bool = false
 
     private var targetSettingsSession: TerminalSession? {
         if let id = settingsTargetSessionId {
@@ -196,10 +197,11 @@ public struct TerminalWorkbenchView: View {
                     Divider().overlay(Theme.borderLight)
                 }
 
-                // Command Macros Strip
-                commandSnippetsBar
-
-                Divider().overlay(Theme.borderLight)
+                // Command Macros Strip (collapsible)
+                if showMacrosBar {
+                    commandSnippetsBar
+                    Divider().overlay(Theme.borderLight)
+                }
 
                 // Main Terminal Canvas (Single, Split, or Quad Grid)
                 mainTerminalLayoutView
@@ -283,346 +285,396 @@ public struct TerminalWorkbenchView: View {
         }
     }
 
+    // MARK: - Helpers
+
+    private func layoutIcon(for mode: TerminalSplitMode) -> String {
+        switch mode {
+        case .single: return "rectangle"
+        case .vertical: return "rectangle.split.2x1"
+        case .horizontal: return "rectangle.split.1x2"
+        case .quadGrid: return "rectangle.split.2x2"
+        }
+    }
+
+    private func layoutTooltip(for mode: TerminalSplitMode) -> String {
+        switch mode {
+        case .single: return "Single Pane"
+        case .vertical: return "Side-by-Side Split"
+        case .horizontal: return "Stacked Split"
+        case .quadGrid: return "2x2 Quad Grid"
+        }
+    }
+
     // MARK: - Header Bar
 
     private var headerBar: some View {
         HStack(spacing: 12) {
-            // Sidebar toggle button
-            Button(action: {
-                withAnimation(.easeInOut(duration: 0.2)) {
-                    state.terminalManager.isSidebarExpanded.toggle()
+            // Left Group: Sidebar Toggle, Title, and Active Session Badge
+            HStack(spacing: 10) {
+                Button(action: {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        state.terminalManager.isSidebarExpanded.toggle()
+                    }
+                }) {
+                    Image(systemName: state.terminalManager.isSidebarExpanded ? "sidebar.left" : "sidebar.leading")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(state.terminalManager.isSidebarExpanded ? Theme.neonCyan : .secondary)
+                        .frame(width: 28, height: 28)
+                        .background(state.terminalManager.isSidebarExpanded ? Theme.neonCyan.opacity(0.12) : Theme.cardBackground)
+                        .clipShape(RoundedRectangle(cornerRadius: 6))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 6)
+                                .stroke(state.terminalManager.isSidebarExpanded ? Theme.neonCyan.opacity(0.3) : Theme.borderLight, lineWidth: 0.75)
+                        )
                 }
-            }) {
-                Image(systemName: state.terminalManager.isSidebarExpanded ? "sidebar.left" : "sidebar.leading")
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(state.terminalManager.isSidebarExpanded ? Theme.neonCyan : .secondary)
-            }
-            .buttonStyle(.plain)
-            .help("Toggle MobaXterm Session & Quick Connect Sidebar")
+                .buttonStyle(.plain)
+                .help("Toggle MobaXterm Session Tree Sidebar")
 
-            ZStack {
-                Circle()
-                    .fill(Theme.cyanPulse.opacity(0.15))
-                    .frame(width: 32, height: 32)
-                Image(systemName: "terminal.fill")
-                    .font(.system(size: 15, weight: .bold))
-                    .foregroundStyle(Theme.cyanPulse)
-            }
+                // Modern Clean Title
+                HStack(spacing: 6) {
+                    Image(systemName: "terminal.fill")
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundStyle(Theme.neonCyan)
 
-            VStack(alignment: .leading, spacing: 2) {
-                HStack(spacing: 8) {
-                    Text("TERMINAL & SERIAL CONSOLE BRIDGE")
-                        .font(.system(size: 13, weight: .bold, design: .monospaced))
-                    HUDStatusBadge(
-                        title: activeSession?.status.rawValue ?? "No Session",
-                        color: Color(hex: activeSession?.status.badgeColorHex ?? "#8E8E93"),
-                        icon: activeSession?.status == .connected ? "antenna.radiowaves.left.and.right" : nil
-                    )
+                    Text("Terminal & Console")
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundStyle(.primary)
+                }
 
-                    if let s = activeSession {
+                // Active Session Breadcrumb Chip
+                if let s = activeSession {
+                    HStack(spacing: 6) {
+                        Circle()
+                            .fill(Color(hex: s.status.badgeColorHex))
+                            .frame(width: 6, height: 6)
+
+                        Text(s.title)
+                            .font(.system(size: 11, weight: .medium, design: .monospaced))
+                            .foregroundStyle(.primary)
+                            .lineLimit(1)
+
                         if s.status != .connected && s.status != .connecting("Establishing connection...") {
-                            Button(action: {
-                                s.connect()
-                            }) {
-                                HStack(spacing: 4) {
-                                    Image(systemName: "arrow.clockwise")
-                                    Text("Reconnect")
-                                }
-                                .font(.system(size: 10, weight: .bold))
-                                .padding(.horizontal, 8)
-                                .padding(.vertical, 3)
-                                .background(Theme.neonCyan.opacity(0.18))
-                                .foregroundStyle(Theme.neonCyan)
-                                .clipShape(RoundedRectangle(cornerRadius: 5))
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 5)
-                                        .stroke(Theme.neonCyan.opacity(0.6), lineWidth: 1)
-                                )
+                            Button(action: { s.connect() }) {
+                                Image(systemName: "arrow.clockwise")
+                                    .font(.system(size: 9, weight: .bold))
+                                    .foregroundStyle(Theme.neonCyan)
                             }
                             .buttonStyle(.plain)
-                            .help("Reconnect this session")
+                            .help("Reconnect active session")
                         } else if s.status == .connected {
-                            Button(action: {
-                                s.disconnect()
-                            }) {
-                                HStack(spacing: 4) {
-                                    Image(systemName: "power")
-                                    Text("Disconnect")
-                                }
-                                .font(.system(size: 10, weight: .semibold))
-                                .padding(.horizontal, 7)
-                                .padding(.vertical, 3)
-                                .background(Color.red.opacity(0.18))
-                                .foregroundStyle(Color.red)
-                                .clipShape(RoundedRectangle(cornerRadius: 5))
+                            Button(action: { s.disconnect() }) {
+                                Image(systemName: "power")
+                                    .font(.system(size: 9, weight: .semibold))
+                                    .foregroundStyle(Theme.crimsonCritical.opacity(0.85))
                             }
                             .buttonStyle(.plain)
                             .help("Disconnect active session")
                         }
                     }
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(Theme.cardBackground.opacity(0.85))
+                    .clipShape(Capsule())
+                    .overlay(Capsule().stroke(Theme.borderLight, lineWidth: 0.75))
                 }
-                Text("Direct PTY SSH, POSIX Serial Console, and Cisco/Arista/Junos Multi-Vendor CLI")
-                    .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
             }
 
             Spacer()
 
-            // Header Utilities
+            // Right Group: Clustered Controls & Pro Tools
             HStack(spacing: 8) {
-                // Split Screen Mode Picker
-                Picker("", selection: $state.terminalManager.splitMode) {
+                // 1. Layout Mode Switcher (Sleek Segmented Pill)
+                HStack(spacing: 2) {
                     ForEach(TerminalSplitMode.allCases) { mode in
-                        Text(mode.rawValue).tag(mode)
+                        Button(action: {
+                            withAnimation(.easeInOut(duration: 0.15)) {
+                                state.terminalManager.splitMode = mode
+                            }
+                        }) {
+                            Image(systemName: layoutIcon(for: mode))
+                                .font(.system(size: 11, weight: .medium))
+                                .foregroundStyle(state.terminalManager.splitMode == mode ? Theme.neonCyan : .secondary)
+                                .frame(width: 26, height: 24)
+                                .background(state.terminalManager.splitMode == mode ? Theme.neonCyan.opacity(0.18) : Color.clear)
+                                .clipShape(RoundedRectangle(cornerRadius: 5))
+                        }
+                        .buttonStyle(.plain)
+                        .help(layoutTooltip(for: mode))
                     }
                 }
-                .pickerStyle(.menu)
-                .frame(width: 150)
-                .help("Switch between Single, Side-by-Side, Stacked, or 2x2 Quad Grid terminal panes")
+                .padding(2)
+                .background(Theme.cardBackground)
+                .clipShape(RoundedRectangle(cornerRadius: 7))
+                .overlay(RoundedRectangle(cornerRadius: 7).stroke(Theme.borderLight, lineWidth: 0.75))
 
-                // Broadcast Multi-Exec Toggle Button
+                // 2. Broadcast Multi-Exec Toggle Pill
                 Button(action: {
-                    state.terminalManager.isBroadcastEnabled.toggle()
+                    withAnimation(.easeInOut(duration: 0.15)) {
+                        state.terminalManager.isBroadcastEnabled.toggle()
+                    }
                 }) {
                     HStack(spacing: 5) {
                         Circle()
-                            .fill(state.terminalManager.isBroadcastEnabled ? Theme.crimsonCritical : Color.gray.opacity(0.5))
-                            .frame(width: 7, height: 7)
-                        Text(state.terminalManager.isBroadcastEnabled ? "BROADCAST ON" : "Broadcast")
-                            .font(.system(size: 10.5, weight: .bold))
+                            .fill(state.terminalManager.isBroadcastEnabled ? Theme.crimsonCritical : Color.secondary.opacity(0.4))
+                            .frame(width: 6, height: 6)
+                        Text("Broadcast")
+                            .font(.system(size: 11, weight: .medium))
                     }
                     .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
+                    .frame(height: 28)
                     .background(state.terminalManager.isBroadcastEnabled ? Theme.crimsonCritical.opacity(0.18) : Theme.cardBackground)
                     .foregroundStyle(state.terminalManager.isBroadcastEnabled ? Theme.crimsonCritical : .secondary)
-                    .cornerRadius(6)
+                    .clipShape(RoundedRectangle(cornerRadius: 7))
                     .overlay(
-                        RoundedRectangle(cornerRadius: 6)
-                            .stroke(state.terminalManager.isBroadcastEnabled ? Theme.crimsonCritical.opacity(0.6) : Theme.borderLight, lineWidth: 1)
+                        RoundedRectangle(cornerRadius: 7)
+                            .stroke(state.terminalManager.isBroadcastEnabled ? Theme.crimsonCritical.opacity(0.6) : Theme.borderLight, lineWidth: 0.75)
                     )
                 }
                 .buttonStyle(.plain)
-                .help("Broadcast typed commands to all connected switch sessions simultaneously")
+                .help("Broadcast keystrokes to all open sessions (Cmd+Shift+B)")
 
-                // SSH Key Studio (MobaKeyGen)
-                Button(action: { showSSHKeyStudioSheet = true }) {
-                    HStack(spacing: 4) {
-                        Image(systemName: "key.fill")
-                        Text("SSH Keys")
-                    }
-                    .font(.system(size: 10.5, weight: .semibold))
-                }
-                .buttonStyle(.bordered)
-                .help("Open SSH Key Studio: Generate Ed25519/RSA keys, copy public key, deploy to server (MobaKeyGen)")
-
-                // SSH Tunnels (MobaSSHTunnel)
-                Button(action: { showSSHTunnelsSheet = true }) {
-                    HStack(spacing: 4) {
-                        Image(systemName: "arrow.triangle.swap")
-                        Text("Tunnels")
-                    }
-                    .font(.system(size: 10.5, weight: .semibold))
-                }
-                .buttonStyle(.bordered)
-                .help("Manage SSH Port Forwarding & Tunnels: -L Local, -R Remote, -D SOCKS5 Proxy (MobaSSHTunnel)")
-
-                // Live Syntax Highlighting Toggle
-                Button(action: {
-                    state.terminalManager.isSyntaxHighlightingEnabled.toggle()
-                    for s in state.terminalManager.sessions {
-                        s.syntaxHighlightConfig.isEnabled = state.terminalManager.isSyntaxHighlightingEnabled
-                    }
-                }) {
-                    HStack(spacing: 4) {
-                        Image(systemName: "paintpalette.fill")
-                        Text(state.terminalManager.isSyntaxHighlightingEnabled ? "SYNTAX ON" : "Syntax")
-                    }
-                    .font(.system(size: 10.5, weight: .semibold))
-                    .foregroundStyle(state.terminalManager.isSyntaxHighlightingEnabled ? Theme.neonCyan : .secondary)
-                }
-                .buttonStyle(.bordered)
-                .help("Toggle live syntax highlighting for IP addresses, MAC addresses, error states, and up/down keywords")
-
-                // Hardware Serial Break (ROMMON) Button
-                Button(action: sendHardwareBreak) {
-                    HStack(spacing: 4) {
-                        Image(systemName: "bolt.badge.clock")
-                        Text("Break (ROMMON)")
-                    }
-                    .font(.system(size: 10.5, weight: .semibold))
-                }
-                .buttonStyle(.bordered)
-                .help("Send hardware serial break signal (250-500ms space) for Cisco ROMMON password recovery or Juniper loader prompt")
-
-                // Paced Script Paste Runner Button
-                Button(action: { showPacedPasteSheet = true }) {
-                    Label("Run Script", systemImage: "doc.text.fill")
-                        .font(.system(size: 10.5, weight: .semibold))
-                }
-                .buttonStyle(.bordered)
-                .help("Paste multi-line configuration blocks with controlled line-by-line delay and error pauses")
-
-                // Profile Vault Button
-                Button(action: { showProfileVaultSheet = true }) {
-                    Label("Profiles", systemImage: "books.vertical.fill")
-                        .font(.system(size: 10.5, weight: .semibold))
-                }
-                .buttonStyle(.bordered)
-                .help("Open saved switch and console profile bookmarks")
-
-                // Font Size Adjuster
+                // 3. Appearance & Typography Capsule ([-], Size, [+], Theme, Settings)
                 HStack(spacing: 4) {
                     Button(action: { if fontSize > 10 { fontSize -= 1; updatePTYDimensions() } }) {
-                        Image(systemName: "textformat.size.smaller")
-                            .font(.system(size: 11))
+                        Image(systemName: "minus")
+                            .font(.system(size: 9, weight: .bold))
+                            .foregroundStyle(.secondary)
+                            .frame(width: 18, height: 22)
                     }
                     .buttonStyle(.plain)
+                    .help("Decrease font size (Cmd+-)")
 
-                    Text("\(Int(fontSize))pt")
-                        .font(Theme.monoText(10))
-                        .foregroundStyle(.secondary)
-                        .frame(width: 28)
+                    Text("\(Int(fontSize))")
+                        .font(Theme.monoText(10.5, weight: .semibold))
+                        .foregroundStyle(.primary)
+                        .frame(width: 18)
 
-                    Button(action: { if fontSize < 18 { fontSize += 1; updatePTYDimensions() } }) {
-                        Image(systemName: "textformat.size.larger")
-                            .font(.system(size: 11))
+                    Button(action: { if fontSize < 24 { fontSize += 1; updatePTYDimensions() } }) {
+                        Image(systemName: "plus")
+                            .font(.system(size: 9, weight: .bold))
+                            .foregroundStyle(.secondary)
+                            .frame(width: 18, height: 22)
                     }
                     .buttonStyle(.plain)
-                }
-                .padding(.horizontal, 6)
-                .padding(.vertical, 3)
-                .background(Theme.cardBackground)
-                .clipShape(RoundedRectangle(cornerRadius: 6))
+                    .help("Increase font size (Cmd++)")
 
-                // Theme Selector Menu
-                Menu {
-                    ForEach(TerminalTheme.allCases) { theme in
-                        Button(action: { selectedTheme = theme }) {
-                            HStack {
-                                Text(theme.rawValue)
-                                if selectedTheme == theme {
-                                    Image(systemName: "checkmark")
+                    Rectangle()
+                        .fill(Theme.borderLight)
+                        .frame(width: 1, height: 14)
+                        .padding(.horizontal, 2)
+
+                    Menu {
+                        ForEach(TerminalTheme.allCases) { theme in
+                            Button(action: { selectedTheme = theme }) {
+                                HStack {
+                                    Text(theme.rawValue)
+                                    if selectedTheme == theme {
+                                        Image(systemName: "checkmark")
+                                    }
                                 }
                             }
                         }
-                    }
-                } label: {
-                    Label(selectedTheme.rawValue, systemImage: "paintpalette")
-                        .font(.system(size: 10.5))
-                }
-                .menuStyle(.borderedButton)
-
-                // Fonts & Appearance Settings Modal
-                Button(action: {
-                    settingsTargetSessionId = activeSession?.id
-                    showTerminalSettingsSheet = true
-                }) {
-                    HStack(spacing: 4) {
-                        Image(systemName: "slider.horizontal.3")
-                        Text("Fonts & Settings")
-                    }
-                    .font(.system(size: 10.5, weight: .semibold))
-                }
-                .buttonStyle(.bordered)
-                .help("Configure Font Family, Size, Cursor Style, Line Spacing, and Colors (Global Defaults or Tab Override)")
-
-                // Timestamps Toggle
-                Button(action: {
-                    if let s = activeSession {
-                        s.showTimestamps.toggle()
-                    }
-                }) {
-                    Image(systemName: "clock")
-                        .font(.system(size: 11))
-                        .foregroundStyle(activeSession?.showTimestamps == true ? Theme.cyanPulse : .secondary)
-                }
-                .buttonStyle(.bordered)
-                .help("Toggle microsecond per-line timestamp prefixes")
-
-                // Search Transcript Toggle
-                Button(action: {
-                    isSearching.toggle()
-                    if !isSearching { searchQuery = "" }
-                }) {
-                    Image(systemName: "magnifyingglass")
-                        .font(.system(size: 11))
-                        .foregroundStyle(isSearching ? Theme.cyanPulse : .primary)
-                }
-                .buttonStyle(.bordered)
-                .help("Search Terminal Transcript")
-
-                // External Terminal Launch Menu
-                Menu {
-                    if let session = activeSession, case .ssh(let host, let port, let user, _, _, _, _) = session.connectionType {
-                        Button("Open in Terminal.app") {
-                            let cmd = ExternalTerminalBridge.shared.sshCommand(host: host, port: port, username: user)
-                            ExternalTerminalBridge.shared.launchInTerminalApp(command: cmd)
+                    } label: {
+                        HStack(spacing: 4) {
+                            Circle()
+                                .fill(Color(hex: selectedTheme.promptColorHex))
+                                .frame(width: 7, height: 7)
+                            Text(selectedTheme.rawValue)
+                                .font(.system(size: 11, weight: .medium))
+                            Image(systemName: "chevron.down")
+                                .font(.system(size: 7, weight: .bold))
+                                .foregroundStyle(.secondary)
                         }
-                        if ExternalTerminalBridge.shared.isITermInstalled {
-                            Button("Open in iTerm2") {
-                                let cmd = ExternalTerminalBridge.shared.sshCommand(host: host, port: port, username: user)
-                                ExternalTerminalBridge.shared.launchInITerm2(command: cmd)
+                    }
+                    .buttonStyle(.plain)
+
+                    Rectangle()
+                        .fill(Theme.borderLight)
+                        .frame(width: 1, height: 14)
+                        .padding(.horizontal, 2)
+
+                    Button(action: {
+                        settingsTargetSessionId = activeSession?.id
+                        showTerminalSettingsSheet = true
+                    }) {
+                        HStack(spacing: 3) {
+                            Image(systemName: "slider.horizontal.3")
+                                .font(.system(size: 10.5, weight: .medium))
+                            if activeSession?.hasCustomOverrides == true {
+                                Circle()
+                                    .fill(Theme.neonCyan)
+                                    .frame(width: 5, height: 5)
                             }
                         }
-                        Divider()
-                        Button("Copy SSH Command") {
-                            let cmd = ExternalTerminalBridge.shared.sshCommand(host: host, port: port, username: user)
-                            NSPasteboard.general.clearContents()
-                            NSPasteboard.general.setString(cmd, forType: .string)
+                        .foregroundStyle(activeSession?.hasCustomOverrides == true ? Theme.neonCyan : .secondary)
+                        .frame(width: 20, height: 22)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Configure Font Family, Cursor Style, Blinking, Line Spacing, and Colors")
+                }
+                .padding(.horizontal, 8)
+                .frame(height: 28)
+                .background(Theme.cardBackground)
+                .clipShape(RoundedRectangle(cornerRadius: 7))
+                .overlay(RoundedRectangle(cornerRadius: 7).stroke(Theme.borderLight, lineWidth: 0.75))
+
+                // 4. Tools Pro Dropdown Menu
+                Menu {
+                    Section("SSH & File Transfer") {
+                        Button(action: { showSSHKeyStudioSheet = true }) {
+                            Label("SSH Key Studio (MobaKeyGen)", systemImage: "key.fill")
                         }
-                    } else {
-                        Button("Launch Terminal.app") {
-                            ExternalTerminalBridge.shared.launchInTerminalApp(command: "echo 'NexWave Terminal Bridge Active'")
+                        Button(action: { showSSHTunnelsSheet = true }) {
+                            Label("SSH Tunnels & Port Forwarding", systemImage: "arrow.triangle.swap")
+                        }
+                        if let s = activeSession, case .ssh = s.connectionType {
+                            Button(action: { showFileTransferSheet = true }) {
+                                Label("SFTP / SCP File Transfer", systemImage: "arrow.up.arrow.down.square")
+                            }
+                        }
+                    }
+
+                    Section("Automation & Diagnostics") {
+                        Button(action: sendHardwareBreak) {
+                            Label("Send Hardware Break (ROMMON)", systemImage: "bolt.badge.clock")
+                        }
+                        Button(action: { showPacedPasteSheet = true }) {
+                            Label("Paced Script Runner", systemImage: "doc.text.fill")
+                        }
+                        Button(action: { showProfileVaultSheet = true }) {
+                            Label("Profile Vault", systemImage: "books.vertical.fill")
+                        }
+                    }
+
+                    Section("External Terminal Bridge") {
+                        if let session = activeSession, case .ssh(let host, let port, let user, _, _, _, _) = session.connectionType {
+                            Button("Open in macOS Terminal") {
+                                let cmd = ExternalTerminalBridge.shared.sshCommand(host: host, port: port, username: user)
+                                ExternalTerminalBridge.shared.launchInTerminalApp(command: cmd)
+                            }
+                            if ExternalTerminalBridge.shared.isITermInstalled {
+                                Button("Open in iTerm2") {
+                                    let cmd = ExternalTerminalBridge.shared.sshCommand(host: host, port: port, username: user)
+                                    ExternalTerminalBridge.shared.launchInITerm2(command: cmd)
+                                }
+                            }
+                            Button("Copy SSH Command") {
+                                let cmd = ExternalTerminalBridge.shared.sshCommand(host: host, port: port, username: user)
+                                NSPasteboard.general.clearContents()
+                                NSPasteboard.general.setString(cmd, forType: .string)
+                            }
+                        } else {
+                            Button("Open macOS Terminal.app") {
+                                ExternalTerminalBridge.shared.launchInTerminalApp(command: "echo 'NexWave Terminal Active'")
+                            }
                         }
                     }
                 } label: {
-                    Label("External", systemImage: "arrow.up.forward.app")
-                        .font(.system(size: 10.5))
-                }
-                .menuStyle(.borderedButton)
-
-                // Copy Entire Transcript
-                Button(action: {
-                    if let s = activeSession {
-                        copyAllTranscript(s)
-                    }
-                }) {
-                    Label("Copy All", systemImage: "doc.on.doc")
-                        .font(.system(size: 10.5))
-                }
-                .buttonStyle(.bordered)
-                .help("Copy Entire Terminal Transcript (Cmd+Shift+C)")
-
-                // SFTP / SCP Transfer
-                if let s = activeSession, case .ssh = s.connectionType {
-                    Button(action: {
-                        showFileTransferSheet = true
-                    }) {
-                        Label("SFTP / SCP", systemImage: "arrow.up.arrow.down.square")
+                    HStack(spacing: 4) {
+                        Image(systemName: "wrench.and.screwdriver")
                             .font(.system(size: 10.5))
+                        Text("Tools")
+                            .font(.system(size: 11, weight: .medium))
+                        Image(systemName: "chevron.down")
+                            .font(.system(size: 7, weight: .bold))
+                            .foregroundStyle(.secondary)
                     }
-                    .buttonStyle(.bordered)
-                    .help("Transfer Files to Remote Host via SFTP / SCP")
+                    .padding(.horizontal, 9)
+                    .frame(height: 28)
+                    .background(Theme.cardBackground)
+                    .foregroundStyle(.primary)
+                    .clipShape(RoundedRectangle(cornerRadius: 7))
+                    .overlay(RoundedRectangle(cornerRadius: 7).stroke(Theme.borderLight, lineWidth: 0.75))
                 }
+                .buttonStyle(.plain)
+                .help("Access SSH Key Studio, Tunnels, SFTP/SCP, Break Signal, and Profiles")
 
-                // Export Transcript
-                Button(action: exportTranscript) {
-                    Label("Export Log", systemImage: "square.and.arrow.up")
-                        .font(.system(size: 10.5))
-                }
-                .buttonStyle(.bordered)
+                // 5. Quick Action Segmented Pill (Syntax, Timestamps, Search, More ...)
+                HStack(spacing: 2) {
+                    Button(action: {
+                        withAnimation(.easeInOut(duration: 0.15)) {
+                            state.terminalManager.isSyntaxHighlightingEnabled.toggle()
+                            for s in state.terminalManager.sessions {
+                                s.syntaxHighlightConfig.isEnabled = state.terminalManager.isSyntaxHighlightingEnabled
+                            }
+                        }
+                    }) {
+                        Image(systemName: "highlighter")
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundStyle(state.terminalManager.isSyntaxHighlightingEnabled ? Theme.neonCyan : .secondary)
+                            .frame(width: 26, height: 24)
+                            .background(state.terminalManager.isSyntaxHighlightingEnabled ? Theme.neonCyan.opacity(0.18) : Color.clear)
+                            .clipShape(RoundedRectangle(cornerRadius: 5))
+                    }
+                    .buttonStyle(.plain)
+                    .help("Toggle Live Network Syntax Highlighting")
 
-                // Clear Output
-                Button(action: { activeSession?.clear() }) {
-                    Image(systemName: "trash")
-                        .font(.system(size: 11))
+                    Button(action: {
+                        if let s = activeSession {
+                            s.showTimestamps.toggle()
+                        }
+                    }) {
+                        Image(systemName: "clock")
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundStyle(activeSession?.showTimestamps == true ? Theme.neonCyan : .secondary)
+                            .frame(width: 26, height: 24)
+                            .background(activeSession?.showTimestamps == true ? Theme.neonCyan.opacity(0.18) : Color.clear)
+                            .clipShape(RoundedRectangle(cornerRadius: 5))
+                    }
+                    .buttonStyle(.plain)
+                    .help("Toggle Per-Line Timestamps")
+
+                    Button(action: {
+                        withAnimation(.easeInOut(duration: 0.15)) {
+                            isSearching.toggle()
+                            if !isSearching { searchQuery = "" }
+                        }
+                    }) {
+                        Image(systemName: "magnifyingglass")
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundStyle(isSearching ? Theme.neonCyan : .secondary)
+                            .frame(width: 26, height: 24)
+                            .background(isSearching ? Theme.neonCyan.opacity(0.18) : Color.clear)
+                            .clipShape(RoundedRectangle(cornerRadius: 5))
+                    }
+                    .buttonStyle(.plain)
+                    .help("Search Transcript (Cmd+F)")
+
+                    Menu {
+                        Button(action: { activeSession?.clear() }) {
+                            Label("Clear Screen", systemImage: "trash")
+                        }
+                        .keyboardShortcut("k", modifiers: .command)
+
+                        Button(action: {
+                            if let s = activeSession {
+                                copyAllTranscript(s)
+                            }
+                        }) {
+                            Label("Copy All Output", systemImage: "doc.on.doc")
+                        }
+                        .keyboardShortcut("c", modifiers: [.command, .shift])
+
+                        Button(action: exportTranscript) {
+                            Label("Export Transcript Log...", systemImage: "square.and.arrow.up")
+                        }
+                    } label: {
+                        Image(systemName: "ellipsis")
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundStyle(.secondary)
+                            .frame(width: 26, height: 24)
+                    }
+                    .buttonStyle(.plain)
+                    .help("More Terminal Actions (Clear, Copy All, Export)")
                 }
-                .buttonStyle(.bordered)
-                .help("Clear Terminal Screen (Cmd+K)")
+                .padding(2)
+                .background(Theme.cardBackground)
+                .clipShape(RoundedRectangle(cornerRadius: 7))
+                .overlay(RoundedRectangle(cornerRadius: 7).stroke(Theme.borderLight, lineWidth: 0.75))
             }
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 8)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 7)
         .background(Theme.surfaceBackground)
     }
 
@@ -667,33 +719,34 @@ public struct TerminalWorkbenchView: View {
                         HStack(spacing: 6) {
                             Image(systemName: session.connectionType.iconName)
                                 .font(.system(size: 10))
-                                .foregroundStyle(isSelected ? Theme.cyanPulse : .secondary)
+                                .foregroundStyle(isSelected ? Theme.neonCyan : .secondary)
 
                             Circle()
                                 .fill(Color(hex: session.status.badgeColorHex))
                                 .frame(width: 6, height: 6)
 
                             Text(session.title)
-                                .font(Theme.monoText(11, weight: isSelected ? .bold : .medium))
+                                .font(.system(size: 11, weight: isSelected ? .semibold : .medium, design: .monospaced))
                                 .foregroundStyle(isSelected ? Color.white : .secondary)
 
                             Button(action: {
                                 state.terminalManager.closeSession(id: session.id)
                             }) {
                                 Image(systemName: "xmark")
-                                    .font(.system(size: 9, weight: .bold))
+                                    .font(.system(size: 8.5, weight: .bold))
                                     .foregroundStyle(isSelected ? .white.opacity(0.8) : .secondary.opacity(0.6))
+                                    .padding(2)
                             }
                             .buttonStyle(.plain)
-                            .padding(.leading, 2)
+                            .help("Close tab (Cmd+W)")
                         }
                         .padding(.horizontal, 10)
-                        .padding(.vertical, 6)
+                        .padding(.vertical, 5)
                         .background(isSelected ? Theme.cardBackground : Color.clear)
                         .clipShape(RoundedRectangle(cornerRadius: 6))
                         .overlay(
                             RoundedRectangle(cornerRadius: 6)
-                                .stroke(isSelected ? Theme.cyanPulse.opacity(0.4) : Theme.borderLight, lineWidth: 1)
+                                .stroke(isSelected ? Theme.neonCyan.opacity(0.4) : Theme.borderLight.opacity(0.6), lineWidth: 0.75)
                         )
                         .contentShape(Rectangle())
                         .onTapGesture {
@@ -703,26 +756,84 @@ public struct TerminalWorkbenchView: View {
                             sessionTabContextMenu(for: session)
                         }
                     }
+
+                    // Compact '+' button right next to tabs
+                    Button(action: {
+                        state.terminalManager.refreshSerialPorts()
+                        showNewSessionSheet = true
+                    }) {
+                        Image(systemName: "plus")
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundStyle(.secondary)
+                            .frame(width: 24, height: 24)
+                            .background(Theme.cardBackground.opacity(0.5))
+                            .clipShape(RoundedRectangle(cornerRadius: 5))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 5)
+                                    .stroke(Theme.borderLight.opacity(0.6), lineWidth: 0.75)
+                            )
+                    }
+                    .buttonStyle(.plain)
+                    .help("New Terminal Session (Cmd+T)")
                 }
+                .padding(.vertical, 2)
             }
 
             Spacer()
 
-            // New Session Button
-            Button(action: {
-                state.terminalManager.refreshSerialPorts()
-                showNewSessionSheet = true
-            }) {
-                Label("New Session", systemImage: "plus")
-                    .font(.system(size: 11, weight: .semibold))
+            // Right side of Tab Bar: Toggle Macros Strip & Quick New Session pill
+            HStack(spacing: 8) {
+                Button(action: {
+                    withAnimation(.easeInOut(duration: 0.15)) {
+                        showMacrosBar.toggle()
+                    }
+                }) {
+                    HStack(spacing: 4) {
+                        Image(systemName: "bolt.horizontal")
+                            .font(.system(size: 10))
+                        Text("Macros")
+                            .font(.system(size: 11, weight: .medium))
+                    }
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(showMacrosBar ? Theme.neonCyan.opacity(0.15) : Theme.cardBackground)
+                    .foregroundStyle(showMacrosBar ? Theme.neonCyan : .secondary)
+                    .clipShape(RoundedRectangle(cornerRadius: 6))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 6)
+                            .stroke(showMacrosBar ? Theme.neonCyan.opacity(0.5) : Theme.borderLight, lineWidth: 0.75)
+                    )
+                }
+                .buttonStyle(.plain)
+                .help("Toggle Command Macros Bar")
+
+                Button(action: {
+                    state.terminalManager.refreshSerialPorts()
+                    showNewSessionSheet = true
+                }) {
+                    HStack(spacing: 4) {
+                        Image(systemName: "plus")
+                            .font(.system(size: 10, weight: .bold))
+                        Text("New Session")
+                            .font(.system(size: 11, weight: .semibold))
+                    }
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 4)
+                    .background(Theme.neonCyan.opacity(0.18))
+                    .foregroundStyle(Theme.neonCyan)
+                    .clipShape(RoundedRectangle(cornerRadius: 6))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 6)
+                            .stroke(Theme.neonCyan.opacity(0.4), lineWidth: 0.75)
+                    )
+                }
+                .buttonStyle(.plain)
+                .help("Open New Terminal Connection (Cmd+T)")
             }
-            .buttonStyle(.borderedProminent)
-            .tint(Theme.cyanPulse)
-            .foregroundStyle(Color.black)
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 6)
-        .background(Color(nsColor: .windowBackgroundColor).opacity(0.6))
+        .padding(.horizontal, 14)
+        .padding(.vertical, 5)
+        .background(Color(nsColor: .windowBackgroundColor).opacity(0.5))
     }
 
     // MARK: - Search Bar

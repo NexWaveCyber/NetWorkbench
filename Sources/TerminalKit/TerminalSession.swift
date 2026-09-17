@@ -18,6 +18,10 @@ public final class TerminalSession: Identifiable, @unchecked Sendable {
     public var themeOverride: TerminalTheme? = nil
     public var cursorStyleOverride: TerminalCursorStyle? = nil
 
+    public var hasCustomOverrides: Bool {
+        fontSizeOverride != nil || fontFamilyOverride != nil || themeOverride != nil || cursorStyleOverride != nil
+    }
+
     public var maxBufferedLines: Int = 5000
     private var ptyRunner: PTYProcessRunner?
     private var simulatedCLI: SimulatedDeviceCLI?
