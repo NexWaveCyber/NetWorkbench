@@ -38,6 +38,22 @@ public enum DeviceVendor: String, Codable, Sendable, CaseIterable, Identifiable 
     case vmware = "VMware"
     case raspberryPi = "Raspberry Pi"
     case intel = "Intel"
+    case linksys = "Linksys"
+    case netgear = "Netgear"
+    case tpLink = "TP-Link"
+    case asus = "ASUS"
+    case synology = "Synology"
+    case dlink = "D-Link"
+    case paloAlto = "Palo Alto Networks"
+    case huawei = "Huawei"
+    case dell = "Dell"
+    case hpe = "HPE / Aruba"
+    case amazon = "Amazon / eero"
+    case google = "Google / Nest"
+    case arris = "Arris / Motorola"
+    case avm = "AVM Fritz!Box"
+    case belkin = "Belkin"
+    case zyxel = "Zyxel"
     case generic = "Generic"
 
     public var id: String { rawValue }
@@ -289,7 +305,17 @@ extension DiscoveredNeighbor {
     public var mac: String { macAddress }
     public var source: NeighborSource { discoverySource }
     public var vendor: DeviceVendor {
+        if !macAddress.isEmpty {
+            let inferred = OUIResolver.inferVendor(mac: macAddress)
+            if inferred != .generic {
+                return inferred
+            }
+        }
         if let oui = ouiVendor {
+            let inferred = OUIResolver.inferVendor(fromName: oui)
+            if inferred != .generic {
+                return inferred
+            }
             return DeviceVendor(rawValue: oui) ?? .generic
         }
         return .generic

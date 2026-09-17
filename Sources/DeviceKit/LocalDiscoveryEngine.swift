@@ -372,4 +372,38 @@ public actor LocalDiscoveryEngine {
             return ""
         }
     }
+
+    /// Rapidly resolves a local IP address (such as the default gateway) to its hardware MAC and OUI vendor via Darwin ARP cache.
+    public static func resolveLocalHost(ip: String) -> (mac: String, vendor: DeviceVendor, vendorName: String?)? {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/sbin/arp")
+        process.arguments = ["-n", ip]
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        process.standardError = Pipe()
+
+        do {
+            try process.run()
+            process.waitUntilExit()
+            let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            guard let output = String(data: data, encoding: .utf8), !output.isEmpty else { return nil }
+
+            guard !output.contains("(incomplete)"),
+                  let atRange = output.range(of: " at ") else { return nil }
+
+            let afterAt = String(output[atRange.upperBound...])
+            let parts = afterAt.components(separatedBy: .whitespaces)
+            guard let rawMac = parts.first, rawMac.contains(":") else { return nil }
+
+            let octets = rawMac.components(separatedBy: ":").map { $0.count == 1 ? "0\($0)" : $0 }
+            let normalized = octets.joined(separator: ":").lowercased()
+
+            let vendorName = OUIResolver.resolve(mac: normalized)
+            let vendorEnum = OUIResolver.inferVendor(mac: normalized)
+
+            return (normalized, vendorEnum, vendorName)
+        } catch {
+            return nil
+        }
+    }
 }

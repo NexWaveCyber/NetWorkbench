@@ -158,6 +158,21 @@ public final class AppState: @unchecked Sendable {
                 self.managedDevices = [seed1, seed2, seed3]
             }
 
+            // Auto-enrich any existing devices with missing MAC or generic vendor using live ARP
+            for i in 0..<self.managedDevices.count {
+                var dev = self.managedDevices[i]
+                if (dev.macAddress == nil || dev.macAddress?.isEmpty == true || dev.vendor == .generic) && !dev.managementIP.isEmpty {
+                    if let resolved = LocalDiscoveryEngine.resolveLocalHost(ip: dev.managementIP) {
+                        dev.macAddress = resolved.mac
+                        if dev.vendor == .generic {
+                            dev.vendor = resolved.vendor
+                        }
+                        try? self.deviceManager.updateDevice(dev)
+                        self.managedDevices[i] = dev
+                    }
+                }
+            }
+
             // Seed monitor targets if empty
             var existingTargets = (try? tsRepo.fetchTargets()) ?? []
             if existingTargets.isEmpty {
@@ -268,7 +283,21 @@ public final class AppState: @unchecked Sendable {
 
     public func refreshManagedDevices() {
         if let list = try? deviceManager.listDevices() {
-            self.managedDevices = list
+            var updatedList = list
+            for i in 0..<updatedList.count {
+                var dev = updatedList[i]
+                if (dev.macAddress == nil || dev.macAddress?.isEmpty == true || dev.vendor == .generic) && !dev.managementIP.isEmpty {
+                    if let resolved = LocalDiscoveryEngine.resolveLocalHost(ip: dev.managementIP) {
+                        dev.macAddress = resolved.mac
+                        if dev.vendor == .generic {
+                            dev.vendor = resolved.vendor
+                        }
+                        try? self.deviceManager.updateDevice(dev)
+                        updatedList[i] = dev
+                    }
+                }
+            }
+            self.managedDevices = updatedList
         }
     }
 
@@ -283,12 +312,13 @@ public final class AppState: @unchecked Sendable {
     }
 
     public func addDiscoveredNeighborToInventory(_ neighbor: DiscoveredNeighbor, role: DeviceRole, name: String) {
+        let finalVendor = neighbor.vendor != .generic ? neighbor.vendor : OUIResolver.inferVendor(mac: neighbor.mac)
         let device = NetworkDevice(
             name: name.isEmpty ? (neighbor.hostname ?? neighbor.ip) : name,
             hostname: neighbor.hostname,
             ipAddress: neighbor.ip,
             macAddress: neighbor.mac,
-            vendor: neighbor.vendor,
+            vendor: finalVendor,
             role: role,
             status: .online,
             tags: ["discovered", neighbor.source.rawValue]
@@ -303,10 +333,21 @@ public final class AppState: @unchecked Sendable {
     }
 
     public func addManualDevice(_ device: NetworkDevice) {
+        var devToSave = device
+        if (devToSave.macAddress == nil || devToSave.macAddress?.isEmpty == true || devToSave.vendor == .generic) && !devToSave.managementIP.isEmpty {
+            if let resolved = LocalDiscoveryEngine.resolveLocalHost(ip: devToSave.managementIP) {
+                if devToSave.macAddress == nil || devToSave.macAddress?.isEmpty == true {
+                    devToSave.macAddress = resolved.mac
+                }
+                if devToSave.vendor == .generic {
+                    devToSave.vendor = resolved.vendor
+                }
+            }
+        }
         do {
-            try deviceManager.saveDevice(device)
+            try deviceManager.saveDevice(devToSave)
             refreshManagedDevices()
-            self.toastMessage = "Saved device \(device.name)"
+            self.toastMessage = "Saved device \(devToSave.name)"
         } catch {
             self.toastMessage = "Failed to save device: \(error.localizedDescription)"
         }

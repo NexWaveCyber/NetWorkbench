@@ -57,20 +57,41 @@ public enum OUIResolver {
         guard let name = resolve(mac: mac) else {
             return isLocallyAdministered(mac: mac) ? .apple : .generic
         }
+        return inferVendor(fromName: name)
+    }
 
+    /// Infers a `DeviceVendor` enum from a raw vendor name string.
+    public static func inferVendor(fromName name: String) -> DeviceVendor {
         let lower = name.lowercased()
-        if lower.contains("cisco") { return .cisco }
+        if lower.contains("cisco") || lower.contains("meraki") { return .cisco }
         if lower.contains("arista") { return .arista }
         if lower.contains("juniper") || lower.contains("mist") { return .juniper }
         if lower.contains("apple") { return .apple }
-        if lower.contains("ubiquiti") { return .ubiquiti }
+        if lower.contains("ubiquiti") || lower.contains("unifi") { return .ubiquiti }
         if lower.contains("mikrotik") { return .mikrotik }
-        if lower.contains("fortinet") { return .fortinet }
+        if lower.contains("fortinet") || lower.contains("fortigate") { return .fortinet }
         if lower.contains("vmware") { return .vmware }
         if lower.contains("raspberry") { return .raspberryPi }
         if lower.contains("intel") { return .intel }
+        if lower.contains("linksys") { return .linksys }
+        if lower.contains("belkin") { return lower.contains("linksys") ? .linksys : .belkin }
+        if lower.contains("netgear") { return .netgear }
+        if lower.contains("tp-link") || lower.contains("tplink") { return .tpLink }
+        if lower.contains("asus") || lower.contains("asustek") { return .asus }
+        if lower.contains("synology") { return .synology }
+        if lower.contains("d-link") || lower.contains("dlink") { return .dlink }
+        if lower.contains("palo alto") || lower.contains("pan-os") { return .paloAlto }
+        if lower.contains("huawei") { return .huawei }
+        if lower.contains("dell") || lower.contains("super micro") { return .dell }
+        if lower.contains("hewlett packard") || lower.contains("hp inc") || lower.contains("aruba") || lower.contains("hpe") { return .hpe }
+        if lower.contains("amazon") || lower.contains("eero") || lower.contains("ring") { return .amazon }
+        if lower.contains("google") || lower.contains("nest") { return .google }
+        if lower.contains("arris") || lower.contains("motorola") { return .arris }
+        if lower.contains("avm") || lower.contains("fritz") { return .avm }
+        if lower.contains("zyxel") { return .zyxel }
+        if lower.contains("linux") { return .linux }
 
-        return .generic
+        return DeviceVendor(rawValue: name) ?? .generic
     }
 
     // MARK: - Comprehensive IEEE OUI Prefix Database (Hundreds of Top Vendors)
@@ -189,8 +210,15 @@ public enum OUIResolver {
 
         // ASUS & Linksys / Belkin
         "001E8C": "ASUS", "04D9F5": "ASUS", "10BF48": "ASUS", "2C4D54": "ASUS",
-        "001839": "Linksys", "00259C": "Linksys", "687FF0": "Linksys / Belkin",
-        "EC1A59": "Belkin", "08863B": "Belkin",
+        "000625": "Linksys", "000C41": "Linksys", "000F66": "Linksys", "001217": "Linksys",
+        "001310": "Linksys", "0014BF": "Linksys", "0016B6": "Linksys", "001839": "Linksys",
+        "001A70": "Linksys", "001C10": "Linksys", "001D7E": "Linksys", "001EE5": "Linksys",
+        "002129": "Linksys", "00226B": "Linksys", "002369": "Linksys", "00259C": "Linksys",
+        "149182": "Linksys / Belkin", "20AA4B": "Linksys / Belkin", "24F5A2": "Linksys / Belkin",
+        "302303": "Linksys / Belkin", "3476C5": "Linksys / Belkin", "48F8B3": "Linksys / Belkin",
+        "586D8F": "Linksys / Belkin", "60334B": "Linksys / Belkin", "687FF0": "Linksys / Belkin",
+        "C4411E": "Linksys / Belkin", "E89F80": "Linksys / Belkin",
+        "EC1A59": "Belkin", "08863B": "Belkin", "94103E": "Belkin", "B4750E": "Belkin",
 
         // Google & Nest
         "001A11": "Google", "30FD38": "Google", "F4F5DB": "Google",

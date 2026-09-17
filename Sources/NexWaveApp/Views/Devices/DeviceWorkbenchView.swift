@@ -425,11 +425,19 @@ public struct DeviceWorkbenchView: View {
                             Text("•")
                                 .foregroundStyle(.secondary)
 
-                            Text(device.vendor.rawValue)
+                            let displayVendor: String = {
+                                if let mac = device.macAddress, let resolved = OUIResolver.resolve(mac: mac), !resolved.isEmpty {
+                                    return resolved
+                                }
+                                return device.vendor.rawValue
+                            }()
+
+                            Text(displayVendor)
                                 .font(.system(size: 10, weight: .medium))
                                 .padding(.horizontal, 6)
                                 .padding(.vertical, 1)
-                                .background(Color.primary.opacity(0.06))
+                                .background(vendorColor(device.vendor).opacity(0.12))
+                                .foregroundStyle(vendorColor(device.vendor))
                                 .clipShape(Capsule())
                         }
                     }
@@ -994,6 +1002,23 @@ public struct DeviceWorkbenchView: View {
         case .vmware: return Theme.electricAzure
         case .raspberryPi: return Theme.pulseCrimson
         case .intel: return Theme.electricAzure
+        case .linksys: return Color(red: 0.0, green: 0.55, blue: 0.95)
+        case .netgear: return Theme.quantumViolet
+        case .tpLink: return Theme.cyanPulse
+        case .asus: return Theme.solarAmber
+        case .synology: return Theme.signalEmerald
+        case .dlink: return Color(red: 0.95, green: 0.45, blue: 0.15)
+        case .paloAlto: return Theme.crimsonCritical
+        case .huawei: return Theme.crimsonCritical
+        case .dell: return Color(red: 0.0, green: 0.47, blue: 0.75)
+        case .hpe: return Color(red: 0.0, green: 0.65, blue: 0.55)
+        case .amazon: return Color(red: 1.0, green: 0.60, blue: 0.0)
+        case .google: return Color(red: 0.26, green: 0.52, blue: 0.96)
+        case .arris: return Color(red: 0.8, green: 0.2, blue: 0.2)
+        case .avm: return Color(red: 0.9, green: 0.2, blue: 0.2)
+        case .belkin: return Color(red: 0.3, green: 0.75, blue: 0.3)
+        case .zyxel: return Color(red: 0.1, green: 0.5, blue: 0.8)
+        case .linux: return Theme.solarAmber
         default: return .secondary
         }
     }
@@ -1051,14 +1076,36 @@ struct AddDeviceSheet: View {
 
                         HStack(spacing: 12) {
                             VStack(alignment: .leading, spacing: 4) {
-                                Text("IP Address").font(.system(size: 11, weight: .medium))
+                                HStack {
+                                    Text("IP Address").font(.system(size: 11, weight: .medium))
+                                    Spacer()
+                                    Button(action: detectFromARP) {
+                                        HStack(spacing: 3) {
+                                            Image(systemName: "sparkles")
+                                            Text("Detect ARP")
+                                        }
+                                        .font(.system(size: 10, weight: .semibold))
+                                        .foregroundStyle(Theme.neonCyan)
+                                    }
+                                    .buttonStyle(.plain)
+                                    .disabled(ipAddress.trimmingCharacters(in: .whitespaces).isEmpty)
+                                }
                                 TextField("192.168.1.1", text: $ipAddress)
                                     .textFieldStyle(.roundedBorder)
+                                    .onSubmit { detectFromARP() }
                             }
                             VStack(alignment: .leading, spacing: 4) {
                                 Text("MAC Address (Optional)").font(.system(size: 11, weight: .medium))
                                 TextField("00:11:22:33:44:55", text: $macAddress)
                                     .textFieldStyle(.roundedBorder)
+                                    .onChange(of: macAddress) { _, newMac in
+                                        if !newMac.isEmpty {
+                                            let inferred = OUIResolver.inferVendor(mac: newMac)
+                                            if inferred != .generic {
+                                                selectedVendor = inferred
+                                            }
+                                        }
+                                    }
                             }
                         }
                     }
@@ -1142,6 +1189,20 @@ struct AddDeviceSheet: View {
         .frame(width: 480, height: 500)
     }
 
+    private func detectFromARP() {
+        let cleanIP = ipAddress.trimmingCharacters(in: .whitespaces)
+        guard !cleanIP.isEmpty else { return }
+        if let resolved = LocalDiscoveryEngine.resolveLocalHost(ip: cleanIP) {
+            macAddress = resolved.mac
+            selectedVendor = resolved.vendor
+            if name.trimmingCharacters(in: .whitespaces).isEmpty {
+                if let vName = resolved.vendorName {
+                    name = "\(vName) Router"
+                }
+            }
+        }
+    }
+
     private func saveDevice() {
         let tags = tagsString.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
         var snmpConfig: SNMPDeviceConfig? = nil
@@ -1153,11 +1214,22 @@ struct AddDeviceSheet: View {
             )
         }
 
+        var resolvedMac = macAddress.isEmpty ? nil : macAddress.trimmingCharacters(in: .whitespaces)
+        var finalVendor = selectedVendor
+        let cleanIP = ipAddress.trimmingCharacters(in: .whitespaces)
+
+        if (resolvedMac == nil || finalVendor == .generic) && !cleanIP.isEmpty {
+            if let auto = LocalDiscoveryEngine.resolveLocalHost(ip: cleanIP) {
+                if resolvedMac == nil { resolvedMac = auto.mac }
+                if finalVendor == .generic { finalVendor = auto.vendor }
+            }
+        }
+
         let device = NetworkDevice(
             name: name.trimmingCharacters(in: .whitespaces),
-            ipAddress: ipAddress.trimmingCharacters(in: .whitespaces),
-            macAddress: macAddress.isEmpty ? nil : macAddress.trimmingCharacters(in: .whitespaces),
-            vendor: selectedVendor,
+            ipAddress: cleanIP,
+            macAddress: resolvedMac,
+            vendor: finalVendor,
             role: selectedRole,
             status: .online,
             location: location.isEmpty ? nil : location,
@@ -1274,10 +1346,14 @@ struct EnrolNeighborSheet: View {
             deviceName = neighbor.hostname ?? "\(neighbor.vendor.rawValue)-\(neighbor.ip.split(separator: ".").last ?? "node")"
             if neighbor.vendor == .cisco || neighbor.vendor == .arista || neighbor.vendor == .juniper {
                 selectedRole = .switchDevice
-            } else if neighbor.vendor == .fortinet {
+            } else if neighbor.vendor == .linksys || neighbor.vendor == .netgear || neighbor.vendor == .asus || neighbor.vendor == .tpLink || neighbor.vendor == .dlink || neighbor.vendor == .avm {
+                selectedRole = .router
+            } else if neighbor.vendor == .fortinet || neighbor.vendor == .paloAlto {
                 selectedRole = .firewall
             } else if neighbor.vendor == .apple {
                 selectedRole = .workstation
+            } else if neighbor.vendor == .synology {
+                selectedRole = .server
             } else {
                 selectedRole = .host
             }
