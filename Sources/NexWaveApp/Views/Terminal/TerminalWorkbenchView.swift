@@ -14,6 +14,12 @@ public struct TerminalWorkbenchView: View {
     @State private var showPacedPasteSheet: Bool = false
     @State private var showSSHKeyStudioSheet: Bool = false
     @State private var showSSHTunnelsSheet: Bool = false
+    @State private var showFileTransferSheet: Bool = false
+    @State private var copyToastMessage: String? = nil
+    @State private var localFilePathToUpload: String = ""
+    @State private var remoteUploadPath: String = "/tmp/"
+    @State private var isTransferringFile: Bool = false
+    @State private var transferStatusMessage: String? = nil
     @State private var fontSize: CGFloat = 12
     @State private var autoScroll: Bool = true
     @State private var selectedTheme: TerminalTheme = .obsidian
@@ -152,6 +158,58 @@ public struct TerminalWorkbenchView: View {
         .sheet(isPresented: $showSSHTunnelsSheet) {
             sshTunnelsModal
         }
+        .sheet(isPresented: $showFileTransferSheet) {
+            fileTransferModal
+        }
+        .overlay(alignment: .top) {
+            if let toast = copyToastMessage {
+                HStack(spacing: 6) {
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundStyle(Theme.emeraldHealthy)
+                    Text(toast)
+                        .font(Theme.monoText(11, weight: .bold))
+                        .foregroundStyle(.white)
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 7)
+                .background(Theme.cardBackground)
+                .clipShape(Capsule())
+                .overlay(Capsule().stroke(Theme.emeraldHealthy.opacity(0.5), lineWidth: 1))
+                .shadow(color: .black.opacity(0.4), radius: 6, y: 3)
+                .padding(.top, 12)
+                .transition(.move(edge: .top).combined(with: .opacity))
+            }
+        }
+        .background(
+            ZStack {
+                Button("") { showNewSessionSheet = true }
+                    .keyboardShortcut("t", modifiers: .command)
+                Button("") { if let id = state.terminalManager.activeSessionId { state.terminalManager.closeSession(id: id) } }
+                    .keyboardShortcut("w", modifiers: .command)
+                Button("") { activeSession?.clear() }
+                    .keyboardShortcut("k", modifiers: .command)
+                Button("") { isSearching.toggle(); if !isSearching { searchQuery = "" } }
+                    .keyboardShortcut("f", modifiers: .command)
+                Button("") { if fontSize < 24 { fontSize += 1; updatePTYDimensions() } }
+                    .keyboardShortcut("+", modifiers: .command)
+                Button("") { if fontSize < 24 { fontSize += 1; updatePTYDimensions() } }
+                    .keyboardShortcut("=", modifiers: .command)
+                Button("") { if fontSize > 9 { fontSize -= 1; updatePTYDimensions() } }
+                    .keyboardShortcut("-", modifiers: .command)
+                Button("") { fontSize = 12; updatePTYDimensions() }
+                    .keyboardShortcut("0", modifiers: .command)
+                Button("") { state.terminalManager.isBroadcastEnabled.toggle() }
+                    .keyboardShortcut("b", modifiers: [.command, .shift])
+                Button("") { if let s = activeSession { copyAllTranscript(s) } }
+                    .keyboardShortcut("c", modifiers: [.command, .shift])
+                Button("") { showSSHTunnelsSheet.toggle() }
+                    .keyboardShortcut("u", modifiers: [.command, .shift])
+                Button("") { showProfileVaultSheet.toggle() }
+                    .keyboardShortcut("p", modifiers: [.command, .shift])
+            }
+            .opacity(0)
+            .allowsHitTesting(false)
+        )
         .onAppear {
             if selectedSerialPort.isEmpty, let firstPort = state.terminalManager.availableSerialPorts.first {
                 selectedSerialPort = firstPort.devicePath
@@ -443,6 +501,30 @@ public struct TerminalWorkbenchView: View {
                 }
                 .menuStyle(.borderedButton)
 
+                // Copy Entire Transcript
+                Button(action: {
+                    if let s = activeSession {
+                        copyAllTranscript(s)
+                    }
+                }) {
+                    Label("Copy All", systemImage: "doc.on.doc")
+                        .font(.system(size: 10.5))
+                }
+                .buttonStyle(.bordered)
+                .help("Copy Entire Terminal Transcript (Cmd+Shift+C)")
+
+                // SFTP / SCP Transfer
+                if let s = activeSession, case .ssh = s.connectionType {
+                    Button(action: {
+                        showFileTransferSheet = true
+                    }) {
+                        Label("SFTP / SCP", systemImage: "arrow.up.arrow.down.square")
+                            .font(.system(size: 10.5))
+                    }
+                    .buttonStyle(.bordered)
+                    .help("Transfer Files to Remote Host via SFTP / SCP")
+                }
+
                 // Export Transcript
                 Button(action: exportTranscript) {
                     Label("Export Log", systemImage: "square.and.arrow.up")
@@ -456,7 +538,7 @@ public struct TerminalWorkbenchView: View {
                         .font(.system(size: 11))
                 }
                 .buttonStyle(.bordered)
-                .help("Clear Terminal Screen")
+                .help("Clear Terminal Screen (Cmd+K)")
             }
         }
         .padding(.horizontal, 16)
@@ -536,6 +618,9 @@ public struct TerminalWorkbenchView: View {
                         .contentShape(Rectangle())
                         .onTapGesture {
                             state.terminalManager.activeSessionId = session.id
+                        }
+                        .contextMenu {
+                            sessionTabContextMenu(for: session)
                         }
                     }
                 }
@@ -752,82 +837,73 @@ public struct TerminalWorkbenchView: View {
             }
 
             // Screen Output ScrollView with ANSI SGR Rendering
-            ScrollViewReader { proxy in
-                ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 2) {
-                        ForEach(displayedLines) { line in
-                            HStack(alignment: .top, spacing: 6) {
-                                // Optional microsecond timestamp
-                                if session.showTimestamps {
-                                    Text(timestampString(for: line.timestamp))
-                                        .font(Theme.monoText(max(8, fontSize - 2)))
-                                        .foregroundColor(Color.secondary.opacity(0.6))
-                                        .frame(width: 75, alignment: .leading)
-                                }
+            GeometryReader { geo in
+                ScrollViewReader { proxy in
+                    ScrollView {
+                        LazyVStack(alignment: .leading, spacing: 2) {
+                            ForEach(displayedLines) { line in
+                                HStack(alignment: .top, spacing: 6) {
+                                    // Optional microsecond timestamp
+                                    if session.showTimestamps {
+                                        Text(timestampString(for: line.timestamp))
+                                            .font(Theme.monoText(max(8, fontSize - 2)))
+                                            .foregroundColor(Color.secondary.opacity(0.6))
+                                            .frame(width: 75, alignment: .leading)
+                                    }
 
-                                if line.isCommandInput {
-                                    HStack(spacing: 6) {
-                                        Text(">")
-                                            .font(Theme.monoText(fontSize, weight: .bold))
-                                            .foregroundStyle(Color(hex: selectedTheme.promptColorHex))
-                                        Text(line.text)
-                                            .font(Theme.monoText(fontSize, weight: .semibold))
-                                            .foregroundStyle(Color(hex: selectedTheme.foregroundColorHex))
-                                    }
-                                    .padding(.vertical, 1)
-                                } else {
-                                    // True streaming ANSI SGR rendered spans
-                                    HStack(spacing: 0) {
-                                        ForEach(line.spans) { span in
-                                            renderSpan(span)
-                                        }
-                                    }
-                                    .textSelection(.enabled)
+                                    renderTerminalLine(line)
                                 }
                             }
-                        }
-                        // Interactive Cursor Indicator
-                        HStack(spacing: 2) {
-                            Text("▋")
-                                .font(Theme.monoText(fontSize, weight: .bold))
-                                .foregroundStyle(isFocused ? Color(hex: selectedTheme.promptColorHex) : Color.secondary.opacity(0.35))
-                        }
-
-                        // Inline interactive password prompt card
-                        if session.isAwaitingPasswordPrompt {
-                            InlinePasswordBar(inputCommand: $inputCommand) {
-                                submitCommand(to: session)
+                            // Interactive Cursor Indicator
+                            HStack(spacing: 2) {
+                                Text("▋")
+                                    .font(Theme.monoText(fontSize, weight: .bold))
+                                    .foregroundStyle(isFocused ? Color(hex: selectedTheme.promptColorHex) : Color.secondary.opacity(0.35))
                             }
-                        }
 
-                        Color.clear
-                            .frame(height: 1)
-                            .id("bottomAnchor_\(paneIndex)")
+                            // Inline interactive password prompt card
+                            if session.isAwaitingPasswordPrompt {
+                                InlinePasswordBar(inputCommand: $inputCommand) {
+                                    submitCommand(to: session)
+                                }
+                            }
+
+                            Color.clear
+                                .frame(height: 1)
+                                .id("bottomAnchor_\(paneIndex)")
+                        }
+                        .padding(12)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                     }
-                    .padding(12)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                }
-                .background(Color(hex: selectedTheme.backgroundColorHex))
-                .onChange(of: session.lines.count) { _, _ in
-                    if autoScroll {
-                        proxy.scrollTo("bottomAnchor_\(paneIndex)", anchor: .bottom)
+                    .background(Color(hex: selectedTheme.backgroundColorHex))
+                    .onChange(of: session.lines.count) { _, _ in
+                        if autoScroll {
+                            proxy.scrollTo("bottomAnchor_\(paneIndex)", anchor: .bottom)
+                        }
                     }
                 }
+                .contentShape(Rectangle())
+                .focusable()
+                .focusEffectDisabled()
+                .focused($focusedPaneState, equals: paneIndex)
+                .onAppear {
+                    focusedPaneState = paneIndex
+                    updatePTYDimensions(for: session, size: geo.size)
+                }
+                .onChange(of: geo.size) { _, newSize in
+                    updatePTYDimensions(for: session, size: newSize)
+                }
+                .onKeyPress { press in
+                    handleDirectKeyPress(press, session: session)
+                }
+                .simultaneousGesture(TapGesture().onEnded {
+                    focusedPane = paneIndex
+                    focusedPaneState = paneIndex
+                })
+                .contextMenu {
+                    terminalCanvasContextMenu(session: session)
+                }
             }
-            .contentShape(Rectangle())
-            .focusable()
-            .focusEffectDisabled()
-            .focused($focusedPaneState, equals: paneIndex)
-            .onAppear {
-                focusedPaneState = paneIndex
-            }
-            .onKeyPress { press in
-                handleDirectKeyPress(press, session: session)
-            }
-            .simultaneousGesture(TapGesture().onEnded {
-                focusedPane = paneIndex
-                focusedPaneState = paneIndex
-            })
 
             Divider().overlay(Theme.borderLight)
 
@@ -1359,6 +1435,12 @@ public struct TerminalWorkbenchView: View {
     }
 
     private func handleDirectKeyPress(_ press: KeyPress, session: TerminalSession) -> KeyPress.Result {
+        // Cmd+V: Clipboard paste directly into active terminal
+        if press.modifiers.contains(.command) && press.characters.lowercased() == "v" {
+            pasteFromClipboard(to: session)
+            return .handled
+        }
+
         // Handle Ctrl combinations (Ctrl+C, Ctrl+D, Ctrl+Z, etc.)
         if press.modifiers.contains(.control) {
             let charStr = press.characters.lowercased()
@@ -1404,6 +1486,18 @@ public struct TerminalWorkbenchView: View {
             return .handled
         case .leftArrow:
             session.sendRawString("\u{1B}[D")
+            return .handled
+        case .pageUp:
+            session.sendRawString("\u{1B}[5~")
+            return .handled
+        case .pageDown:
+            session.sendRawString("\u{1B}[6~")
+            return .handled
+        case .home:
+            session.sendRawString("\u{1B}[H")
+            return .handled
+        case .end:
+            session.sendRawString("\u{1B}[F")
             return .handled
         default:
             if !press.characters.isEmpty && !press.modifiers.contains(.command) {
@@ -1524,10 +1618,18 @@ public struct TerminalWorkbenchView: View {
     }
 
     private func updatePTYDimensions() {
-        // Approximate character columns and rows from standard 80x24 base
-        let cols = max(80, Int(1000.0 / (fontSize * 0.6)))
-        let rows = max(24, Int(600.0 / (fontSize * 1.2)))
-        activeSession?.resize(cols: cols, rows: rows)
+        guard let session = activeSession else { return }
+        let cols = max(80, Int(1000.0 / (fontSize * 0.60)))
+        let rows = max(24, Int(600.0 / (fontSize * 1.35)))
+        session.resize(cols: cols, rows: rows)
+    }
+
+    private func updatePTYDimensions(for session: TerminalSession, size: CGSize) {
+        let charWidth = max(1.0, fontSize * 0.60)
+        let charHeight = max(1.0, fontSize * 1.35)
+        let cols = max(40, Int(size.width / charWidth))
+        let rows = max(10, Int(size.height / charHeight))
+        session.resize(cols: cols, rows: rows)
     }
 
     private func exportTranscript() {
@@ -2178,6 +2280,432 @@ public struct TerminalWorkbenchView: View {
         state.terminalManager.tunnelManager.saveTunnel(newTunnel)
         tunnelNameInput = ""
         tunnelSSHHostInput = ""
+    }
+
+    // MARK: - AttributedString & Line Rendering Engine
+
+    @ViewBuilder
+    private func renderTerminalLine(_ line: TerminalLine) -> some View {
+        if line.isCommandInput {
+            HStack(spacing: 6) {
+                Text(">")
+                    .font(Theme.monoText(fontSize, weight: .bold))
+                    .foregroundStyle(Color(hex: selectedTheme.promptColorHex))
+                Text(line.text)
+                    .font(Theme.monoText(fontSize, weight: .semibold))
+                    .foregroundStyle(Color(hex: selectedTheme.foregroundColorHex))
+            }
+            .padding(.vertical, 1)
+        } else {
+            Text(makeAttributedString(for: line))
+                .textSelection(.enabled)
+        }
+    }
+
+    private func makeAttributedString(for line: TerminalLine) -> AttributedString {
+        var result = AttributedString()
+        let defaultFg = Color(hex: selectedTheme.foregroundColorHex)
+
+        for span in line.spans {
+            var attrSpan = AttributedString(span.text)
+            attrSpan.font = Theme.monoText(fontSize, weight: span.style.isBold ? .bold : (span.style.isDim ? .light : .regular))
+            if span.style.isItalic {
+                attrSpan.font = attrSpan.font?.italic()
+            }
+            if span.style.isUnderline {
+                attrSpan.underlineStyle = .single
+            }
+
+            // Foreground color
+            if let fg = span.style.foreground {
+                let color = Color(red: Double(fg.r) / 255.0, green: Double(fg.g) / 255.0, blue: Double(fg.b) / 255.0)
+                attrSpan.foregroundColor = color
+            } else {
+                attrSpan.foregroundColor = defaultFg
+            }
+
+            // Background color
+            if let bg = span.style.background {
+                let color = Color(red: Double(bg.r) / 255.0, green: Double(bg.g) / 255.0, blue: Double(bg.b) / 255.0)
+                attrSpan.backgroundColor = color
+            }
+
+            // Inverse video
+            if span.style.isInverse {
+                let prevFg = attrSpan.foregroundColor ?? defaultFg
+                let prevBg = attrSpan.backgroundColor ?? Color.clear
+                attrSpan.foregroundColor = prevBg == Color.clear ? Color(hex: selectedTheme.backgroundColorHex) : prevBg
+                attrSpan.backgroundColor = prevFg
+            }
+
+            result.append(attrSpan)
+        }
+
+        // Highlight search queries
+        if !searchQuery.isEmpty {
+            var searchStart = result.startIndex
+            while searchStart < result.endIndex,
+                  let range = result[searchStart...].range(of: searchQuery, options: .caseInsensitive) {
+                result[range].backgroundColor = Theme.solarAmber.opacity(0.4)
+                result[range].underlineStyle = .single
+                searchStart = range.upperBound
+            }
+        }
+
+        return result
+    }
+
+    // MARK: - Context Menus
+
+    @ViewBuilder
+    private func sessionTabContextMenu(for session: TerminalSession) -> some View {
+        Button(action: { duplicateSession(session) }) {
+            Label("Duplicate Session", systemImage: "plus.square.on.square")
+        }
+        Button(action: {
+            state.terminalManager.splitMode = .vertical
+            state.terminalManager.secondarySessionId = session.id
+        }) {
+            Label("Split Right", systemImage: "rectangle.split.2x1")
+        }
+        Button(action: {
+            state.terminalManager.splitMode = .horizontal
+            state.terminalManager.secondarySessionId = session.id
+        }) {
+            Label("Split Down", systemImage: "rectangle.split.1x2")
+        }
+        Divider()
+        Button(action: {
+            session.disconnect()
+            session.connect()
+        }) {
+            Label("Reconnect", systemImage: "arrow.clockwise")
+        }
+        Button(action: {
+            state.terminalManager.closeSession(id: session.id)
+        }) {
+            Label("Close Tab", systemImage: "xmark")
+        }
+        Button(action: {
+            closeOtherTabs(except: session.id)
+        }) {
+            Label("Close Other Tabs", systemImage: "xmark.circle")
+        }
+    }
+
+    @ViewBuilder
+    private func terminalCanvasContextMenu(session: TerminalSession) -> some View {
+        Button(action: {
+            copyAllTranscript(session)
+        }) {
+            Label("Copy All Transcript", systemImage: "doc.on.doc")
+        }
+
+        Button(action: {
+            pasteFromClipboard(to: session)
+        }) {
+            Label("Paste", systemImage: "doc.on.clipboard")
+        }
+
+        Divider()
+
+        Button(action: {
+            session.clear()
+        }) {
+            Label("Clear Screen", systemImage: "trash")
+        }
+
+        Button(action: {
+            session.disconnect()
+            session.connect()
+        }) {
+            Label("Restart Session", systemImage: "arrow.clockwise")
+        }
+
+        Divider()
+
+        if case .ssh = session.connectionType {
+            Button(action: {
+                showFileTransferSheet = true
+            }) {
+                Label("SFTP / SCP File Transfer...", systemImage: "arrow.up.arrow.down.square")
+            }
+        }
+
+        Button(action: {
+            exportTranscript()
+        }) {
+            Label("Export Transcript to File...", systemImage: "square.and.arrow.up")
+        }
+
+        Button(action: {
+            showPacedPasteSheet = true
+        }) {
+            Label("Run Paced Automation Script...", systemImage: "play.circle")
+        }
+    }
+
+    // MARK: - Session Management & Clipboard
+
+    private func duplicateSession(_ session: TerminalSession) {
+        let newSession = TerminalSession(
+            title: "\(session.title) (Copy)",
+            connectionType: session.connectionType
+        )
+        newSession.showTimestamps = session.showTimestamps
+        state.terminalManager.sessions.append(newSession)
+        state.terminalManager.activeSessionId = newSession.id
+        newSession.connect()
+        showToast("Session duplicated")
+    }
+
+    private func closeOtherTabs(except keepId: UUID) {
+        let others = state.terminalManager.sessions.filter { $0.id != keepId }
+        for s in others {
+            state.terminalManager.closeSession(id: s.id)
+        }
+    }
+
+    private func copyAllTranscript(_ session: TerminalSession) {
+        let transcript = session.exportSessionLog()
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(transcript, forType: .string)
+        showToast("Transcript copied (\(session.lines.count) lines)")
+    }
+
+    private func pasteFromClipboard(to session: TerminalSession) {
+        guard let text = NSPasteboard.general.string(forType: .string), !text.isEmpty else { return }
+        if state.terminalManager.isBroadcastEnabled {
+            state.terminalManager.broadcastText(text)
+        } else {
+            session.sendRawString(text)
+        }
+    }
+
+    private func showToast(_ message: String) {
+        withAnimation(.easeInOut(duration: 0.2)) {
+            copyToastMessage = message
+        }
+        Task {
+            try? await Task.sleep(nanoseconds: 2_500_000_000)
+            await MainActor.run {
+                withAnimation(.easeInOut(duration: 0.3)) {
+                    if copyToastMessage == message {
+                        copyToastMessage = nil
+                    }
+                }
+            }
+        }
+    }
+
+    // MARK: - SFTP & SCP File Transfer Modal
+
+    private var fileTransferModal: some View {
+        VStack(spacing: 0) {
+            HStack {
+                HStack(spacing: 8) {
+                    Image(systemName: "arrow.up.arrow.down.square.fill")
+                        .font(.system(size: 16))
+                        .foregroundStyle(Theme.cyanPulse)
+                    Text("SFTP / SCP FILE TRANSFER")
+                        .font(Theme.monoText(13, weight: .bold))
+                        .foregroundStyle(.white)
+                }
+                Spacer()
+                Button(action: { showFileTransferSheet = false }) {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundStyle(.secondary)
+                        .font(.system(size: 16))
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(16)
+            .background(Theme.surfaceBackground)
+
+            Divider().overlay(Theme.borderLight)
+
+            VStack(alignment: .leading, spacing: 16) {
+                if let session = activeSession, case .ssh(let host, let port, let username, _, _, _, _) = session.connectionType {
+                    HStack(spacing: 8) {
+                        Circle()
+                            .fill(Theme.emeraldHealthy)
+                            .frame(width: 8, height: 8)
+                        Text("Active Remote Target: \(username)@\(host):\(port)")
+                            .font(Theme.monoText(11, weight: .medium))
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding(8)
+                    .background(Theme.cardBackground)
+                    .clipShape(RoundedRectangle(cornerRadius: 6))
+                }
+
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("LOCAL FILE PATH (MAC)")
+                        .font(Theme.monoText(10, weight: .bold))
+                        .foregroundStyle(.secondary)
+                    HStack(spacing: 8) {
+                        TextField("Select or paste local file path...", text: $localFilePathToUpload)
+                            .textFieldStyle(.roundedBorder)
+                        Button("Browse...") {
+                            selectLocalFile()
+                        }
+                        .buttonStyle(.bordered)
+                    }
+                }
+
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("REMOTE DESTINATION PATH (SERVER)")
+                        .font(Theme.monoText(10, weight: .bold))
+                        .foregroundStyle(.secondary)
+                    TextField("/home/username/filename or /tmp", text: $remoteUploadPath)
+                        .textFieldStyle(.roundedBorder)
+                }
+
+                if let msg = transferStatusMessage, !msg.isEmpty {
+                    HStack(spacing: 8) {
+                        if isTransferringFile {
+                            ProgressView()
+                                .controlSize(.small)
+                        } else {
+                            Image(systemName: msg.contains("successfully") ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
+                                .foregroundStyle(msg.contains("successfully") ? Theme.emeraldHealthy : Theme.pulseCrimson)
+                        }
+                        Text(msg)
+                            .font(Theme.monoText(11))
+                            .foregroundStyle(.primary)
+                    }
+                    .padding(10)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Theme.cardBackground)
+                    .clipShape(RoundedRectangle(cornerRadius: 6))
+                }
+
+                Spacer()
+
+                HStack(spacing: 12) {
+                    Button("Cancel") {
+                        showFileTransferSheet = false
+                    }
+                    .buttonStyle(.bordered)
+
+                    Spacer()
+
+                    if let session = activeSession {
+                        Button(action: {
+                            performSCPTransfer(session: session, isUpload: true)
+                        }) {
+                            HStack(spacing: 6) {
+                                Image(systemName: "arrow.up.circle.fill")
+                                Text("Upload File to Host")
+                            }
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(Theme.cyanPulse)
+                        .foregroundStyle(.black)
+                        .disabled(isTransferringFile || localFilePathToUpload.isEmpty || remoteUploadPath.isEmpty)
+                    }
+                }
+            }
+            .padding(16)
+            .background(Theme.obsidianDark)
+        }
+        .frame(width: 520, height: 360)
+    }
+
+    private func selectLocalFile() {
+        let panel = NSOpenPanel()
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = false
+        panel.canChooseFiles = true
+        if panel.runModal() == .OK, let url = panel.url {
+            localFilePathToUpload = url.path
+        }
+    }
+
+    private func performSCPTransfer(session: TerminalSession, isUpload: Bool) {
+        guard case .ssh(let host, let port, let username, let identityFile, let password, _, _) = session.connectionType else {
+            transferStatusMessage = "Error: Current session is not an SSH connection."
+            return
+        }
+
+        let localPath = localFilePathToUpload
+        let remotePath = remoteUploadPath
+
+        guard !localPath.isEmpty, !remotePath.isEmpty else {
+            transferStatusMessage = "Please specify both local and remote paths."
+            return
+        }
+
+        isTransferringFile = true
+        transferStatusMessage = "Initiating file transfer..."
+
+        Task.detached(priority: .userInitiated) {
+            let process = Process()
+            let pipe = Pipe()
+            process.standardOutput = pipe
+            process.standardError = pipe
+
+            var env = ProcessInfo.processInfo.environment
+            env["LANG"] = "en_US.UTF-8"
+
+            var args: [String] = [
+                "-P", "\(port)",
+                "-o", "StrictHostKeyChecking=accept-new",
+                "-o", "ConnectTimeout=10"
+            ]
+
+            if let identity = identityFile, !identity.isEmpty {
+                args.append(contentsOf: ["-i", identity])
+            }
+
+            let remoteTarget = "\(username)@\(host):\(remotePath)"
+
+            if isUpload {
+                args.append(localPath)
+                args.append(remoteTarget)
+            } else {
+                args.append(remoteTarget)
+                args.append(localPath)
+            }
+
+            let fileManager = FileManager.default
+            let sshpassPath = fileManager.fileExists(atPath: "/opt/homebrew/bin/sshpass") ? "/opt/homebrew/bin/sshpass" :
+                              (fileManager.fileExists(atPath: "/usr/local/bin/sshpass") ? "/usr/local/bin/sshpass" : nil)
+
+            if let pass = password, !pass.isEmpty, let sshpass = sshpassPath {
+                process.executableURL = URL(fileURLWithPath: sshpass)
+                process.arguments = ["-p", pass, "/usr/bin/scp"] + args
+            } else {
+                process.executableURL = URL(fileURLWithPath: "/usr/bin/scp")
+                process.arguments = args
+                if let pass = password, !pass.isEmpty {
+                    env["SSHPASS"] = pass
+                }
+            }
+            process.environment = env
+
+            do {
+                try process.run()
+                process.waitUntilExit()
+                let data = pipe.fileHandleForReading.readDataToEndOfFile()
+                let output = String(data: data, encoding: .utf8) ?? ""
+
+                await MainActor.run {
+                    isTransferringFile = false
+                    if process.terminationStatus == 0 {
+                        transferStatusMessage = "File transfer successfully completed!"
+                        showToast("File transfer completed!")
+                    } else {
+                        transferStatusMessage = "Transfer failed (code \(process.terminationStatus)): \(output)"
+                    }
+                }
+            } catch {
+                await MainActor.run {
+                    isTransferringFile = false
+                    transferStatusMessage = "Transfer error: \(error.localizedDescription)"
+                }
+            }
+        }
     }
 }
 

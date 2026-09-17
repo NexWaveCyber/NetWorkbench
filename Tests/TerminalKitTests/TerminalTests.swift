@@ -602,6 +602,45 @@ struct TerminalTests {
 
         #expect(combinedOutput.contains("ubuntu@") || combinedOutput.contains("Welcome to Ubuntu"))
     }
+
+    @Test("ANSI SGR Parser handles colon-delimited TrueColor and 256-color parameters (ISO/IEC 8613-6)")
+    func testSGRColonDelimited() {
+        // Test 256-color with colon delimiter: \u{1B}[38:5:196m
+        let spans256 = ANSISGRParser.shared.parseSpans(from: "\u{1B}[38:5:196mRedAlert\u{1B}[0m").0
+        #expect(spans256.count >= 1)
+        let redSpan = spans256.first(where: { $0.text == "RedAlert" })
+        #expect(redSpan?.style.foreground != nil)
+
+        // Test TrueColor with colon delimiter: \u{1B}[38:2::0:255:128m
+        let spansTrueColor = ANSISGRParser.shared.parseSpans(from: "\u{1B}[38:2::0:255:128mNeonGreen\u{1B}[0m").0
+        let greenSpan = spansTrueColor.first(where: { $0.text == "NeonGreen" })
+        #expect(greenSpan?.style.foreground?.r == 0)
+        #expect(greenSpan?.style.foreground?.g == 255)
+        #expect(greenSpan?.style.foreground?.b == 128)
+    }
+
+    @Test("Terminal Session batch appends, handles carriage returns, and amortizes buffer trimming")
+    func testBufferTrimmingAndCarriageReturn() {
+        let session = TerminalSession(
+            title: "Performance Test",
+            connectionType: .localShell
+        )
+        session.maxBufferedLines = 50
+
+        // Push 120 lines to trigger amortized trimming
+        for i in 1...120 {
+            session.appendOutput("Line \(i)\n")
+        }
+
+        // Buffer size should stay bounded near maxBufferedLines
+        #expect(session.lines.count <= 60)
+        #expect(session.lines.count >= 40)
+
+        // Test carriage return in-place overwrite (e.g. progress spinner / counter)
+        session.appendOutput("Progress: 10%\rProgress: 50%\rProgress: 100%\n")
+        let lastLine = session.lines.last?.text ?? ""
+        #expect(lastLine.contains("Progress: 100%"))
+    }
 }
 
 

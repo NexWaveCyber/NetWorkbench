@@ -102,7 +102,8 @@ public struct ANSISGRParser: Sendable {
 
     private func applySGRCodes(_ paramString: String, to existing: ANSIStyle) -> ANSIStyle {
         var style = existing
-        let codes: [Int] = paramString.isEmpty ? [0] : paramString.components(separatedBy: ";").compactMap { Int($0) }
+        let normalized = paramString.replacingOccurrences(of: ":", with: ";")
+        let codes: [Int] = normalized.isEmpty ? [0] : normalized.components(separatedBy: ";").compactMap { Int($0) }
 
         var i = 0
         while i < codes.count {

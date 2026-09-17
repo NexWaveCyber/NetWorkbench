@@ -94,8 +94,17 @@ public final class SSHTunnelManager: @unchecked Sendable {
         process.arguments = arguments
 
         process.terminationHandler = { [weak self] proc in
-            DispatchQueue.main.async {
-                self?.handleProcessTermination(id: id, status: proc.terminationStatus, pipe: errPipe)
+            let status = proc.terminationStatus
+            DispatchQueue.global(qos: .utility).async {
+                var errorMsg: String? = nil
+                if status != 0 {
+                    let data = (try? errPipe.fileHandleForReading.readToEnd()) ?? Data()
+                    let msg = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)
+                    errorMsg = (msg?.isEmpty == false) ? msg : "Tunnel exited with code \(status)"
+                }
+                DispatchQueue.main.async {
+                    self?.handleProcessTermination(id: id, status: status, errorMessage: errorMsg)
+                }
             }
         }
 
@@ -132,15 +141,13 @@ public final class SSHTunnelManager: @unchecked Sendable {
         persistTunnels()
     }
 
-    private func handleProcessTermination(id: UUID, status: Int32, pipe: Pipe) {
+    private func handleProcessTermination(id: UUID, status: Int32, errorMessage: String?) {
         activeProcesses.removeValue(forKey: id)
         guard let idx = tunnels.firstIndex(where: { $0.id == id }) else { return }
 
         tunnels[idx].isActive = false
         if status != 0 {
-            let data = pipe.fileHandleForReading.readDataToEndOfFile()
-            let msg = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)
-            tunnels[idx].lastError = msg?.isEmpty == false ? msg : "Tunnel exited with code \(status)"
+            tunnels[idx].lastError = errorMessage ?? "Tunnel exited with code \(status)"
         }
         persistTunnels()
     }

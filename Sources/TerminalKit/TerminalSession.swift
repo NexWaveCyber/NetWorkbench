@@ -14,7 +14,7 @@ public final class TerminalSession: Identifiable, @unchecked Sendable {
     public var showTimestamps: Bool = false
     public var syntaxHighlightConfig: TerminalSyntaxHighlightConfig = TerminalSyntaxHighlightConfig()
 
-    private let maxBufferedLines: Int = 4000
+    public var maxBufferedLines: Int = 5000
     private var ptyRunner: PTYProcessRunner?
     private var simulatedCLI: SimulatedDeviceCLI?
     private let logQueue = DispatchQueue(label: "com.nexwave.terminal.logging", qos: .utility)
@@ -336,21 +336,47 @@ public final class TerminalSession: Identifiable, @unchecked Sendable {
 
     // MARK: - Output Buffering & Streaming ANSI Parser
 
-    private func appendOutput(_ chunk: String) {
+    public func appendOutput(_ chunk: String) {
         // Continuous session logging
         writeToLogFile(chunk)
 
         // Parse chunk into styled lines preserving ANSI SGR color attributes
         let parsed = ANSISGRParser.shared.parseLines(from: chunk)
-        for line in parsed {
-            appendLine(line)
+        guard !parsed.isEmpty else { return }
+
+        // Process keywords in batch
+        let processedLines: [TerminalLine]
+        if syntaxHighlightConfig.isEnabled {
+            processedLines = parsed.map { TerminalKeywordHighlighter.shared.highlight(line: $0, config: syntaxHighlightConfig) }
+        } else {
+            processedLines = parsed
+        }
+
+        // Handle in-place overwrite if chunk began with \r and previous line exists
+        if chunk.hasPrefix("\r") && !lines.isEmpty {
+            if let first = processedLines.first {
+                lines[lines.count - 1] = first
+                if processedLines.count > 1 {
+                    lines.append(contentsOf: processedLines.dropFirst())
+                }
+            }
+        } else {
+            lines.append(contentsOf: processedLines)
+        }
+
+        // Amortized trimming: trim excess in proportional batches to eliminate O(N) shifts on every line
+        let excessThreshold = max(20, min(200, maxBufferedLines / 10))
+        if lines.count > maxBufferedLines + excessThreshold {
+            lines.removeFirst(lines.count - maxBufferedLines)
         }
     }
 
-    private func appendLine(_ line: TerminalLine) {
-        let processedLine = TerminalKeywordHighlighter.shared.highlight(line: line, config: syntaxHighlightConfig)
-        lines.append(processedLine)
-        if lines.count > maxBufferedLines {
+    public func appendLine(_ line: TerminalLine) {
+        let processed = syntaxHighlightConfig.isEnabled ?
+            TerminalKeywordHighlighter.shared.highlight(line: line, config: syntaxHighlightConfig) : line
+        lines.append(processed)
+        let excessThreshold = max(20, min(200, maxBufferedLines / 10))
+        if lines.count > maxBufferedLines + excessThreshold {
             lines.removeFirst(lines.count - maxBufferedLines)
         }
     }
