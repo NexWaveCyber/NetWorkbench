@@ -1,7 +1,15 @@
+//
+//  TopologyCanvasView.swift
+//  NexWaveApp
+//
+//  Interactive Visual Network Topology Canvas & Architecture Map (Grade A++++)
+//
+
 import SwiftUI
 import DeviceKit
 import NetworkCore
 import PacketKit
+import AppKit
 
 public enum TopologyPreset: String, CaseIterable, Identifiable {
     case enterprise = "Enterprise Campus (3-Tier)"
@@ -49,9 +57,13 @@ public struct TopologyCanvasView: View {
     @State private var panOffset: CGSize = .zero
     @State private var dragCurrent: CGSize = .zero
 
-    // Dragged Node State
+    // Active Node Drag State
     @State private var draggingNodeId: String? = nil
-    @State private var nodeInitialPosition: CGPoint? = nil
+    @State private var dragOffset: CGSize = .zero
+
+    // UI Feedback State
+    @State private var copyBannerText: String? = nil
+    @State private var showMiniMap: Bool = true
 
     public init(state: AppState) {
         self.state = state
@@ -66,18 +78,51 @@ public struct TopologyCanvasView: View {
                 activeSwitchBanner(neighbor: neighbor)
             }
 
+            if let banner = copyBannerText {
+                HStack(spacing: 8) {
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundStyle(Theme.signalEmerald)
+                    Text(banner)
+                        .font(Theme.monoText(11, weight: .bold))
+                        .foregroundStyle(Color.white)
+                    Spacer()
+                    Button(action: { copyBannerText = nil }) {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 10))
+                            .foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 6)
+                .background(Theme.signalEmerald.opacity(0.18))
+                .overlay(Rectangle().frame(height: 1).foregroundStyle(Theme.signalEmerald.opacity(0.4)), alignment: .bottom)
+                .transition(.move(edge: .top).combined(with: .opacity))
+            }
+
             GeometryReader { geo in
                 ZStack(alignment: .topTrailing) {
                     canvasSurface(size: geo.size)
                         .clipped()
 
+                    // Mini-Map Navigator (Bottom-Left)
+                    if showMiniMap {
+                        miniMapOverview
+                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
+                            .padding(16)
+                            .transition(.opacity)
+                    }
+
+                    // Floating Zoom & Viewport Controls (Bottom-Right)
+                    canvasFloatingControls
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
+                        .padding(16)
+
+                    // Node Inspector Drawer (Trailing Side)
                     if let selected = selectedNode {
                         nodeInspectorDrawer(node: selected)
                             .transition(.move(edge: .trailing).combined(with: .opacity))
                     }
-
-                    canvasFloatingControls
-                        .padding(16)
                 }
                 .onAppear {
                     loadTopology(preset: preset, size: geo.size)
@@ -93,6 +138,21 @@ public struct TopologyCanvasView: View {
         return graph.nodes.first(where: { $0.id == id })
     }
 
+    // MARK: - Current Live Node Coordinates
+    private func currentPosition(for node: TopologyNode) -> CGPoint {
+        if node.id == draggingNodeId {
+            return CGPoint(
+                x: node.position.x + (dragOffset.width / zoomScale),
+                y: node.position.y + (dragOffset.height / zoomScale)
+            )
+        }
+        return node.position
+    }
+
+    private var nodePositionsMap: [String: CGPoint] {
+        Dictionary(uniqueKeysWithValues: graph.nodes.map { ($0.id, currentPosition(for: $0)) })
+    }
+
     // MARK: - Toolbar Deck
     private var toolbarDeck: some View {
         VStack(spacing: 10) {
@@ -104,7 +164,7 @@ public struct TopologyCanvasView: View {
                     }
                 }
                 .pickerStyle(.menu)
-                .frame(width: 250)
+                .frame(width: 240)
                 .onChange(of: preset) { _, newPreset in
                     loadTopology(preset: newPreset, size: CGSize(width: 1000, height: 700))
                 }
@@ -121,7 +181,7 @@ public struct TopologyCanvasView: View {
                     recalculateLayout(mode: newMode, size: CGSize(width: 1000, height: 700))
                 }
 
-                // Reset / Auto-Layout button
+                // Auto-Layout Button
                 Button(action: {
                     recalculateLayout(mode: layoutMode, size: CGSize(width: 1000, height: 700))
                     withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
@@ -134,6 +194,22 @@ public struct TopologyCanvasView: View {
                 }
                 .buttonStyle(.bordered)
                 .tint(Theme.cyanPulse)
+
+                // Export Topology Spec Button
+                Button(action: { exportTopologyJSON() }) {
+                    Label("Export JSON", systemImage: "square.and.arrow.up")
+                        .font(.system(size: 11, weight: .medium))
+                }
+                .buttonStyle(.bordered)
+                .tint(Theme.electricAzure)
+
+                // Toggle Mini-Map
+                Button(action: { withAnimation { showMiniMap.toggle() } }) {
+                    Label(showMiniMap ? "Hide Map" : "Show Map", systemImage: showMiniMap ? "map.fill" : "map")
+                        .font(.system(size: 11, weight: .medium))
+                }
+                .buttonStyle(.bordered)
+                .tint(showMiniMap ? Theme.quantumViolet : .secondary)
 
                 Spacer()
 
@@ -165,7 +241,7 @@ public struct TopologyCanvasView: View {
 
                 Spacer()
 
-                Text("Drag nodes to customize • Scroll to pan • Pinch to zoom")
+                Text("Drag any device to reposition • Right-click for options • Scroll to pan")
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary.opacity(0.8))
             }
@@ -173,6 +249,26 @@ public struct TopologyCanvasView: View {
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
         .background(Theme.cardBackground.opacity(0.6))
+    }
+
+    private func exportTopologyJSON() {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        if let data = try? encoder.encode(graph),
+           let jsonString = String(data: data, encoding: .utf8) {
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(jsonString, forType: .string)
+            withAnimation {
+                copyBannerText = "Topology Architecture Specification copied to Clipboard as formatted JSON!"
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 4) {
+                withAnimation {
+                    if copyBannerText?.contains("Specification") == true {
+                        copyBannerText = nil
+                    }
+                }
+            }
+        }
     }
 
     private func metricTag(title: String, value: String, tint: Color) -> some View {
@@ -214,7 +310,7 @@ public struct TopologyCanvasView: View {
         graph.nodes.filter { $0.role == role }
     }
 
-    // MARK: - Canvas Surface
+    // MARK: - Visible Nodes
     private var visibleNodes: [TopologyNode] {
         if let role = roleFilter {
             return graph.nodes.filter { $0.role == role }
@@ -222,15 +318,13 @@ public struct TopologyCanvasView: View {
         return graph.nodes
     }
 
-    private var nodePositionsMap: [String: CGPoint] {
-        Dictionary(uniqueKeysWithValues: graph.nodes.map { ($0.id, $0.position) })
-    }
-
+    // MARK: - Canvas Surface
     private func canvasSurface(size: CGSize) -> some View {
-        ZStack {
-            // Background Panning Hit Surface
+        ZStack(alignment: .topLeading) {
+            // Infinite Background Panning Hit Surface
             Color.clear
-                .frame(width: max(3000, size.width * 3), height: max(3000, size.height * 3))
+                .frame(width: 6000, height: 6000)
+                .offset(x: -2000, y: -2000)
                 .contentShape(Rectangle())
                 .gesture(
                     DragGesture(minimumDistance: 3)
@@ -239,9 +333,8 @@ public struct TopologyCanvasView: View {
                             dragCurrent = val.translation
                         }
                         .onEnded { val in
-                            guard draggingNodeId == nil else { return }
-                            panOffset.width += val.translation.width
-                            panOffset.height += val.translation.height
+                            panOffset.width += dragCurrent.width
+                            panOffset.height += dragCurrent.height
                             dragCurrent = .zero
                         }
                 )
@@ -251,14 +344,14 @@ public struct TopologyCanvasView: View {
                     }
                 }
 
-            // Background Cyber-Grid
+            // Cyber-Grid Background Layer
             cyberGrid(size: size)
 
-            // Links Layer (pure visual, clicks pass through to background for panning)
+            // Links Layer (Non-blocking hit-test)
             linksLayer
                 .allowsHitTesting(false)
 
-            // Nodes Layer (interactive nodes with accurate drag and tap)
+            // Nodes Layer (Strict 140x75 hit-target frames)
             nodesLayer
         }
         .scaleEffect(zoomScale)
@@ -271,32 +364,35 @@ public struct TopologyCanvasView: View {
             let step: CGFloat = 40.0
             var path = Path()
 
-            for x in stride(from: 0, through: sz.width * 2, by: step) {
+            for x in stride(from: 0, through: sz.width, by: step) {
                 path.move(to: CGPoint(x: x, y: 0))
-                path.addLine(to: CGPoint(x: x, y: sz.height * 2))
+                path.addLine(to: CGPoint(x: x, y: sz.height))
             }
-            for y in stride(from: 0, through: sz.height * 2, by: step) {
+            for y in stride(from: 0, through: sz.height, by: step) {
                 path.move(to: CGPoint(x: 0, y: y))
-                path.addLine(to: CGPoint(x: sz.width * 2, y: y))
+                path.addLine(to: CGPoint(x: sz.width, y: y))
             }
 
             context.stroke(path, with: .color(Theme.borderLight.opacity(0.2)), lineWidth: 0.5)
         }
-        .frame(width: max(2000, size.width * 2), height: max(2000, size.height * 2))
+        .frame(width: max(3000, size.width * 3), height: max(3000, size.height * 3))
         .allowsHitTesting(false)
     }
 
     // MARK: - Links Layer
     private var linksLayer: some View {
-        let posMap = nodePositionsMap
-        return ForEach(graph.links) { link in
-            if let src = posMap[link.sourceNodeId], let dst = posMap[link.targetNodeId] {
-                linkView(link: link, from: src, to: dst)
+        ZStack(alignment: .topLeading) {
+            let posMap = nodePositionsMap
+            ForEach(graph.links) { link in
+                if let src = posMap[link.sourceNodeId], let dst = posMap[link.targetNodeId] {
+                    linkView(link: link, from: src, to: dst)
+                }
             }
         }
     }
 
     private func linkView(link: TopologyLink, from: CGPoint, to: CGPoint) -> some View {
+        let isConnectedToDragged = draggingNodeId == link.sourceNodeId || draggingNodeId == link.targetNodeId
         let isSelected = selectedNodeId == link.sourceNodeId || selectedNodeId == link.targetNodeId
         let strokeColor = Color(hex: link.linkType.badgeColorHex)
 
@@ -309,19 +405,20 @@ public struct TopologyCanvasView: View {
         let srcBadgeOffset = CGPoint(x: from.x + (dx / len) * 45, y: from.y + (dy / len) * 45)
         let dstBadgeOffset = CGPoint(x: to.x - (dx / len) * 45, y: to.y - (dy / len) * 45)
 
-        return ZStack {
+        return ZStack(alignment: .topLeading) {
             // Main Link Line
             Path { path in
                 path.move(to: from)
                 path.addLine(to: to)
             }
             .stroke(
-                strokeColor.opacity(isSelected ? 0.9 : 0.45),
+                strokeColor.opacity(isConnectedToDragged ? 1.0 : (isSelected ? 0.9 : 0.45)),
                 style: StrokeStyle(
-                    lineWidth: isSelected ? 2.5 : 1.5,
+                    lineWidth: isConnectedToDragged ? 2.8 : (isSelected ? 2.5 : 1.5),
                     dash: link.linkType == .wireless ? [4, 4] : []
                 )
             )
+            .shadow(color: isConnectedToDragged ? strokeColor.opacity(0.8) : .clear, radius: 6)
 
             // Interface Pill at Source End
             Text(link.sourceInterface)
@@ -332,7 +429,7 @@ public struct TopologyCanvasView: View {
                 .foregroundStyle(strokeColor)
                 .clipShape(RoundedRectangle(cornerRadius: 3))
                 .overlay(RoundedRectangle(cornerRadius: 3).stroke(strokeColor.opacity(0.4), lineWidth: 0.5))
-                .position(srcBadgeOffset)
+                .offset(x: srcBadgeOffset.x - 20, y: srcBadgeOffset.y - 8)
 
             // Interface Pill at Destination End
             Text(link.targetInterface)
@@ -343,7 +440,7 @@ public struct TopologyCanvasView: View {
                 .foregroundStyle(strokeColor)
                 .clipShape(RoundedRectangle(cornerRadius: 3))
                 .overlay(RoundedRectangle(cornerRadius: 3).stroke(strokeColor.opacity(0.4), lineWidth: 0.5))
-                .position(dstBadgeOffset)
+                .offset(x: dstBadgeOffset.x - 20, y: dstBadgeOffset.y - 8)
 
             // Speed badge in middle if high-speed
             if link.speedMbps >= 100_000 {
@@ -354,78 +451,92 @@ public struct TopologyCanvasView: View {
                     .background(Theme.quantumViolet)
                     .foregroundStyle(Color.white)
                     .clipShape(Capsule())
-                    .position(mid)
+                    .offset(x: mid.x - 14, y: mid.y - 7)
             }
         }
     }
 
-    // MARK: - Nodes Layer
+    // MARK: - Nodes Layer (Strict Isolated Coordinates & Drag Anchor)
     private var nodesLayer: some View {
-        ForEach(visibleNodes) { node in
-            nodeCard(node: node)
-                .position(node.position)
-                .contentShape(Rectangle())
-                .gesture(
-                    DragGesture(minimumDistance: 2)
-                        .onChanged { val in
-                            if draggingNodeId != node.id {
-                                draggingNodeId = node.id
-                                if let idx = graph.nodes.firstIndex(where: { $0.id == node.id }) {
-                                    nodeInitialPosition = graph.nodes[idx].position
-                                } else {
-                                    nodeInitialPosition = node.position
+        ZStack(alignment: .topLeading) {
+            ForEach(visibleNodes) { node in
+                let pos = currentPosition(for: node)
+                let isBeingDragged = draggingNodeId == node.id
+                let isSelected = selectedNodeId == node.id
+
+                nodeCard(node: node, isBeingDragged: isBeingDragged, isSelected: isSelected)
+                    .frame(width: 140, height: 75)
+                    .contentShape(Rectangle())
+                    .offset(x: pos.x - 70, y: pos.y - 37.5)
+                    .zIndex(isBeingDragged ? 200 : (isSelected ? 100 : Double(node.tier.tierLevel * -1)))
+                    .gesture(
+                        DragGesture(minimumDistance: 2)
+                            .onChanged { val in
+                                if draggingNodeId == nil {
+                                    draggingNodeId = node.id
+                                }
+                                if draggingNodeId == node.id {
+                                    dragOffset = val.translation
                                 }
                             }
-
-                            guard let initialPos = nodeInitialPosition,
-                                  let idx = graph.nodes.firstIndex(where: { $0.id == node.id }) else { return }
-
-                            let deltaX = val.translation.width / zoomScale
-                            let deltaY = val.translation.height / zoomScale
-
-                            graph.nodes[idx].position = CGPoint(
-                                x: initialPos.x + deltaX,
-                                y: initialPos.y + deltaY
-                            )
-                        }
-                        .onEnded { val in
-                            let distSq = val.translation.width * val.translation.width + val.translation.height * val.translation.height
-                            if distSq < 16 {
-                                withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
-                                    if selectedNodeId == node.id {
-                                        selectedNodeId = nil
+                            .onEnded { val in
+                                if draggingNodeId == node.id {
+                                    let distSq = val.translation.width * val.translation.width + val.translation.height * val.translation.height
+                                    if distSq < 16 {
+                                        // Tap / Click
+                                        withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                                            if selectedNodeId == node.id {
+                                                selectedNodeId = nil
+                                            } else {
+                                                selectedNodeId = node.id
+                                            }
+                                        }
                                     } else {
-                                        selectedNodeId = node.id
+                                        // Commit Permanent Drag Offset
+                                        if let idx = graph.nodes.firstIndex(where: { $0.id == node.id }) {
+                                            let deltaX = val.translation.width / zoomScale
+                                            let deltaY = val.translation.height / zoomScale
+                                            graph.nodes[idx].position = CGPoint(
+                                                x: graph.nodes[idx].position.x + deltaX,
+                                                y: graph.nodes[idx].position.y + deltaY
+                                            )
+                                        }
                                     }
                                 }
+                                draggingNodeId = nil
+                                dragOffset = .zero
                             }
-                            draggingNodeId = nil
-                            nodeInitialPosition = nil
-                        }
-                )
+                    )
+                    .contextMenu {
+                        nodeContextMenu(for: node)
+                    }
+            }
         }
     }
 
-    private func nodeCard(node: TopologyNode) -> some View {
-        let isSelected = selectedNodeId == node.id
+    // MARK: - Node Card View
+    private func nodeCard(node: TopologyNode, isBeingDragged: Bool, isSelected: Bool) -> some View {
         let roleColor = colorForRole(node.role)
 
         return VStack(spacing: 3) {
             ZStack {
                 // Glow Halo
                 Circle()
-                    .fill(roleColor.opacity(isSelected ? 0.28 : 0.12))
-                    .frame(width: 44, height: 44)
+                    .fill(roleColor.opacity(isBeingDragged ? 0.38 : (isSelected ? 0.28 : 0.12)))
+                    .frame(width: isBeingDragged ? 48 : 44, height: isBeingDragged ? 48 : 44)
                     .overlay(
                         Circle()
-                            .strokeBorder(isSelected ? Theme.neonCyan : roleColor.opacity(0.6), lineWidth: isSelected ? 2.2 : 1.2)
+                            .strokeBorder(
+                                isBeingDragged ? Theme.cyanPulse : (isSelected ? Theme.neonCyan : roleColor.opacity(0.6)),
+                                lineWidth: isBeingDragged ? 2.6 : (isSelected ? 2.2 : 1.2)
+                            )
                     )
-                    .shadow(color: isSelected ? Theme.neonCyan.opacity(0.5) : .clear, radius: 8)
+                    .shadow(color: isBeingDragged ? Theme.cyanPulse.opacity(0.8) : (isSelected ? Theme.neonCyan.opacity(0.5) : .clear), radius: isBeingDragged ? 12 : 8)
 
                 // Role Icon
                 Image(systemName: node.role.iconName)
-                    .font(.system(size: 17, weight: .bold))
-                    .foregroundStyle(isSelected ? Theme.neonCyan : roleColor)
+                    .font(.system(size: isBeingDragged ? 19 : 17, weight: .bold))
+                    .foregroundStyle(isBeingDragged ? Theme.cyanPulse : (isSelected ? Theme.neonCyan : roleColor))
 
                 // Alarm badge
                 if node.alarmsCount > 0 {
@@ -448,16 +559,145 @@ public struct TopologyCanvasView: View {
                 .lineLimit(1)
                 .padding(.horizontal, 6)
                 .padding(.vertical, 2)
-                .background(Theme.surfaceBackground.opacity(0.85))
+                .background(Theme.surfaceBackground.opacity(0.92))
                 .clipShape(RoundedRectangle(cornerRadius: 4))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 4)
+                        .stroke(isBeingDragged ? Theme.cyanPulse.opacity(0.8) : Color.clear, lineWidth: 1)
+                )
 
             // IP Address Subtitle
             Text(node.ipAddress)
                 .font(Theme.monoText(9))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(isBeingDragged ? Theme.cyanPulse : .secondary)
         }
-        .frame(width: 140)
-        .contentShape(Rectangle())
+        .scaleEffect(isBeingDragged ? 1.08 : 1.0)
+        .animation(.spring(response: 0.2, dampingFraction: 0.7), value: isBeingDragged)
+    }
+
+    // MARK: - Node Context Menu
+    @ViewBuilder
+    private func nodeContextMenu(for node: TopologyNode) -> some View {
+        Button {
+            state.targetInput = node.ipAddress
+            state.selectedWorkspace = .diagnose
+        } label: {
+            Label("Diagnose Host (\(node.ipAddress))", systemImage: "stethoscope")
+        }
+
+        Button {
+            state.selectedWorkspace = .snmp
+        } label: {
+            Label("Query SNMP MIBs", systemImage: "chart.bar.xaxis")
+        }
+
+        Button {
+            state.terminalManager.openSSHSession(host: node.ipAddress)
+            state.selectedWorkspace = .terminal
+        } label: {
+            Label("Open SSH Terminal", systemImage: "terminal.fill")
+        }
+
+        Divider()
+
+        Button {
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(node.ipAddress, forType: .string)
+            withAnimation { copyBannerText = "Copied IP: \(node.ipAddress)" }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+                withAnimation { if copyBannerText?.contains(node.ipAddress) == true { copyBannerText = nil } }
+            }
+        } label: {
+            Label("Copy IP Address (\(node.ipAddress))", systemImage: "doc.on.doc")
+        }
+
+        if let mac = node.macAddress {
+            Button {
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(mac, forType: .string)
+                withAnimation { copyBannerText = "Copied MAC: \(mac)" }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+                    withAnimation { if copyBannerText?.contains(mac) == true { copyBannerText = nil } }
+                }
+            } label: {
+                Label("Copy MAC Address (\(mac))", systemImage: "number")
+            }
+        }
+
+        Divider()
+
+        Button {
+            recalculateLayout(mode: layoutMode, size: CGSize(width: 1000, height: 700))
+        } label: {
+            Label("Auto-Align Graph", systemImage: "arrow.triangle.2.circlepath")
+        }
+    }
+
+    // MARK: - Mini-Map Overview HUD
+    private var miniMapOverview: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Image(systemName: "map.fill")
+                    .font(.system(size: 9))
+                    .foregroundStyle(Theme.cyanPulse)
+                Text("MINI-MAP")
+                    .font(Theme.monoText(8, weight: .bold))
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Button(action: {
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                        panOffset = .zero
+                        zoomScale = 1.0
+                    }
+                }) {
+                    Image(systemName: "viewfinder")
+                        .font(.system(size: 9))
+                        .foregroundStyle(Theme.cyanPulse)
+                }
+                .buttonStyle(.plain)
+                .help("Fit & Center Map")
+            }
+
+            // Canvas Mini Footprint
+            Canvas { context, sz in
+                let scaleX = sz.width / 1100.0
+                let scaleY = sz.height / 750.0
+
+                // Draw links
+                for link in graph.links {
+                    if let src = graph.nodes.first(where: { $0.id == link.sourceNodeId })?.position,
+                       let dst = graph.nodes.first(where: { $0.id == link.targetNodeId })?.position {
+                        var path = Path()
+                        path.move(to: CGPoint(x: src.x * scaleX, y: src.y * scaleY))
+                        path.addLine(to: CGPoint(x: dst.x * scaleX, y: dst.y * scaleY))
+                        context.stroke(path, with: .color(Color(hex: link.linkType.badgeColorHex).opacity(0.4)), lineWidth: 1)
+                    }
+                }
+
+                // Draw nodes
+                for node in graph.nodes {
+                    let pt = CGPoint(x: node.position.x * scaleX, y: node.position.y * scaleY)
+                    let rect = CGRect(x: pt.x - 3.5, y: pt.y - 3.5, width: 7, height: 7)
+                    let color = colorForRole(node.role)
+                    context.fill(Path(ellipseIn: rect), with: .color(color))
+                }
+            }
+            .frame(width: 140, height: 85)
+            .background(Theme.surfaceBackground)
+            .clipShape(RoundedRectangle(cornerRadius: 6))
+            .overlay(
+                RoundedRectangle(cornerRadius: 6)
+                    .stroke(Theme.borderLight, lineWidth: 1)
+            )
+        }
+        .padding(8)
+        .background(Theme.cardBackground.opacity(0.92))
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(Theme.borderLight, lineWidth: 1)
+        )
+        .shadow(radius: 8)
     }
 
     // MARK: - Floating Zoom Controls
@@ -662,7 +902,6 @@ public struct TopologyCanvasView: View {
     }
 
     // MARK: - Data Loading Helpers
-
     private func loadTopology(preset: TopologyPreset, size: CGSize) {
         switch preset {
         case .enterprise:
@@ -713,7 +952,6 @@ public struct TopologyCanvasView: View {
     }
 
     // MARK: - Active Switch Link Banner & Auto-Wiring
-
     private func activeSwitchBanner(neighbor: DiscoveredSwitchNeighbor) -> some View {
         HStack(spacing: 12) {
             Image(systemName: "cable.connector.horizontal")
@@ -774,7 +1012,6 @@ public struct TopologyCanvasView: View {
             )
             graph.nodes.append(newNode)
 
-            // Connect to local Mac host or edge router if exists
             if let hostNode = graph.nodes.first(where: { $0.role == .workstation || $0.label.contains("Mac") || $0.role == .router }) {
                 let link = TopologyLink(
                     sourceNodeId: hostNode.id,
@@ -791,4 +1028,3 @@ public struct TopologyCanvasView: View {
         }
     }
 }
-
