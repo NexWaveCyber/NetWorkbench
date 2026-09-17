@@ -199,6 +199,17 @@ public final class TerminalManager: @unchecked Sendable {
         if secondarySessionId == id {
             secondarySessionId = nil
         }
+        if pane3SessionId == id {
+            pane3SessionId = nil
+        }
+        if pane4SessionId == id {
+            pane4SessionId = nil
+        }
+
+        if sessions.isEmpty {
+            let def = openSimulatedSession(preset: "Catalyst 9300 Core")
+            activeSessionId = def.id
+        }
     }
 
     // MARK: - Broadcast Dispatch

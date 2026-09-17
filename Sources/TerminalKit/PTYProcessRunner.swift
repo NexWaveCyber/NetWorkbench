@@ -230,24 +230,26 @@ public final class PTYProcessRunner: @unchecked Sendable {
         _ = Darwin.write(masterFd, &byte, 1)
     }
 
-    /// Terminate process and clean up descriptors
+    /// Terminate process and clean up descriptors asynchronously without blocking the caller
     public func terminate() {
         isRunning = false
         pendingPassword = nil
-        if let proc = process, proc.isRunning {
-            proc.terminate()
-        }
+        let proc = process
         process = nil
-
-        if masterFd >= 0 {
-            close(masterFd)
-            masterFd = -1
-        }
-        if slaveFd >= 0 {
-            close(slaveFd)
-            slaveFd = -1
-        }
+        let mFd = masterFd
+        let sFd = slaveFd
+        masterFd = -1
+        slaveFd = -1
         masterHandle = nil
+
+        // Asynchronously terminate process and close file descriptors to prevent main-thread kernel lock
+        DispatchQueue.global(qos: .utility).async {
+            if let p = proc, p.isRunning {
+                p.terminate()
+            }
+            if sFd >= 0 { Darwin.close(sFd) }
+            if mFd >= 0 { Darwin.close(mFd) }
+        }
     }
 
     // MARK: - Background Read Loop
@@ -257,30 +259,44 @@ public final class PTYProcessRunner: @unchecked Sendable {
             var buffer = [UInt8](repeating: 0, count: 4096)
 
             while let self = self, self.isRunning {
-                let bytesRead = Darwin.read(fd, &buffer, buffer.count)
-                if bytesRead > 0 {
-                    let data = Data(buffer[0..<bytesRead])
-                    if let string = String(data: data, encoding: .utf8) ?? String(data: data, encoding: .ascii) {
-                        // Check if SSH host is prompting for password and we have a pending credential
-                        if let pass = self.pendingPassword, !pass.isEmpty {
-                            let lower = string.lowercased()
-                            if lower.contains("password:") || lower.contains("password for") || lower.contains("passphrase:") {
-                                self.pendingPassword = nil
-                                DispatchQueue.global().asyncAfter(deadline: .now() + 0.1) { [weak self] in
-                                    self?.send(text: "\(pass)\n")
+                var pfd = pollfd(fd: fd, events: Int16(POLLIN), revents: 0)
+                let pollRes = Darwin.poll(&pfd, 1, 200) // 200ms timeout prevents infinite kernel blocking
+                guard self.isRunning else { break }
+
+                if pollRes > 0 {
+                    if (pfd.revents & Int16(POLLIN)) != 0 {
+                        let bytesRead = Darwin.read(fd, &buffer, buffer.count)
+                        if bytesRead > 0 {
+                            let data = Data(buffer[0..<bytesRead])
+                            if let string = String(data: data, encoding: .utf8) ?? String(data: data, encoding: .ascii) {
+                                // Check if SSH host is prompting for password and we have a pending credential
+                                if let pass = self.pendingPassword, !pass.isEmpty {
+                                    let lower = string.lowercased()
+                                    if lower.contains("password:") || lower.contains("password for") || lower.contains("passphrase:") {
+                                        self.pendingPassword = nil
+                                        DispatchQueue.global().asyncAfter(deadline: .now() + 0.1) { [weak self] in
+                                            self?.send(text: "\(pass)\n")
+                                        }
+                                    }
+                                }
+
+                                DispatchQueue.main.async {
+                                    self.onOutput?(string)
                                 }
                             }
+                        } else if bytesRead == 0 {
+                            // EOF encountered
+                            break
+                        } else {
+                            // Read error (EIO, EBADF upon termination)
+                            break
                         }
-
-                        DispatchQueue.main.async {
-                            self.onOutput?(string)
-                        }
+                    } else if (pfd.revents & (Int16(POLLHUP) | Int16(POLLERR) | Int16(POLLNVAL))) != 0 {
+                        // Remote end hung up or descriptor invalidated
+                        break
                     }
-                } else if bytesRead == 0 {
-                    // EOF encountered
-                    break
-                } else {
-                    // Read error (EIO or EBADF upon termination)
+                } else if pollRes < 0 {
+                    if errno == EINTR { continue }
                     break
                 }
             }
