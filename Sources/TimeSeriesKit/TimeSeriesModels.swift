@@ -110,6 +110,18 @@ public struct AggregatedBucket: Identifiable, Sendable, Codable, Equatable {
     }
 }
 
+public enum MonitorProbeProtocol: String, Sendable, Codable, CaseIterable {
+    case icmp = "icmp"
+    case tcp = "tcp"
+
+    public var displayName: String {
+        switch self {
+        case .icmp: return "ICMP Echo"
+        case .tcp: return "TCP Port"
+        }
+    }
+}
+
 public struct MonitorTargetConfig: Identifiable, Sendable, Codable, Equatable {
     public let id: UUID
     public var target: String
@@ -118,6 +130,9 @@ public struct MonitorTargetConfig: Identifiable, Sendable, Codable, Equatable {
     public var latencyThresholdMs: Double
     public var packetLossThresholdPct: Double
     public var isEnabled: Bool
+    public var probeProtocol: MonitorProbeProtocol
+    public var port: Int?
+    public var createdAt: Date
 
     public init(
         id: UUID = UUID(),
@@ -126,7 +141,10 @@ public struct MonitorTargetConfig: Identifiable, Sendable, Codable, Equatable {
         intervalSeconds: Double = 2.5,
         latencyThresholdMs: Double = 60.0,
         packetLossThresholdPct: Double = 5.0,
-        isEnabled: Bool = true
+        isEnabled: Bool = true,
+        probeProtocol: MonitorProbeProtocol = .icmp,
+        port: Int? = nil,
+        createdAt: Date = Date()
     ) {
         self.id = id
         self.target = target
@@ -135,6 +153,9 @@ public struct MonitorTargetConfig: Identifiable, Sendable, Codable, Equatable {
         self.latencyThresholdMs = latencyThresholdMs
         self.packetLossThresholdPct = packetLossThresholdPct
         self.isEnabled = isEnabled
+        self.probeProtocol = probeProtocol
+        self.port = port
+        self.createdAt = createdAt
     }
 }
 
@@ -169,5 +190,16 @@ public struct SLAMonitorAlert: Identifiable, Sendable, Codable, Equatable {
         self.thresholdValue = thresholdValue
         self.message = message
         self.isAcknowledged = isAcknowledged
+    }
+}
+
+public extension Sequence where Element == AggregatedBucket {
+    func toCSV(target: String, targetName: String) -> String {
+        var csv = "Timestamp,Target,Name,MinMs,AvgMs,MaxMs,JitterMs,PacketLossPct,SampleCount\n"
+        let df = ISO8601DateFormatter()
+        for b in self {
+            csv += "\(df.string(from: b.timestamp)),\(target),\(targetName),\(String(format: "%.2f", b.minMs)),\(String(format: "%.2f", b.avgMs)),\(String(format: "%.2f", b.maxMs)),\(String(format: "%.2f", b.jitterMs)),\(String(format: "%.1f", b.packetLossPct)),\(b.sampleCount)\n"
+        }
+        return csv
     }
 }

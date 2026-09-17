@@ -179,6 +179,21 @@ public final class SQLiteDatabase: @unchecked Sendable {
             message TEXT NOT NULL,
             is_acknowledged INTEGER NOT NULL DEFAULT 0
         );
+
+        CREATE TABLE IF NOT EXISTS monitor_targets (
+            id TEXT PRIMARY KEY,
+            target TEXT NOT NULL,
+            name TEXT NOT NULL,
+            interval_seconds REAL NOT NULL DEFAULT 2.5,
+            latency_threshold_ms REAL NOT NULL DEFAULT 60.0,
+            packet_loss_threshold_pct REAL NOT NULL DEFAULT 5.0,
+            is_enabled INTEGER NOT NULL DEFAULT 1,
+            probe_protocol TEXT NOT NULL DEFAULT 'icmp',
+            tcp_port INTEGER DEFAULT 443,
+            created_at REAL NOT NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_monitor_targets_name ON monitor_targets(name);
         """
         try execute(sql: schema)
 

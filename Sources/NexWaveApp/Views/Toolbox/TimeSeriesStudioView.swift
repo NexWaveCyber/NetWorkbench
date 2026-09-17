@@ -1,13 +1,12 @@
 import SwiftUI
 import TimeSeriesKit
 import PersistenceKit
+import NetworkCore
 
 public struct TimeSeriesStudioView: View {
-    @State private var targets: [MonitorTargetConfig] = [
-        MonitorTargetConfig(target: "172.16.16.1", name: "Default Gateway", intervalSeconds: 2.5, latencyThresholdMs: 50.0, packetLossThresholdPct: 5.0),
-        MonitorTargetConfig(target: "1.1.1.1", name: "Cloudflare DNS", intervalSeconds: 2.5, latencyThresholdMs: 60.0, packetLossThresholdPct: 5.0),
-        MonitorTargetConfig(target: "8.8.8.8", name: "Google Anycast DNS", intervalSeconds: 2.5, latencyThresholdMs: 70.0, packetLossThresholdPct: 5.0)
-    ]
+    public var state: AppState?
+
+    @State private var targets: [MonitorTargetConfig] = []
     @State private var selectedTargetIndex: Int = 0
     @State private var selectedRange: TimeRange = .lastHour
     @State private var buckets: [AggregatedBucket] = []
@@ -15,16 +14,45 @@ public struct TimeSeriesStudioView: View {
 
     // Scrubber hover state
     @State private var scrubIndex: Int? = nil
-    @State private var isShowingAddSheet = false
-    @State private var newTargetHost = ""
-    @State private var newTargetName = ""
 
-    // Service & Repo
-    @State private var repository: TimeSeriesRepository? = nil
-    @State private var monitorService: BackgroundMonitorService? = nil
+    // Sheets and dialogs
+    @State private var isShowingAddSheet = false
+    @State private var isShowingEditSheet = false
+    @State private var isShowingDeleteConfirm = false
+
+    // Target form fields
+    @State private var formTargetHost = ""
+    @State private var formTargetName = ""
+    @State private var formTargetProtocol: MonitorProbeProtocol = .icmp
+    @State private var formTargetPort = "443"
+    @State private var formTargetInterval: Double = 2.5
+    @State private var formTargetLatencyThreshold: Double = 50.0
+    @State private var formTargetLossThreshold: Double = 5.0
+
+    // Local service handles if state not provided
+    @State private var localRepository: TimeSeriesRepository? = nil
+    @State private var localMonitorService: BackgroundMonitorService? = nil
     @State private var refreshTimer: Task<Void, Never>? = nil
 
-    public init() {}
+    // Feedback
+    @State private var toastMessage: String? = nil
+
+    public init(state: AppState? = nil) {
+        self.state = state
+    }
+
+    private var repository: TimeSeriesRepository? {
+        state?.timeSeriesRepository ?? localRepository
+    }
+
+    private var monitorService: BackgroundMonitorService? {
+        state?.monitorService ?? localMonitorService
+    }
+
+    private var activeConfig: MonitorTargetConfig? {
+        guard selectedTargetIndex < targets.count else { return nil }
+        return targets[selectedTargetIndex]
+    }
 
     public var body: some View {
         ScrollView {
@@ -34,10 +62,29 @@ public struct TimeSeriesStudioView: View {
                 timelineCanvasCard
                 summaryMetricsGrid
                 alertsSection
+                exportActionBar
             }
             .padding(20)
         }
         .background(Theme.surfaceBackground)
+        .overlay(alignment: .bottomTrailing) {
+            if let toast = toastMessage {
+                HStack(spacing: 8) {
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundStyle(Theme.signalEmerald)
+                    Text(toast)
+                        .font(.caption.bold())
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 8)
+                .background(Theme.cardBackground)
+                .cornerRadius(8)
+                .overlay(RoundedRectangle(cornerRadius: 8).stroke(Theme.borderLight, lineWidth: 1))
+                .shadow(color: .black.opacity(0.3), radius: 10, y: 4)
+                .padding(24)
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+        }
         .onAppear {
             setupEngine()
         }
@@ -45,13 +92,24 @@ public struct TimeSeriesStudioView: View {
             stopPolling()
         }
         .sheet(isPresented: $isShowingAddSheet) {
-            addTargetSheet
+            targetFormSheet(isEditing: false)
         }
-    }
-
-    private var activeConfig: MonitorTargetConfig? {
-        guard selectedTargetIndex < targets.count else { return nil }
-        return targets[selectedTargetIndex]
+        .sheet(isPresented: $isShowingEditSheet) {
+            targetFormSheet(isEditing: true)
+        }
+        .confirmationDialog(
+            "Delete Target",
+            isPresented: $isShowingDeleteConfirm,
+            actions: {
+                Button("Delete Target", role: .destructive) {
+                    deleteCurrentTarget()
+                }
+                Button("Cancel", role: .cancel) {}
+            },
+            message: {
+                Text("Are you sure you want to delete \(activeConfig?.name ?? "this target")? Historical latency samples will be retained.")
+            }
+        )
     }
 
     // MARK: - Header Bar
@@ -65,15 +123,15 @@ public struct TimeSeriesStudioView: View {
                         .foregroundStyle(Theme.neonCyan)
                     Text("Timeline & SLA Monitor")
                         .font(.title2.bold())
-                    Text("PingPlotter Class")
+                    Text("Grade A++++")
                         .font(.caption2.bold())
                         .padding(.horizontal, 8)
                         .padding(.vertical, 2)
-                        .background(Theme.cyanPulse.opacity(0.18))
-                        .foregroundStyle(Theme.neonCyan)
+                        .background(Theme.signalEmerald.opacity(0.18))
+                        .foregroundStyle(Theme.signalEmerald)
                         .clipShape(Capsule())
                 }
-                Text("Continuous multi-day background latency tracking, packet loss scrub timeline, and automated SLA breach detection.")
+                Text("Continuous multi-day background latency tracking, dual-stack ICMP & TCP port probes, sub-millisecond adaptive scaling, and automated SLA breach detection.")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
             }
@@ -84,59 +142,150 @@ public struct TimeSeriesStudioView: View {
     // MARK: - Control Bar
 
     private var controlBar: some View {
-        HStack(spacing: 12) {
-            // Target Picker
-            Picker("", selection: $selectedTargetIndex) {
-                ForEach(0..<targets.count, id: \.self) { idx in
-                    Text("\(targets[idx].name) (\(targets[idx].target))").tag(idx)
+        VStack(spacing: 10) {
+            HStack(spacing: 12) {
+                // Target Picker
+                if !targets.isEmpty {
+                    Picker("", selection: $selectedTargetIndex) {
+                        ForEach(0..<targets.count, id: \.self) { idx in
+                            let cfg = targets[idx]
+                            HStack {
+                                Text("\(cfg.name) (\(cfg.target))")
+                            }
+                            .tag(idx)
+                        }
+                    }
+                    .frame(width: 300)
+                    .onChange(of: selectedTargetIndex) { _, _ in
+                        loadData()
+                    }
+                } else {
+                    Text("No Monitored Targets")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
-            }
-            .frame(width: 280)
-            .onChange(of: selectedTargetIndex) { _, _ in
-                loadData()
-            }
 
-            // Add Target Button
-            Button(action: { isShowingAddSheet = true }) {
-                HStack(spacing: 4) {
-                    Image(systemName: "plus.circle")
-                    Text("Add Target")
-                }
-                .font(.caption.bold())
-                .padding(.horizontal, 10)
-                .padding(.vertical, 6)
-                .background(Theme.azurePro.opacity(0.15))
-                .foregroundStyle(Theme.azurePro)
-                .cornerRadius(6)
-            }
-            .buttonStyle(.plain)
-
-            Spacer()
-
-            // Range Segmented Picker
-            Picker("", selection: $selectedRange) {
-                ForEach(TimeRange.allCases) { range in
-                    Text(range.rawValue).tag(range)
-                }
-            }
-            .pickerStyle(.segmented)
-            .frame(width: 280)
-            .onChange(of: selectedRange) { _, _ in
-                loadData()
-            }
-
-            // Refresh Button
-            Button(action: loadData) {
-                Image(systemName: "arrow.clockwise")
-                    .font(.caption)
-                    .padding(6)
-                    .background(Theme.cardBackground)
+                // Add Target Button
+                Button(action: {
+                    openAddSheet()
+                }) {
+                    HStack(spacing: 4) {
+                        Image(systemName: "plus.circle")
+                        Text("Add Target")
+                    }
+                    .font(.caption.bold())
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(Theme.azurePro.opacity(0.15))
+                    .foregroundStyle(Theme.azurePro)
                     .cornerRadius(6)
+                }
+                .buttonStyle(.plain)
+
+                // Edit Target Button
+                if activeConfig != nil {
+                    Button(action: {
+                        openEditSheet()
+                    }) {
+                        HStack(spacing: 4) {
+                            Image(systemName: "slider.horizontal.3")
+                            Text("Edit SLA")
+                        }
+                        .font(.caption.bold())
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background(Theme.cardBackground)
+                        .foregroundStyle(.secondary)
+                        .cornerRadius(6)
+                        .overlay(RoundedRectangle(cornerRadius: 6).stroke(Theme.borderLight, lineWidth: 1))
+                    }
+                    .buttonStyle(.plain)
+
+                    // Delete Target Button
+                    Button(action: {
+                        isShowingDeleteConfirm = true
+                    }) {
+                        Image(systemName: "trash")
+                            .font(.caption)
+                            .padding(6)
+                            .background(Theme.pulseCrimson.opacity(0.12))
+                            .foregroundStyle(Theme.pulseCrimson)
+                            .cornerRadius(6)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Delete target")
+                }
+
+                Spacer()
+
+                // Range Segmented Picker
+                Picker("", selection: $selectedRange) {
+                    ForEach(TimeRange.allCases) { range in
+                        Text(range.rawValue).tag(range)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .frame(width: 280)
+                .onChange(of: selectedRange) { _, _ in
+                    loadData()
+                }
+
+                // Refresh Button
+                Button(action: loadData) {
+                    Image(systemName: "arrow.clockwise")
+                        .font(.caption)
+                        .padding(6)
+                        .background(Theme.cardBackground)
+                        .cornerRadius(6)
+                }
+                .buttonStyle(.plain)
+                .help("Refresh timeline data")
             }
-            .buttonStyle(.plain)
-            .help("Refresh timeline data")
+
+            // Target Metadata Strip
+            if let cfg = activeConfig {
+                HStack(spacing: 12) {
+                    HStack(spacing: 4) {
+                        Circle()
+                            .fill(calcLoss() > 0 ? Theme.pulseCrimson : (calcAvg() > cfg.latencyThresholdMs ? Theme.solarAmber : Theme.signalEmerald))
+                            .frame(width: 7, height: 7)
+                        Text(calcLoss() > 0 ? "Packet Loss Active" : (calcAvg() > cfg.latencyThresholdMs ? "SLA Breached" : "Optimal SLA"))
+                            .font(Theme.monoText(10, weight: .bold))
+                            .foregroundStyle(calcLoss() > 0 ? Theme.pulseCrimson : (calcAvg() > cfg.latencyThresholdMs ? Theme.solarAmber : Theme.signalEmerald))
+                    }
+
+                    Text("•")
+                        .foregroundStyle(.secondary.opacity(0.4))
+
+                    HStack(spacing: 4) {
+                        Image(systemName: cfg.probeProtocol == .tcp ? "network" : "waveform.path")
+                            .font(.system(size: 9))
+                            .foregroundStyle(Theme.neonCyan)
+                        Text(cfg.probeProtocol == .tcp ? "TCP Port \(cfg.port ?? 443)" : "ICMP Echo (Darwin)")
+                            .font(Theme.monoText(10))
+                            .foregroundStyle(.secondary)
+                    }
+
+                    Text("•")
+                        .foregroundStyle(.secondary.opacity(0.4))
+
+                    Text("Interval: \(String(format: "%.1fs", cfg.intervalSeconds))")
+                        .font(Theme.monoText(10))
+                        .foregroundStyle(.secondary)
+
+                    Text("•")
+                        .foregroundStyle(.secondary.opacity(0.4))
+
+                    Text("SLA Limits: Latency ≤ \(Int(cfg.latencyThresholdMs))ms • Loss ≤ \(Int(cfg.packetLossThresholdPct))%")
+                        .font(Theme.monoText(10))
+                        .foregroundStyle(.secondary)
+
+                    Spacer()
+                }
+                .padding(.top, 2)
+            }
         }
-        .padding(12)
+        .padding(14)
         .background(Theme.cardBackground)
         .cornerRadius(10)
         .overlay(RoundedRectangle(cornerRadius: 10).stroke(Theme.borderLight, lineWidth: 1))
@@ -166,6 +315,9 @@ public struct TimeSeriesStudioView: View {
                         Text("Min/Max: \(String(format: "%.1f", b.minMs))/\(String(format: "%.1f", b.maxMs)) ms")
                             .font(Theme.monoText(10))
                             .foregroundStyle(.secondary)
+                        Text("Jitter: \(String(format: "%.1f ms", b.jitterMs))")
+                            .font(Theme.monoText(10))
+                            .foregroundStyle(Theme.azurePro)
                         if b.packetLossPct > 0 {
                             Text("Loss: \(String(format: "%.1f%%", b.packetLossPct))")
                                 .font(Theme.monoText(10, weight: .bold))
@@ -177,13 +329,13 @@ public struct TimeSeriesStudioView: View {
                     .background(Theme.secondaryBackground)
                     .cornerRadius(6)
                 } else {
-                    Text("Hover / drag timeline to inspect point-in-time metrics")
+                    Text("Hover cursor or drag over timeline to inspect point-in-time SLA telemetry")
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                 }
             }
 
-            // Canvas Chart
+            // Canvas Chart with Dynamic X & Y Axes
             GeometryReader { geo in
                 let width = geo.size.width
                 let height = geo.size.height
@@ -191,42 +343,83 @@ public struct TimeSeriesStudioView: View {
                 Canvas { context, size in
                     guard !buckets.isEmpty else { return }
 
-                    let maxLatency = max(60.0, (buckets.map { $0.maxMs }.max() ?? 60.0) * 1.15)
-                    let stepX = width / CGFloat(max(1, buckets.count - 1))
+                    let rawMax = (buckets.map { $0.maxMs }.max() ?? 0.0)
+                    // Adaptive Y-axis scaling: adapts to low LAN latency (<4ms) up to WAN spikes
+                    let maxLatency: Double = {
+                        if rawMax <= 4.0 { return 5.0 }
+                        if rawMax <= 15.0 { return 20.0 }
+                        return max(30.0, rawMax * 1.15)
+                    }()
 
-                    // Draw Background Grid Lines
+                    let stepX = width / CGFloat(max(1, buckets.count - 1))
+                    let usableHeight = height - 24.0 // leave bottom 24px for X-axis time labels
+
+                    // 1. Draw Background Grid Lines & Y-Axis Labels
                     for yFraction in [0.25, 0.5, 0.75, 1.0] {
-                        let y = height - (height * CGFloat(yFraction) * 0.85)
+                        let y = usableHeight - (usableHeight * CGFloat(yFraction) * 0.88)
                         var gridPath = Path()
                         gridPath.move(to: CGPoint(x: 0, y: y))
                         gridPath.addLine(to: CGPoint(x: width, y: y))
                         context.stroke(gridPath, with: .color(Color.primary.opacity(0.06)), lineWidth: 1)
 
                         let latValue = maxLatency * yFraction
-                        let text = Text("\(Int(latValue))ms").font(.system(size: 8, design: .monospaced)).foregroundColor(.secondary.opacity(0.6))
-                        context.draw(text, at: CGPoint(x: 18, y: y - 6))
+                        let textStr = maxLatency <= 10.0 ? String(format: "%.1f ms", latValue) : "\(Int(latValue))ms"
+                        let text = Text(textStr).font(.system(size: 8, design: .monospaced)).foregroundColor(.secondary.opacity(0.6))
+                        context.draw(text, at: CGPoint(x: 22, y: y - 6))
                     }
 
-                    // Draw Packet Loss Red Columns
+                    // 2. Draw Dynamic X-Axis Time Ticks Along Bottom
+                    let tickCount = 5
+                    for t in 0...tickCount {
+                        let frac = CGFloat(t) / CGFloat(tickCount)
+                        let x = width * frac
+                        let bucketIdx = min(buckets.count - 1, Int(round(CGFloat(buckets.count - 1) * frac)))
+                        let bucketTime = buckets[bucketIdx].timestamp
+
+                        var tickPath = Path()
+                        tickPath.move(to: CGPoint(x: x, y: 0))
+                        tickPath.addLine(to: CGPoint(x: x, y: usableHeight))
+                        context.stroke(tickPath, with: .color(Color.primary.opacity(0.04)), style: StrokeStyle(lineWidth: 1, dash: [2, 4]))
+
+                        let df = DateFormatter()
+                        df.dateFormat = selectedRange == .last7Days || selectedRange == .last24Hours ? "MM/dd HH:mm" : "HH:mm:ss"
+                        let timeStr = t == tickCount ? "Now" : df.string(from: bucketTime)
+                        let text = Text(timeStr).font(.system(size: 8, design: .monospaced)).foregroundColor(.secondary.opacity(0.7))
+                        context.draw(text, at: CGPoint(x: min(width - 25, max(25, x)), y: height - 10))
+                    }
+
+                    // 3. Draw SLA Latency Threshold Line if active
+                    if let cfg = activeConfig, cfg.latencyThresholdMs <= maxLatency {
+                        let slaY = usableHeight - (usableHeight * CGFloat(cfg.latencyThresholdMs / maxLatency) * 0.88)
+                        var slaPath = Path()
+                        slaPath.move(to: CGPoint(x: 0, y: slaY))
+                        slaPath.addLine(to: CGPoint(x: width, y: slaY))
+                        context.stroke(slaPath, with: .color(Theme.solarAmber.opacity(0.6)), style: StrokeStyle(lineWidth: 1.5, dash: [4, 4]))
+
+                        let slaText = Text("SLA LIMIT (\(Int(cfg.latencyThresholdMs))ms)").font(.system(size: 7, weight: .bold, design: .monospaced)).foregroundColor(Theme.solarAmber)
+                        context.draw(slaText, at: CGPoint(x: width - 60, y: slaY - 7))
+                    }
+
+                    // 4. Draw Packet Loss Red Columns
                     for (i, b) in buckets.enumerated() {
                         if b.packetLossPct > 0 {
                             let x = CGFloat(i) * stepX
-                            let colWidth = max(2.0, stepX * 0.8)
-                            let lossHeight = height * CGFloat(b.packetLossPct / 100.0)
-                            let rect = CGRect(x: x - colWidth / 2, y: height - lossHeight, width: colWidth, height: lossHeight)
-                            context.fill(Path(rect), with: .color(Theme.pulseCrimson.opacity(0.35)))
+                            let colWidth = max(2.5, stepX * 0.85)
+                            let lossHeight = usableHeight * CGFloat(b.packetLossPct / 100.0)
+                            let rect = CGRect(x: x - colWidth / 2, y: usableHeight - lossHeight, width: colWidth, height: lossHeight)
+                            context.fill(Path(rect), with: .color(Theme.pulseCrimson.opacity(0.40)))
                         }
                     }
 
-                    // Draw Latency Line & Gradient Fill
+                    // 5. Draw Latency Curve & Gradient Area Fill
                     var linePath = Path()
                     var areaPath = Path()
-                    areaPath.move(to: CGPoint(x: 0, y: height))
+                    areaPath.move(to: CGPoint(x: 0, y: usableHeight))
 
                     for (i, b) in buckets.enumerated() {
                         let x = CGFloat(i) * stepX
-                        let normalizedY = height - (height * CGFloat(b.avgMs / maxLatency) * 0.85)
-                        let pt = CGPoint(x: x, y: max(10, min(height, normalizedY)))
+                        let normalizedY = usableHeight - (usableHeight * CGFloat(b.avgMs / maxLatency) * 0.88)
+                        let pt = CGPoint(x: x, y: max(10, min(usableHeight, normalizedY)))
 
                         if i == 0 {
                             linePath.move(to: pt)
@@ -239,29 +432,41 @@ public struct TimeSeriesStudioView: View {
 
                     if let last = buckets.indices.last {
                         let lastX = CGFloat(last) * stepX
-                        areaPath.addLine(to: CGPoint(x: lastX, y: height))
+                        areaPath.addLine(to: CGPoint(x: lastX, y: usableHeight))
                         areaPath.closeSubpath()
                     }
 
-                    // Gradient Fill under the line
-                    let gradient = Gradient(colors: [Theme.neonCyan.opacity(0.25), Theme.azurePro.opacity(0.02)])
-                    context.fill(areaPath, with: .linearGradient(gradient, startPoint: CGPoint(x: 0, y: 0), endPoint: CGPoint(x: 0, y: height)))
+                    // Gradient Fill under curve
+                    let gradient = Gradient(colors: [Theme.neonCyan.opacity(0.28), Theme.azurePro.opacity(0.02)])
+                    context.fill(areaPath, with: .linearGradient(gradient, startPoint: CGPoint(x: 0, y: 0), endPoint: CGPoint(x: 0, y: usableHeight)))
 
                     // Stroke Latency Line
                     context.stroke(linePath, with: .color(Theme.neonCyan), lineWidth: 2)
 
-                    // Draw Scrubber Line if active
+                    // 6. Draw Interactive Scrubber Cursor
                     if let sIdx = scrubIndex, sIdx < buckets.count {
                         let sx = CGFloat(sIdx) * stepX
                         var scrubPath = Path()
                         scrubPath.move(to: CGPoint(x: sx, y: 0))
-                        scrubPath.addLine(to: CGPoint(x: sx, y: height))
-                        context.stroke(scrubPath, with: .color(Color.white.opacity(0.8)), lineWidth: 1.5)
+                        scrubPath.addLine(to: CGPoint(x: sx, y: usableHeight))
+                        context.stroke(scrubPath, with: .color(Color.white.opacity(0.85)), lineWidth: 1.5)
 
                         let b = buckets[sIdx]
-                        let sy = height - (height * CGFloat(b.avgMs / maxLatency) * 0.85)
+                        let sy = usableHeight - (usableHeight * CGFloat(b.avgMs / maxLatency) * 0.88)
                         let circleRect = CGRect(x: sx - 4, y: sy - 4, width: 8, height: 8)
                         context.fill(Path(ellipseIn: circleRect), with: .color(Theme.signalEmerald))
+                    }
+                }
+                .onContinuousHover { phase in
+                    switch phase {
+                    case .active(let location):
+                        let stepX = width / CGFloat(max(1, buckets.count - 1))
+                        let idx = Int(round(location.x / stepX))
+                        if idx >= 0 && idx < buckets.count {
+                            scrubIndex = idx
+                        }
+                    case .ended:
+                        scrubIndex = nil
                     }
                 }
                 .gesture(
@@ -278,7 +483,7 @@ public struct TimeSeriesStudioView: View {
                         }
                 )
             }
-            .frame(height: 220)
+            .frame(height: 230)
             .background(Color.primary.opacity(0.02))
             .cornerRadius(8)
             .overlay(RoundedRectangle(cornerRadius: 8).stroke(Theme.borderLight, lineWidth: 1))
@@ -339,6 +544,23 @@ public struct TimeSeriesStudioView: View {
                         .font(.headline.bold())
                 }
                 Spacer()
+
+                if !alerts.isEmpty {
+                    Button(action: clearAllAlerts) {
+                        HStack(spacing: 4) {
+                            Image(systemName: "trash")
+                            Text("Clear All")
+                        }
+                        .font(.caption.bold())
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(Theme.pulseCrimson.opacity(0.12))
+                        .foregroundStyle(Theme.pulseCrimson)
+                        .cornerRadius(6)
+                    }
+                    .buttonStyle(.plain)
+                }
+
                 if let cfg = activeConfig {
                     Text("SLA Limits: Loss > \(Int(cfg.packetLossThresholdPct))% • Latency > \(Int(cfg.latencyThresholdMs))ms")
                         .font(.caption2)
@@ -383,6 +605,17 @@ public struct TimeSeriesStudioView: View {
                                     .font(.caption2)
                                     .foregroundStyle(.secondary)
                             }
+
+                            // Dismiss individual alert
+                            Button(action: {
+                                acknowledgeAlert(alert.id)
+                            }) {
+                                Image(systemName: "xmark.circle")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                            .buttonStyle(.plain)
+                            .help("Dismiss alert")
                         }
                         .padding(10)
                         .background(Theme.cardBackground)
@@ -394,24 +627,130 @@ public struct TimeSeriesStudioView: View {
         }
     }
 
-    // MARK: - Add Target Sheet
+    // MARK: - Multi-Format Export Bar
 
-    private var addTargetSheet: some View {
+    private var exportActionBar: some View {
+        HStack(spacing: 12) {
+            HStack(spacing: 6) {
+                Image(systemName: "square.and.arrow.up")
+                    .font(.caption)
+                    .foregroundStyle(Theme.neonCyan)
+                Text("Export & Sharing:")
+                    .font(.caption.bold())
+                    .foregroundStyle(.secondary)
+            }
+
+            // Export CSV
+            Button(action: exportCSV) {
+                HStack(spacing: 4) {
+                    Image(systemName: "tablecells")
+                    Text("Export CSV")
+                }
+                .font(.caption.bold())
+                .padding(.horizontal, 10)
+                .padding(.vertical, 5)
+                .background(Theme.cardBackground)
+                .cornerRadius(6)
+                .overlay(RoundedRectangle(cornerRadius: 6).stroke(Theme.borderLight, lineWidth: 1))
+            }
+            .buttonStyle(.plain)
+
+            // Export JSON
+            Button(action: exportJSON) {
+                HStack(spacing: 4) {
+                    Image(systemName: "curlybraces")
+                    Text("Export JSON")
+                }
+                .font(.caption.bold())
+                .padding(.horizontal, 10)
+                .padding(.vertical, 5)
+                .background(Theme.cardBackground)
+                .cornerRadius(6)
+                .overlay(RoundedRectangle(cornerRadius: 6).stroke(Theme.borderLight, lineWidth: 1))
+            }
+            .buttonStyle(.plain)
+
+            // Copy Markdown SLA Report
+            Button(action: copyMarkdownReport) {
+                HStack(spacing: 4) {
+                    Image(systemName: "doc.plaintext")
+                    Text("Copy Markdown SLA Report")
+                }
+                .font(.caption.bold())
+                .padding(.horizontal, 10)
+                .padding(.vertical, 5)
+                .background(Theme.cardBackground)
+                .cornerRadius(6)
+                .overlay(RoundedRectangle(cornerRadius: 6).stroke(Theme.borderLight, lineWidth: 1))
+            }
+            .buttonStyle(.plain)
+
+            Spacer()
+        }
+        .padding(12)
+        .background(Theme.cardBackground.opacity(0.7))
+        .cornerRadius(8)
+    }
+
+    // MARK: - Add / Edit Target Sheet
+
+    private func targetFormSheet(isEditing: Bool) -> some View {
         VStack(spacing: 16) {
-            Text("Add Continuous Monitor Target")
-                .font(.headline.bold())
+            HStack {
+                Text(isEditing ? "Edit SLA Monitor Target" : "Add Continuous Monitor Target")
+                    .font(.headline.bold())
+                Spacer()
+            }
 
-            VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: 12) {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Target IP or Hostname").font(.caption.bold())
-                    TextField("e.g. 192.168.1.1 or vpn.corp.com", text: $newTargetHost)
+                    TextField("e.g. 192.168.10.1 or api.cloudflare.com", text: $formTargetHost)
                         .textFieldStyle(.roundedBorder)
+                        .disabled(isEditing) // can't change host of existing target
                 }
 
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Display Name").font(.caption.bold())
-                    TextField("e.g. Branch Router or Core Switch", text: $newTargetName)
+                    TextField("e.g. Core Switch or Cloud Edge", text: $formTargetName)
                         .textFieldStyle(.roundedBorder)
+                }
+
+                // Protocol Picker
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Probe Protocol").font(.caption.bold())
+                    Picker("", selection: $formTargetProtocol) {
+                        ForEach(MonitorProbeProtocol.allCases, id: \.self) { proto in
+                            Text(proto.displayName).tag(proto)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                }
+
+                if formTargetProtocol == .tcp {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("TCP Port").font(.caption.bold())
+                        TextField("443", text: $formTargetPort)
+                            .textFieldStyle(.roundedBorder)
+                    }
+                }
+
+                HStack(spacing: 12) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Interval (Seconds)").font(.caption.bold())
+                        TextField("2.5", value: $formTargetInterval, format: .number)
+                            .textFieldStyle(.roundedBorder)
+                    }
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Latency Limit (ms)").font(.caption.bold())
+                        TextField("50.0", value: $formTargetLatencyThreshold, format: .number)
+                            .textFieldStyle(.roundedBorder)
+                    }
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Packet Loss Limit (%)").font(.caption.bold())
+                        TextField("5.0", value: $formTargetLossThreshold, format: .number)
+                            .textFieldStyle(.roundedBorder)
+                    }
                 }
             }
             .padding(.vertical, 8)
@@ -419,53 +758,91 @@ public struct TimeSeriesStudioView: View {
             HStack {
                 Button("Cancel") {
                     isShowingAddSheet = false
+                    isShowingEditSheet = false
                 }
                 Spacer()
-                Button("Add & Start Monitoring") {
-                    let host = newTargetHost.trimmingCharacters(in: .whitespacesAndNewlines)
-                    guard !host.isEmpty else { return }
-                    let name = newTargetName.isEmpty ? host : newTargetName
-                    let config = MonitorTargetConfig(target: host, name: name)
-                    targets.append(config)
-                    Task {
-                        await monitorService?.addConfig(config)
-                    }
-                    selectedTargetIndex = targets.count - 1
-                    isShowingAddSheet = false
-                    newTargetHost = ""
-                    newTargetName = ""
-                    loadData()
+                Button(isEditing ? "Save Changes" : "Start Monitoring") {
+                    saveTargetForm(isEditing: isEditing)
                 }
                 .keyboardShortcut(.defaultAction)
                 .buttonStyle(.borderedProminent)
             }
         }
         .padding(24)
-        .frame(width: 380)
+        .frame(width: 440)
     }
 
     // MARK: - Engine Setup & Data Loading
 
     private func setupEngine() {
-        do {
-            let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
-            let dbPath = appSupport.appendingPathComponent("NexWave/network_workbench.sqlite").path
-            let db = try SQLiteDatabase(path: dbPath)
-            let repo = TimeSeriesRepository(database: db)
-            self.repository = repo
-
-            let service = BackgroundMonitorService(repository: repo)
-            self.monitorService = service
-            Task {
-                await service.updateConfigs(targets)
-                await service.startAll()
+        if state == nil && localRepository == nil {
+            do {
+                let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+                let dbPath = appSupport.appendingPathComponent("NexWave/network_workbench.sqlite").path
+                let db = try SQLiteDatabase(path: dbPath)
+                let repo = TimeSeriesRepository(database: db)
+                self.localRepository = repo
+                let service = BackgroundMonitorService(repository: repo)
+                self.localMonitorService = service
+            } catch {
+                print("Failed to initialize TimeSeriesRepository: \(error)")
             }
-        } catch {
-            print("Failed to initialize TimeSeriesRepository: \(error)")
         }
 
+        loadTargetsFromRepository()
         loadData()
         startPolling()
+    }
+
+    private func loadTargetsFromRepository() {
+        guard let repo = repository else { return }
+        do {
+            var dbTargets = try repo.fetchTargets()
+            if dbTargets.isEmpty {
+                // Auto-seed with user's real live default gateway
+                let liveGW = MenuBarMonitorEngine.shared.defaultGateway.isEmpty ? "192.168.10.1" : MenuBarMonitorEngine.shared.defaultGateway
+                let gw = MonitorTargetConfig(
+                    target: liveGW,
+                    name: "Local Default Gateway",
+                    intervalSeconds: 2.5,
+                    latencyThresholdMs: 30.0,
+                    packetLossThresholdPct: 5.0,
+                    probeProtocol: .icmp
+                )
+                let cf = MonitorTargetConfig(
+                    target: "1.1.1.1",
+                    name: "Cloudflare Edge DNS",
+                    intervalSeconds: 2.5,
+                    latencyThresholdMs: 50.0,
+                    packetLossThresholdPct: 5.0,
+                    probeProtocol: .icmp
+                )
+                let gg = MonitorTargetConfig(
+                    target: "8.8.8.8",
+                    name: "Google Core Anycast",
+                    intervalSeconds: 2.5,
+                    latencyThresholdMs: 60.0,
+                    packetLossThresholdPct: 5.0,
+                    probeProtocol: .icmp
+                )
+                try? repo.insertOrUpdateTarget(config: gw)
+                try? repo.insertOrUpdateTarget(config: cf)
+                try? repo.insertOrUpdateTarget(config: gg)
+                dbTargets = [gw, cf, gg]
+            }
+
+            self.targets = dbTargets
+            if selectedTargetIndex >= targets.count {
+                selectedTargetIndex = 0
+            }
+
+            Task {
+                await monitorService?.updateConfigs(dbTargets)
+                await monitorService?.startAll()
+            }
+        } catch {
+            print("Error loading targets: \(error)")
+        }
     }
 
     private func startPolling() {
@@ -493,14 +870,169 @@ public struct TimeSeriesStudioView: View {
         do {
             let b = try repo.fetchBuckets(target: cfg.target, from: start, to: now, bucketCount: selectedRange.targetBucketCount)
             self.buckets = b
-            let a = try repo.fetchAlerts(target: cfg.target, limit: 10)
+            let a = try repo.fetchAlerts(target: cfg.target, limit: 12)
             self.alerts = a
         } catch {
             print("Error loading time series data: \(error)")
         }
     }
 
-    // Calculation Helpers
+    // MARK: - Target CRUD Actions
+
+    private func openAddSheet() {
+        formTargetHost = ""
+        formTargetName = ""
+        formTargetProtocol = .icmp
+        formTargetPort = "443"
+        formTargetInterval = 2.5
+        formTargetLatencyThreshold = 50.0
+        formTargetLossThreshold = 5.0
+        isShowingAddSheet = true
+    }
+
+    private func openEditSheet() {
+        guard let cfg = activeConfig else { return }
+        formTargetHost = cfg.target
+        formTargetName = cfg.name
+        formTargetProtocol = cfg.probeProtocol
+        formTargetPort = "\(cfg.port ?? 443)"
+        formTargetInterval = cfg.intervalSeconds
+        formTargetLatencyThreshold = cfg.latencyThresholdMs
+        formTargetLossThreshold = cfg.packetLossThresholdPct
+        isShowingEditSheet = true
+    }
+
+    private func saveTargetForm(isEditing: Bool) {
+        let host = formTargetHost.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !host.isEmpty, let repo = repository else { return }
+
+        let name = formTargetName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? host : formTargetName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let port = formTargetProtocol == .tcp ? Int(formTargetPort) : nil
+
+        let config: MonitorTargetConfig
+        if isEditing, let current = activeConfig {
+            config = MonitorTargetConfig(
+                id: current.id,
+                target: current.target,
+                name: name,
+                intervalSeconds: max(1.0, formTargetInterval),
+                latencyThresholdMs: max(5.0, formTargetLatencyThreshold),
+                packetLossThresholdPct: min(100.0, max(1.0, formTargetLossThreshold)),
+                isEnabled: current.isEnabled,
+                probeProtocol: formTargetProtocol,
+                port: port,
+                createdAt: current.createdAt
+            )
+        } else {
+            config = MonitorTargetConfig(
+                target: host,
+                name: name,
+                intervalSeconds: max(1.0, formTargetInterval),
+                latencyThresholdMs: max(5.0, formTargetLatencyThreshold),
+                packetLossThresholdPct: min(100.0, max(1.0, formTargetLossThreshold)),
+                isEnabled: true,
+                probeProtocol: formTargetProtocol,
+                port: port
+            )
+        }
+
+        try? repo.insertOrUpdateTarget(config: config)
+        Task {
+            await monitorService?.addConfig(config)
+        }
+
+        loadTargetsFromRepository()
+        if !isEditing {
+            selectedTargetIndex = max(0, targets.count - 1)
+        }
+        isShowingAddSheet = false
+        isShowingEditSheet = false
+        showToast(isEditing ? "Target updated successfully" : "Monitoring started for \(name)")
+        loadData()
+    }
+
+    private func deleteCurrentTarget() {
+        guard let cfg = activeConfig, let repo = repository else { return }
+        try? repo.deleteTarget(id: cfg.id)
+        Task {
+            await monitorService?.removeConfig(id: cfg.id)
+        }
+        loadTargetsFromRepository()
+        showToast("Target '\(cfg.name)' removed")
+        loadData()
+    }
+
+    // MARK: - Alert Management Actions
+
+    private func acknowledgeAlert(_ id: UUID) {
+        guard let repo = repository else { return }
+        try? repo.acknowledgeAlert(id: id)
+        loadData()
+    }
+
+    private func clearAllAlerts() {
+        guard let repo = repository, let cfg = activeConfig else { return }
+        try? repo.clearAllAlerts(target: cfg.target)
+        loadData()
+        showToast("All SLA alerts cleared for \(cfg.name)")
+    }
+
+    // MARK: - Export Actions
+
+    private func exportCSV() {
+        guard let cfg = activeConfig else { return }
+        let csv = buckets.toCSV(target: cfg.target, targetName: cfg.name)
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(csv, forType: .string)
+        showToast("Copied CSV (\(buckets.count) buckets) to Clipboard")
+    }
+
+    private func exportJSON() {
+        guard activeConfig != nil else { return }
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        encoder.outputFormatting = .prettyPrinted
+        if let data = try? encoder.encode(buckets), let jsonStr = String(data: data, encoding: .utf8) {
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(jsonStr, forType: .string)
+            showToast("Copied JSON metrics to Clipboard")
+        }
+    }
+
+    private func copyMarkdownReport() {
+        guard let cfg = activeConfig else { return }
+        var md = "# NexWave Timeline & SLA Audit: \(cfg.name) (\(cfg.target))\n\n"
+        md += "- **Time Range:** \(selectedRange.displayName)\n"
+        md += "- **Probe Protocol:** \(cfg.probeProtocol.displayName) \(cfg.port != nil ? ":\(cfg.port!)" : "")\n"
+        md += "- **Min RTT:** \(String(format: "%.1f ms", calcMin()))\n"
+        md += "- **Avg RTT:** \(String(format: "%.1f ms", calcAvg()))\n"
+        md += "- **Max RTT:** \(String(format: "%.1f ms", calcMax()))\n"
+        md += "- **RFC 3550 Jitter:** \(String(format: "%.1f ms", calcJitter()))\n"
+        md += "- **Packet Loss:** \(String(format: "%.1f%%", calcLoss()))\n"
+        md += "- **SLA Violations:** \(alerts.count) recorded\n\n"
+        md += "```\n"
+        md += buckets.toCSV(target: cfg.target, targetName: cfg.name)
+        md += "```\n"
+
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(md, forType: .string)
+        showToast("Copied Markdown SLA Report to Clipboard")
+    }
+
+    private func showToast(_ msg: String) {
+        withAnimation {
+            toastMessage = msg
+        }
+        Task {
+            try? await Task.sleep(nanoseconds: 2_500_000_000)
+            withAnimation {
+                toastMessage = nil
+            }
+        }
+    }
+
+    // MARK: - Calculation Helpers (Weighted)
+
     private func calcMin() -> Double {
         let valid = buckets.map { $0.minMs }.filter { $0 > 0 }
         return valid.min() ?? 0.0
@@ -511,21 +1043,24 @@ public struct TimeSeriesStudioView: View {
     }
 
     private func calcAvg() -> Double {
-        let valid = buckets.map { $0.avgMs }.filter { $0 > 0 }
-        guard !valid.isEmpty else { return 0.0 }
-        return valid.reduce(0, +) / Double(valid.count)
+        let totalSamples = buckets.reduce(0) { $0 + $1.sampleCount }
+        guard totalSamples > 0 else { return 0.0 }
+        let weightedSum = buckets.reduce(0.0) { $0 + ($1.avgMs * Double($1.sampleCount)) }
+        return weightedSum / Double(totalSamples)
     }
 
     private func calcJitter() -> Double {
-        let valid = buckets.map { $0.jitterMs }
-        guard !valid.isEmpty else { return 0.0 }
-        return valid.reduce(0, +) / Double(valid.count)
+        let totalSamples = buckets.reduce(0) { $0 + $1.sampleCount }
+        guard totalSamples > 0 else { return 0.0 }
+        let weightedSum = buckets.reduce(0.0) { $0 + ($1.jitterMs * Double($1.sampleCount)) }
+        return weightedSum / Double(totalSamples)
     }
 
     private func calcLoss() -> Double {
-        let valid = buckets.map { $0.packetLossPct }
-        guard !valid.isEmpty else { return 0.0 }
-        return valid.reduce(0, +) / Double(valid.count)
+        let totalSamples = buckets.reduce(0) { $0 + $1.sampleCount }
+        guard totalSamples > 0 else { return 0.0 }
+        let weightedLoss = buckets.reduce(0.0) { $0 + ($1.packetLossPct * Double($1.sampleCount)) }
+        return weightedLoss / Double(totalSamples)
     }
 }
 

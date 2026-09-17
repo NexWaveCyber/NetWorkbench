@@ -309,7 +309,7 @@ struct NexWaveApp: App {
         case .wifi:
             WiFiStudioView()
         case .timeline:
-            TimeSeriesStudioView()
+            TimeSeriesStudioView(state: state)
         case .investigations:
             InvestigationsWorkspaceView(state: state)
         case .commandLibrary:

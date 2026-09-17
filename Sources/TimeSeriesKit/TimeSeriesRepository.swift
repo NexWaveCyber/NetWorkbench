@@ -153,17 +153,23 @@ public final class TimeSeriesRepository: Sendable {
 
         let totalDuration = to.timeIntervalSince(from)
         let bucketDuration = totalDuration / Double(bucketCount)
+
+        // Single-pass O(N) grouping
+        var bucketGroups: [[LatencySample]] = Array(repeating: [], count: bucketCount)
+        for sample in samples {
+            let offset = sample.timestamp.timeIntervalSince(from)
+            guard offset >= 0 else { continue }
+            let idx = min(bucketCount - 1, max(0, Int(offset / bucketDuration)))
+            bucketGroups[idx].append(sample)
+        }
+
         var buckets: [AggregatedBucket] = []
+        buckets.reserveCapacity(bucketCount)
 
-        for i in 0..<bucketCount {
+        for (i, inBucket) in bucketGroups.enumerated() {
+            guard !inBucket.isEmpty else { continue }
+
             let bucketStart = from.addingTimeInterval(Double(i) * bucketDuration)
-            let bucketEnd = bucketStart.addingTimeInterval(bucketDuration)
-
-            let inBucket = samples.filter { $0.timestamp >= bucketStart && $0.timestamp < bucketEnd }
-            if inBucket.isEmpty {
-                continue
-            }
-
             let validLatencies = inBucket.compactMap { $0.latencyMs }
             let timeoutCount = inBucket.filter { $0.isTimeout || $0.latencyMs == nil }.count
             let lossPct = (Double(timeoutCount) / Double(inBucket.count)) * 100.0
@@ -197,6 +203,99 @@ public final class TimeSeriesRepository: Sendable {
         return j
     }
 
+    // MARK: - Target Configuration Persistence
+
+    public func insertOrUpdateTarget(config: MonitorTargetConfig) throws {
+        try database.withLock {
+            let sql = """
+            INSERT INTO monitor_targets (id, target, name, interval_seconds, latency_threshold_ms, packet_loss_threshold_pct, is_enabled, probe_protocol, tcp_port, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET
+                target = excluded.target,
+                name = excluded.name,
+                interval_seconds = excluded.interval_seconds,
+                latency_threshold_ms = excluded.latency_threshold_ms,
+                packet_loss_threshold_pct = excluded.packet_loss_threshold_pct,
+                is_enabled = excluded.is_enabled,
+                probe_protocol = excluded.probe_protocol,
+                tcp_port = excluded.tcp_port;
+            """
+            let stmt = try database.prepare(sql: sql)
+            defer { sqlite3_finalize(stmt) }
+
+            sqlite3_bind_text(stmt, 1, config.id.uuidString, -1, SQLITE_TRANSIENT)
+            sqlite3_bind_text(stmt, 2, config.target, -1, SQLITE_TRANSIENT)
+            sqlite3_bind_text(stmt, 3, config.name, -1, SQLITE_TRANSIENT)
+            sqlite3_bind_double(stmt, 4, config.intervalSeconds)
+            sqlite3_bind_double(stmt, 5, config.latencyThresholdMs)
+            sqlite3_bind_double(stmt, 6, config.packetLossThresholdPct)
+            sqlite3_bind_int(stmt, 7, config.isEnabled ? 1 : 0)
+            sqlite3_bind_text(stmt, 8, config.probeProtocol.rawValue, -1, SQLITE_TRANSIENT)
+            if let p = config.port {
+                sqlite3_bind_int(stmt, 9, Int32(p))
+            } else {
+                sqlite3_bind_null(stmt, 9)
+            }
+            sqlite3_bind_double(stmt, 10, config.createdAt.timeIntervalSince1970)
+
+            if sqlite3_step(stmt) != SQLITE_DONE {
+                throw DatabaseError.stepFailed("Failed to insert or update monitor target.")
+            }
+        }
+    }
+
+    public func fetchTargets() throws -> [MonitorTargetConfig] {
+        return try database.withLock {
+            let sql = """
+            SELECT id, target, name, interval_seconds, latency_threshold_ms, packet_loss_threshold_pct, is_enabled, probe_protocol, tcp_port, created_at
+            FROM monitor_targets
+            ORDER BY created_at ASC;
+            """
+            let stmt = try database.prepare(sql: sql)
+            defer { sqlite3_finalize(stmt) }
+
+            var configs: [MonitorTargetConfig] = []
+            while sqlite3_step(stmt) == SQLITE_ROW {
+                let idStr = String(cString: sqlite3_column_text(stmt, 0))
+                let id = UUID(uuidString: idStr) ?? UUID()
+                let target = String(cString: sqlite3_column_text(stmt, 1))
+                let name = String(cString: sqlite3_column_text(stmt, 2))
+                let interval = sqlite3_column_double(stmt, 3)
+                let latThreshold = sqlite3_column_double(stmt, 4)
+                let lossThreshold = sqlite3_column_double(stmt, 5)
+                let isEnabled = sqlite3_column_int(stmt, 6) == 1
+                let protoStr = sqlite3_column_text(stmt, 7).map { String(cString: $0) } ?? "icmp"
+                let proto = MonitorProbeProtocol(rawValue: protoStr) ?? .icmp
+                let port: Int? = sqlite3_column_type(stmt, 8) != SQLITE_NULL ? Int(sqlite3_column_int(stmt, 8)) : nil
+                let createdAt = Date(timeIntervalSince1970: sqlite3_column_double(stmt, 9))
+
+                configs.append(MonitorTargetConfig(
+                    id: id,
+                    target: target,
+                    name: name,
+                    intervalSeconds: interval,
+                    latencyThresholdMs: latThreshold,
+                    packetLossThresholdPct: lossThreshold,
+                    isEnabled: isEnabled,
+                    probeProtocol: proto,
+                    port: port,
+                    createdAt: createdAt
+                ))
+            }
+            return configs
+        }
+    }
+
+    public func deleteTarget(id: UUID) throws {
+        try database.withLock {
+            let sql = "DELETE FROM monitor_targets WHERE id = ?;"
+            let stmt = try database.prepare(sql: sql)
+            defer { sqlite3_finalize(stmt) }
+            sqlite3_bind_text(stmt, 1, id.uuidString, -1, SQLITE_TRANSIENT)
+            _ = sqlite3_step(stmt)
+        }
+    }
+
     // MARK: - SLA Alerts
 
     public func recordAlert(alert: SLAMonitorAlert) throws {
@@ -221,6 +320,28 @@ public final class TimeSeriesRepository: Sendable {
             if sqlite3_step(stmt) != SQLITE_DONE {
                 throw DatabaseError.stepFailed("Failed to insert monitor SLA alert.")
             }
+        }
+    }
+
+    public func acknowledgeAlert(id: UUID) throws {
+        try database.withLock {
+            let sql = "UPDATE monitor_sla_alerts SET is_acknowledged = 1 WHERE id = ?;"
+            let stmt = try database.prepare(sql: sql)
+            defer { sqlite3_finalize(stmt) }
+            sqlite3_bind_text(stmt, 1, id.uuidString, -1, SQLITE_TRANSIENT)
+            _ = sqlite3_step(stmt)
+        }
+    }
+
+    public func clearAllAlerts(target: String? = nil) throws {
+        try database.withLock {
+            let sql = target != nil ? "DELETE FROM monitor_sla_alerts WHERE target = ?;" : "DELETE FROM monitor_sla_alerts;"
+            let stmt = try database.prepare(sql: sql)
+            defer { sqlite3_finalize(stmt) }
+            if let tgt = target {
+                sqlite3_bind_text(stmt, 1, tgt, -1, SQLITE_TRANSIENT)
+            }
+            _ = sqlite3_step(stmt)
         }
     }
 

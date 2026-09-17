@@ -7,6 +7,7 @@ import CommandLibrary
 import DeviceKit
 import SNMPEngine
 import TerminalKit
+import TimeSeriesKit
 
 public enum WorkspaceItem: String, CaseIterable, Identifiable, Sendable {
     case home = "Home / Dashboard"
@@ -81,6 +82,10 @@ public final class AppState: @unchecked Sendable {
     // Phase 6: Terminal & Console Sessions
     public let terminalManager: TerminalManager = TerminalManager()
 
+    // Phase 7: Time-Series & Continuous Monitoring
+    public let timeSeriesRepository: TimeSeriesRepository
+    public let monitorService: BackgroundMonitorService
+
     // Alerts and feedback
     public var toastMessage: String? = nil
 
@@ -90,6 +95,11 @@ public final class AppState: @unchecked Sendable {
             self.database = db
             self.investigationManager = InvestigationManager(database: db)
             self.deviceManager = DeviceManager(database: db)
+            let tsRepo = TimeSeriesRepository(database: db)
+            self.timeSeriesRepository = tsRepo
+            let monService = BackgroundMonitorService(repository: tsRepo)
+            self.monitorService = monService
+
             self.investigations = (try? investigationManager.listInvestigations()) ?? []
             self.recentHistory = (try? investigationManager.fetchRecentHistory(limit: 20)) ?? []
             self.managedDevices = (try? deviceManager.listDevices()) ?? []
@@ -133,6 +143,49 @@ public final class AppState: @unchecked Sendable {
                 try? deviceManager.createDevice(seed2)
                 try? deviceManager.createDevice(seed3)
                 self.managedDevices = [seed1, seed2, seed3]
+            }
+
+            // Seed monitor targets if empty
+            var existingTargets = (try? tsRepo.fetchTargets()) ?? []
+            if existingTargets.isEmpty {
+                let liveGW = MenuBarMonitorEngine.shared.defaultGateway.isEmpty ? "192.168.10.1" : MenuBarMonitorEngine.shared.defaultGateway
+                let seedGW = MonitorTargetConfig(
+                    target: liveGW,
+                    name: "Local Default Gateway",
+                    intervalSeconds: 2.5,
+                    latencyThresholdMs: 30.0,
+                    packetLossThresholdPct: 5.0,
+                    isEnabled: true,
+                    probeProtocol: .icmp
+                )
+                let seedCloudflare = MonitorTargetConfig(
+                    target: "1.1.1.1",
+                    name: "Cloudflare Edge DNS",
+                    intervalSeconds: 2.5,
+                    latencyThresholdMs: 50.0,
+                    packetLossThresholdPct: 5.0,
+                    isEnabled: true,
+                    probeProtocol: .icmp
+                )
+                let seedGoogle = MonitorTargetConfig(
+                    target: "8.8.8.8",
+                    name: "Google Core Anycast",
+                    intervalSeconds: 2.5,
+                    latencyThresholdMs: 60.0,
+                    packetLossThresholdPct: 5.0,
+                    isEnabled: true,
+                    probeProtocol: .icmp
+                )
+                try? tsRepo.insertOrUpdateTarget(config: seedGW)
+                try? tsRepo.insertOrUpdateTarget(config: seedCloudflare)
+                try? tsRepo.insertOrUpdateTarget(config: seedGoogle)
+                existingTargets = [seedGW, seedCloudflare, seedGoogle]
+            }
+
+            Task {
+                await monService.updateConfigs(existingTargets)
+                await monService.startAll()
+                try? tsRepo.pruneOldSamples(olderThanDays: 7)
             }
         } catch {
             fatalError("Failed to initialize SQLite persistence: \(error)")
