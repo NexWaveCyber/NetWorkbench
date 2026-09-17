@@ -841,24 +841,43 @@ public struct TerminalWorkbenchView: View {
                 ScrollViewReader { proxy in
                     ScrollView {
                         LazyVStack(alignment: .leading, spacing: 2) {
+                            let showLiveCursor = searchQuery.isEmpty
                             ForEach(displayedLines) { line in
-                                HStack(alignment: .top, spacing: 6) {
+                                HStack(alignment: .top, spacing: 0) {
                                     // Optional microsecond timestamp
                                     if session.showTimestamps {
                                         Text(timestampString(for: line.timestamp))
                                             .font(Theme.monoText(max(8, fontSize - 2)))
                                             .foregroundColor(Color.secondary.opacity(0.6))
                                             .frame(width: 75, alignment: .leading)
+                                            .padding(.trailing, 6)
                                     }
 
                                     renderTerminalLine(line)
+
+                                    // If this is the active open line, show cursor inline right at the insertion point
+                                    if showLiveCursor && line.id == displayedLines.last?.id && session.isLastLineOpen {
+                                        BlinkingCursorView(
+                                            isFocused: isFocused,
+                                            color: Color(hex: selectedTheme.promptColorHex),
+                                            fontSize: fontSize
+                                        )
+                                    }
                                 }
                             }
-                            // Interactive Cursor Indicator
-                            HStack(spacing: 2) {
-                                Text("▋")
-                                    .font(Theme.monoText(fontSize, weight: .bold))
-                                    .foregroundStyle(isFocused ? Color(hex: selectedTheme.promptColorHex) : Color.secondary.opacity(0.35))
+
+                            // If the last line is NOT open (terminated by newline) or lines are empty, cursor is on next line
+                            if showLiveCursor && (!session.isLastLineOpen || displayedLines.isEmpty) {
+                                HStack(spacing: 0) {
+                                    if session.showTimestamps {
+                                        Color.clear.frame(width: 81)
+                                    }
+                                    BlinkingCursorView(
+                                        isFocused: isFocused,
+                                        color: Color(hex: selectedTheme.promptColorHex),
+                                        fontSize: fontSize
+                                    )
+                                }
                             }
 
                             // Inline interactive password prompt card
@@ -918,6 +937,7 @@ public struct TerminalWorkbenchView: View {
                     SecureField("Remote host password / passphrase (press Enter to send)...", text: $inputCommand)
                         .font(Theme.monoText(12))
                         .textFieldStyle(.plain)
+                        .tint(Color(hex: selectedTheme.promptColorHex))
                         .onSubmit {
                             submitCommand(to: session)
                         }
@@ -925,6 +945,7 @@ public struct TerminalWorkbenchView: View {
                     TextField("Enter command (or click terminal canvas to type directly)...", text: $inputCommand)
                         .font(Theme.monoText(12))
                         .textFieldStyle(.plain)
+                        .tint(Color(hex: selectedTheme.promptColorHex))
                         .onSubmit {
                             submitCommand(to: session)
                         }
@@ -2740,4 +2761,21 @@ private struct InlinePasswordBar: View {
         }
     }
 }
+
+private struct BlinkingCursorView: View {
+    let isFocused: Bool
+    let color: Color
+    let fontSize: CGFloat
+
+    var body: some View {
+        TimelineView(.periodic(from: .now, by: 0.53)) { timeline in
+            let isVisible = Int(timeline.date.timeIntervalSinceReferenceDate / 0.53) % 2 == 0
+            Text("▋")
+                .font(Theme.monoText(fontSize, weight: .bold))
+                .foregroundStyle(isFocused ? color : color.opacity(0.35))
+                .opacity(isFocused ? (isVisible ? 1.0 : 0.0) : 0.4)
+        }
+    }
+}
+
 

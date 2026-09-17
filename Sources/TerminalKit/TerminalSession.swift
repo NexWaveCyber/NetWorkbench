@@ -18,7 +18,7 @@ public final class TerminalSession: Identifiable, @unchecked Sendable {
     private var ptyRunner: PTYProcessRunner?
     private var simulatedCLI: SimulatedDeviceCLI?
     private let logQueue = DispatchQueue(label: "com.nexwave.terminal.logging", qos: .utility)
-    private var isLastLineOpen: Bool = false
+    public var isLastLineOpen: Bool = false
     private var activeANSIStyle: ANSIStyle = .default
     private var pendingCR: Bool = false
 
