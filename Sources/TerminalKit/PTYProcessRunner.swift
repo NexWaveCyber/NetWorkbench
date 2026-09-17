@@ -98,7 +98,7 @@ public final class PTYProcessRunner: @unchecked Sendable {
         if enableLegacyCiphers {
             args.append(contentsOf: [
                 "-o", "PubkeyAcceptedKeyTypes=+ssh-rsa",
-                "-o", "HostKeyAlgorithms=+ssh-rsa,ssh-dss",
+                "-o", "HostKeyAlgorithms=+ssh-rsa",
                 "-o", "KexAlgorithms=+diffie-hellman-group14-sha1,diffie-hellman-group1-sha1,diffie-hellman-group-exchange-sha1",
                 "-o", "Ciphers=+aes128-cbc,aes256-cbc,3des-cbc"
             ])

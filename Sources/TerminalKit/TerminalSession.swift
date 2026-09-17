@@ -66,6 +66,7 @@ public final class TerminalSession: Identifiable, @unchecked Sendable {
                 DispatchQueue.main.async {
                     self?.status = .terminated(exitCode: code)
                     self?.appendOutput("\n[Session ended with exit code \(code)]\n")
+                    self?.diagnoseTermination(exitCode: code)
                 }
             }
 
@@ -343,6 +344,23 @@ public final class TerminalSession: Identifiable, @unchecked Sendable {
     public func stripAnsiEscapeSequences(from input: String) -> String {
         let regex = #"\x1B\[[0-9;]*[a-zA-Z]"#
         return input.replacingOccurrences(of: regex, with: "", options: .regularExpression)
+    }
+
+    private func diagnoseTermination(exitCode: Int32) {
+        guard exitCode != 0 else { return }
+        let recentText = lines.suffix(20).map { $0.text }.joined(separator: "\n")
+        
+        if recentText.contains("Connection refused") {
+            appendOutput("[Troubleshooting: Connection refused on port. If connecting to a Linux/Ubuntu server, fail2ban or firewall rate-limiting may have temporarily blocked your IP, or the SSH service is not running on this port.]\n")
+        } else if recentText.contains("Permission denied (publickey,password)") || recentText.contains("Permission denied (publickey)") {
+            appendOutput("[Troubleshooting: Authentication failed. Modern Ubuntu servers default to 'PermitRootLogin prohibit-password' in /etc/ssh/sshd_config, which disallows root password login. Use SSH Key Studio to generate and deploy an SSH public key, or connect as a standard user.]\n")
+        } else if recentText.contains("Could not resolve hostname") {
+            appendOutput("[Troubleshooting: Could not resolve hostname. Please verify the host address or domain name.]\n")
+        } else if recentText.contains("Operation timed out") || recentText.contains("Connection timed out") {
+            appendOutput("[Troubleshooting: Connection timed out. Verify network connectivity and check firewall/security group rules on the server.]\n")
+        } else if recentText.contains("Bad key types") {
+            appendOutput("[Troubleshooting: OpenSSH rejected incompatible key or cipher flags. Please disable 'Enable Legacy Network Ciphers' when connecting to standard modern Linux servers.]\n")
+        }
     }
 
     // MARK: - Continuous Session Logging
