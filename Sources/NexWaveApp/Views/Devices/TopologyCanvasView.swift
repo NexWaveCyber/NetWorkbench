@@ -51,6 +51,7 @@ public struct TopologyCanvasView: View {
 
     // Dragged Node State
     @State private var draggingNodeId: String? = nil
+    @State private var nodeInitialPosition: CGPoint? = nil
 
     public init(state: AppState) {
         self.state = state
@@ -227,32 +228,41 @@ public struct TopologyCanvasView: View {
 
     private func canvasSurface(size: CGSize) -> some View {
         ZStack {
+            // Background Panning Hit Surface
+            Color.clear
+                .frame(width: max(3000, size.width * 3), height: max(3000, size.height * 3))
+                .contentShape(Rectangle())
+                .gesture(
+                    DragGesture(minimumDistance: 3)
+                        .onChanged { val in
+                            guard draggingNodeId == nil else { return }
+                            dragCurrent = val.translation
+                        }
+                        .onEnded { val in
+                            guard draggingNodeId == nil else { return }
+                            panOffset.width += val.translation.width
+                            panOffset.height += val.translation.height
+                            dragCurrent = .zero
+                        }
+                )
+                .onTapGesture {
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                        selectedNodeId = nil
+                    }
+                }
+
             // Background Cyber-Grid
             cyberGrid(size: size)
 
-            // Links Layer
+            // Links Layer (pure visual, clicks pass through to background for panning)
             linksLayer
+                .allowsHitTesting(false)
 
-            // Nodes Layer
+            // Nodes Layer (interactive nodes with accurate drag and tap)
             nodesLayer
         }
         .scaleEffect(zoomScale)
         .offset(x: panOffset.width + dragCurrent.width, y: panOffset.height + dragCurrent.height)
-        .gesture(
-            DragGesture()
-                .onChanged { val in
-                    if draggingNodeId == nil {
-                        dragCurrent = val.translation
-                    }
-                }
-                .onEnded { val in
-                    if draggingNodeId == nil {
-                        panOffset.width += val.translation.width
-                        panOffset.height += val.translation.height
-                        dragCurrent = .zero
-                    }
-                }
-        )
     }
 
     // MARK: - Background Grid
@@ -354,30 +364,45 @@ public struct TopologyCanvasView: View {
         ForEach(visibleNodes) { node in
             nodeCard(node: node)
                 .position(node.position)
+                .contentShape(Rectangle())
                 .gesture(
-                    DragGesture()
+                    DragGesture(minimumDistance: 2)
                         .onChanged { val in
-                            draggingNodeId = node.id
-                            if let idx = graph.nodes.firstIndex(where: { $0.id == node.id }) {
-                                graph.nodes[idx].position = CGPoint(
-                                    x: node.position.x + val.translation.width,
-                                    y: node.position.y + val.translation.height
-                                )
+                            if draggingNodeId != node.id {
+                                draggingNodeId = node.id
+                                if let idx = graph.nodes.firstIndex(where: { $0.id == node.id }) {
+                                    nodeInitialPosition = graph.nodes[idx].position
+                                } else {
+                                    nodeInitialPosition = node.position
+                                }
                             }
+
+                            guard let initialPos = nodeInitialPosition,
+                                  let idx = graph.nodes.firstIndex(where: { $0.id == node.id }) else { return }
+
+                            let deltaX = val.translation.width / zoomScale
+                            let deltaY = val.translation.height / zoomScale
+
+                            graph.nodes[idx].position = CGPoint(
+                                x: initialPos.x + deltaX,
+                                y: initialPos.y + deltaY
+                            )
                         }
-                        .onEnded { _ in
+                        .onEnded { val in
+                            let distSq = val.translation.width * val.translation.width + val.translation.height * val.translation.height
+                            if distSq < 16 {
+                                withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                                    if selectedNodeId == node.id {
+                                        selectedNodeId = nil
+                                    } else {
+                                        selectedNodeId = node.id
+                                    }
+                                }
+                            }
                             draggingNodeId = nil
+                            nodeInitialPosition = nil
                         }
                 )
-                .onTapGesture {
-                    withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
-                        if selectedNodeId == node.id {
-                            selectedNodeId = nil
-                        } else {
-                            selectedNodeId = node.id
-                        }
-                    }
-                }
         }
     }
 
@@ -432,6 +457,7 @@ public struct TopologyCanvasView: View {
                 .foregroundStyle(.secondary)
         }
         .frame(width: 140)
+        .contentShape(Rectangle())
     }
 
     // MARK: - Floating Zoom Controls
