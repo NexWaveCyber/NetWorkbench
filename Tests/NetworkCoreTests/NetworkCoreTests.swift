@@ -21,6 +21,29 @@ struct NetworkCoreTests {
         #expect(publicIP.isLoopback == false)
     }
 
+    @Test("IPv6 Classification: Link-Local vs Unique IPv6 (GUA and ULA)")
+    func testIPv6Classification() {
+        let linkLocal = IPAddress("fe80::1%en0")!
+        #expect(linkLocal.isLinkLocal == true)
+        #expect(linkLocal.isUniqueIPv6 == false)
+
+        let linkLocalNoZone = IPAddress("fe80::4c9:f667:1234:5678")!
+        #expect(linkLocalNoZone.isLinkLocal == true)
+        #expect(linkLocalNoZone.isUniqueIPv6 == false)
+
+        let gua = IPAddress("2001:db8:1:10::1")!
+        #expect(gua.isLinkLocal == false)
+        #expect(gua.isUniqueIPv6 == true)
+
+        let ula = IPAddress("fd00::1234")!
+        #expect(ula.isLinkLocal == false)
+        #expect(ula.isUniqueIPv6 == true)
+
+        let loopback6 = IPAddress("::1")!
+        #expect(loopback6.isLoopback == true)
+        #expect(loopback6.isUniqueIPv6 == false)
+    }
+
     @Test("IPv4 Subnet Calculations")
     func testSubnetMath() {
         let net = IPNetwork("192.168.10.0/24")!

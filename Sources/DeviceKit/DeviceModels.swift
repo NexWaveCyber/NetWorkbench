@@ -174,6 +174,7 @@ public enum NeighborSource: String, Codable, Sendable {
 public struct DiscoveredNeighbor: Identifiable, Codable, Sendable, Hashable {
     public var id: String { "\(ipAddress)-\(macAddress)" }
     public let ipAddress: String
+    public var ipv6Address: String?
     public let macAddress: String
     public var hostname: String?
     public let interface: String
@@ -184,6 +185,7 @@ public struct DiscoveredNeighbor: Identifiable, Codable, Sendable, Hashable {
 
     public init(
         ipAddress: String,
+        ipv6Address: String? = nil,
         macAddress: String,
         hostname: String? = nil,
         interface: String = "en0",
@@ -193,6 +195,7 @@ public struct DiscoveredNeighbor: Identifiable, Codable, Sendable, Hashable {
         lastSeen: Date = Date()
     ) {
         self.ipAddress = ipAddress
+        self.ipv6Address = ipv6Address
         self.macAddress = macAddress
         self.hostname = hostname
         self.interface = interface
@@ -302,6 +305,7 @@ extension NetworkDevice {
 
 extension DiscoveredNeighbor {
     public var ip: String { ipAddress }
+    public var ipv6: String? { ipv6Address }
     public var mac: String { macAddress }
     public var source: NeighborSource { discoverySource }
     public var vendor: DeviceVendor {

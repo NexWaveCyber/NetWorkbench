@@ -8,9 +8,10 @@ public enum IPAddress: Hashable, Sendable, CustomStringConvertible, Comparable {
 
     public init?(_ string: String) {
         let trimmed = string.trimmingCharacters(in: .whitespacesAndNewlines)
-        if let v4 = IPv4(trimmed) {
+        let unzoned = trimmed.components(separatedBy: "%").first ?? trimmed
+        if let v4 = IPv4(unzoned) {
             self = .v4(v4)
-        } else if let v6 = IPv6(trimmed) {
+        } else if let v6 = IPv6(unzoned) {
             self = .v6(v6)
         } else {
             return nil
@@ -52,6 +53,14 @@ public enum IPAddress: Hashable, Sendable, CustomStringConvertible, Comparable {
         switch self {
         case .v4(let v4): return v4.isLinkLocal
         case .v6(let v6): return v6.isLinkLocal
+        }
+    }
+
+    /// True if this is a routable or unique IPv6 address (Global Unicast 2000::/3 or ULA fc00::/7).
+    public var isUniqueIPv6: Bool {
+        switch self {
+        case .v4: return false
+        case .v6(let v6): return v6.isUniqueIPv6
         }
     }
 
@@ -150,8 +159,9 @@ public enum IPAddress: Hashable, Sendable, CustomStringConvertible, Comparable {
         }
 
         public init?(_ string: String) {
+            let clean = string.components(separatedBy: "%").first?.trimmingCharacters(in: .whitespacesAndNewlines) ?? string
             var sin6 = in6_addr()
-            guard string.withCString({ inet_pton(AF_INET6, $0, &sin6) }) == 1 else {
+            guard clean.withCString({ inet_pton(AF_INET6, $0, &sin6) }) == 1 else {
                 return nil
             }
             let (h, l) = withUnsafeBytes(of: &sin6) { ptr -> (UInt64, UInt64) in
@@ -209,6 +219,21 @@ public enum IPAddress: Hashable, Sendable, CustomStringConvertible, Comparable {
         public var isLinkLocal: Bool {
             let prefix = UInt16((high64 >> 48) & 0xFFFF)
             return (prefix & 0xFFC0) == 0xFE80
+        }
+
+        /// RFC 3587 / RFC 4291 Global Unicast Address (2000::/3)
+        public var isGlobalUnicast: Bool {
+            let firstByte = UInt8((high64 >> 56) & 0xFF)
+            return (firstByte & 0xE0) == 0x20
+        }
+
+        /// Unique IPv6 Address: Global Unicast (2000::/3) or Unique Local Address (fc00::/7, RFC 4193).
+        /// Excludes Link-Local (fe80::/10), Loopback (::1), Multicast (ff00::/8), and Unspecified (::).
+        public var isUniqueIPv6: Bool {
+            if isLinkLocal || isLoopback { return false }
+            let firstByte = UInt8((high64 >> 56) & 0xFF)
+            if firstByte == 0xFF { return false } // Multicast
+            return isGlobalUnicast || isPrivate
         }
 
         public static func < (lhs: IPv6, rhs: IPv6) -> Bool {

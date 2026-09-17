@@ -48,6 +48,7 @@ public struct TopologyNode: Identifiable, Sendable, Codable, Equatable {
     public var role: DeviceRole
     public var vendor: DeviceVendor
     public var ipAddress: String
+    public var ipv6Address: String?
     public var macAddress: String?
     public var platform: String?
     public var status: DeviceStatus
@@ -62,6 +63,7 @@ public struct TopologyNode: Identifiable, Sendable, Codable, Equatable {
         role: DeviceRole,
         vendor: DeviceVendor = .cisco,
         ipAddress: String,
+        ipv6Address: String? = nil,
         macAddress: String? = nil,
         platform: String? = nil,
         status: DeviceStatus = .online,
@@ -75,6 +77,7 @@ public struct TopologyNode: Identifiable, Sendable, Codable, Equatable {
         self.role = role
         self.vendor = vendor
         self.ipAddress = ipAddress
+        self.ipv6Address = ipv6Address
         self.macAddress = macAddress
         self.platform = platform
         self.status = status
@@ -524,6 +527,7 @@ public struct TopologyGraph: Sendable, Codable, Equatable {
             role: .router,
             vendor: gwVendor == .generic ? .linksys : gwVendor,
             ipAddress: gatewayIP,
+            ipv6Address: gwNeighbor?.ipv6Address,
             macAddress: gwNeighbor?.macAddress,
             platform: gwPlatform,
             status: .online,
@@ -541,8 +545,13 @@ public struct TopologyGraph: Sendable, Codable, Equatable {
             speedMbps: 1_200
         ))
 
-        // Discovered Neighbors connected to Gateway (deduplicating gateway to prevent duplicate nodes)
-        let otherNeighbors = neighbors.filter { $0.ipAddress != gatewayIP && $0.ipAddress != "127.0.0.1" }
+        // Discovered Neighbors connected to Gateway (filters link-local IPv6, loopback, and deduplicates gateway)
+        let otherNeighbors = neighbors.filter { n in
+            let clean = n.ipAddress.components(separatedBy: "%").first?.lowercased() ?? n.ipAddress.lowercased()
+            if clean == gatewayIP || clean == "127.0.0.1" || clean == "::1" { return false }
+            if clean.hasPrefix("fe8") || clean.hasPrefix("fe9") || clean.hasPrefix("fea") || clean.hasPrefix("feb") { return false }
+            return true
+        }
         for (idx, n) in otherNeighbors.prefix(48).enumerated() {
             let role: DeviceRole
             let lowerVendor = (n.ouiVendor ?? "").lowercased()
@@ -568,6 +577,9 @@ public struct TopologyGraph: Sendable, Codable, Equatable {
                 cleanLabel = v
             } else if n.vendor != .generic {
                 cleanLabel = "\(n.vendor.rawValue) Device"
+            } else if n.ipAddress.contains(":") {
+                let lastHextet = n.ipAddress.components(separatedBy: ":").last(where: { !$0.isEmpty }) ?? "\(idx)"
+                cleanLabel = "IPv6 Host :\(lastHextet)"
             } else {
                 let lastOctet = n.ipAddress.components(separatedBy: ".").last ?? "\(idx)"
                 cleanLabel = "Host .\(lastOctet)"
@@ -580,6 +592,7 @@ public struct TopologyGraph: Sendable, Codable, Equatable {
                 role: role,
                 vendor: n.vendor,
                 ipAddress: n.ipAddress,
+                ipv6Address: n.ipv6Address,
                 macAddress: n.macAddress.isEmpty ? nil : n.macAddress,
                 platform: n.ouiVendor,
                 status: .online,

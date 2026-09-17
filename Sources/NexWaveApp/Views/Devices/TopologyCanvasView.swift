@@ -948,7 +948,7 @@ public struct TopologyCanvasView: View {
                 .foregroundStyle(isBeingDragged ? Theme.cyanPulse : Theme.neonCyan)
                 .lineLimit(1)
 
-            // Hardware Metadata: Vendor Badge & MAC Address
+            // Hardware Metadata: Vendor Badge & MAC Address & IPv6 indicator
             HStack(spacing: 3) {
                 if let vBadge = vendorBadgeText {
                     Text(vBadge)
@@ -959,6 +959,18 @@ public struct TopologyCanvasView: View {
                         .foregroundStyle(Theme.azurePro)
                         .clipShape(RoundedRectangle(cornerRadius: 2.5))
                         .overlay(RoundedRectangle(cornerRadius: 2.5).stroke(Theme.azurePro.opacity(0.4), lineWidth: 0.5))
+                        .lineLimit(1)
+                }
+
+                if node.ipv6Address != nil && node.ipv6Address != node.ipAddress {
+                    Text("IPv6")
+                        .font(Theme.monoText(7, weight: .bold))
+                        .padding(.horizontal, 3.5)
+                        .padding(.vertical, 1)
+                        .background(Theme.electricAzure.opacity(0.25))
+                        .foregroundStyle(Theme.cyanPulse)
+                        .clipShape(RoundedRectangle(cornerRadius: 2.5))
+                        .overlay(RoundedRectangle(cornerRadius: 2.5).stroke(Theme.cyanPulse.opacity(0.5), lineWidth: 0.5))
                         .lineLimit(1)
                 }
 
@@ -1034,6 +1046,16 @@ public struct TopologyCanvasView: View {
                 showToast("Copied MAC: \(mac)")
             } label: {
                 Label("Copy MAC Address (\(mac))", systemImage: "number")
+            }
+        }
+
+        if let v6 = node.ipv6Address, v6 != node.ipAddress {
+            Button {
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(v6, forType: .string)
+                showToast("Copied IPv6: \(v6)")
+            } label: {
+                Label("Copy Unique IPv6 (\(v6))", systemImage: "network")
             }
         }
 
@@ -1189,6 +1211,9 @@ public struct TopologyCanvasView: View {
             // Properties Grid
             VStack(spacing: 8) {
                 inspectorRow(label: "IP Address", value: node.ipAddress)
+                if let v6 = node.ipv6Address, v6 != node.ipAddress {
+                    inspectorRow(label: "Unique IPv6", value: v6)
+                }
                 if let mac = node.macAddress {
                     inspectorRow(label: "MAC Address", value: mac)
                 }

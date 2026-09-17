@@ -830,8 +830,8 @@ public struct DeviceWorkbenchView: View {
                 VStack(spacing: 0) {
                     // Table Header
                     HStack(spacing: 12) {
-                        Text("IP ADDRESS / HOSTNAME")
-                            .frame(width: 170, alignment: .leading)
+                        Text("IP ADDRESS (IPv4 / IPv6)")
+                            .frame(width: 190, alignment: .leading)
                         Text("MAC ADDRESS")
                             .frame(width: 160, alignment: .leading)
                         Text("VENDOR / OUI")
@@ -865,6 +865,28 @@ public struct DeviceWorkbenchView: View {
                                         .font(.system(size: 12, weight: .semibold, design: .monospaced))
                                         .foregroundStyle(.primary)
                                 }
+                                if let v6 = neighbor.ipv6Address, v6 != neighbor.ip {
+                                    HStack(spacing: 4) {
+                                        Text(v6)
+                                            .font(.system(size: 9.5, design: .monospaced))
+                                            .foregroundStyle(Theme.neonCyan.opacity(0.9))
+                                            .lineLimit(1)
+                                            .truncationMode(.middle)
+                                            .help("Unique IPv6: \(v6)")
+
+                                        Button(action: {
+                                            NSPasteboard.general.clearContents()
+                                            NSPasteboard.general.setString(v6, forType: .string)
+                                            state.toastMessage = "IPv6 copied: \(v6)"
+                                        }) {
+                                            Image(systemName: "doc.on.doc")
+                                                .font(.system(size: 8))
+                                                .foregroundStyle(.secondary)
+                                        }
+                                        .buttonStyle(.plain)
+                                        .help("Copy Unique IPv6")
+                                    }
+                                }
                                 if let host = neighbor.hostname, !host.isEmpty {
                                     Text(host)
                                         .font(.system(size: 10))
@@ -872,7 +894,7 @@ public struct DeviceWorkbenchView: View {
                                         .lineLimit(1)
                                 }
                             }
-                            .frame(width: 170, alignment: .leading)
+                            .frame(width: 190, alignment: .leading)
 
                             HStack(spacing: 4) {
                                 Text(neighbor.mac)

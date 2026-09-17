@@ -78,24 +78,48 @@ struct DeviceKitTests {
         #expect(ciscoNeighbor?.ouiVendor == "Cisco Systems")
     }
 
-    @Test("NDP IPv6 Output Parsing")
+    @Test("NDP IPv6 Output Parsing Excludes Link-Local and Keeps Unique IPv6")
     func testNDPOutputParsing() async {
         let sampleNDP = """
         Neighbor                             Linklayer Address  Netif Expire    St Flgs Prbs
         fe80::1%en0                          0:1c:73:a1:b2:c3   en0   23h59m59s R
         2001:db8::50                         f8:ff:c2:12:34:56  en0   23h58m12s R
+        fd00:abcd::1                         0:1c:73:a1:b2:c3   en0   23h59m59s R
         fe80::2%en0                          (incomplete)       en0   expired   I
         """
 
         let engine = LocalDiscoveryEngine()
         let neighbors = await engine.parseNDPOutput(sampleNDP)
 
+        // Only unique IPv6 (Global Unicast 2001:db8::50 and ULA fd00:abcd::1) are accepted; fe80:: is excluded!
         #expect(neighbors.count == 2)
-        #expect(neighbors[0].ipAddress == "fe80::1")
-        #expect(neighbors[0].macAddress == "00:1c:73:a1:b2:c3")
-        #expect(neighbors[0].ouiVendor == "Arista Networks")
-        #expect(neighbors[1].ipAddress == "2001:db8::50")
-        #expect(neighbors[1].ouiVendor == "Apple")
+        #expect(neighbors.allSatisfy { !$0.ipAddress.hasPrefix("fe80") })
+        #expect(neighbors[0].ipAddress == "2001:db8::50")
+        #expect(neighbors[0].ouiVendor == "Apple")
+        #expect(neighbors[1].ipAddress == "fd00:abcd::1")
+        #expect(neighbors[1].macAddress == "00:1c:73:a1:b2:c3")
+        #expect(neighbors[1].ouiVendor == "Arista Networks")
+    }
+
+    @Test("Dual-Stack Neighbor Consolidation Drops Link-Local and Keeps Unique IPv6")
+    func testDualStackNeighborConsolidation() async {
+        let arp = """
+        ? (192.168.1.50) at f8:ff:c2:12:34:56 on en0 ifscope [ethernet]
+        """
+        let ndp = """
+        Neighbor                             Linklayer Address  Netif Expire    St Flgs Prbs
+        fe80::1c0a:6f6e:f286:2be8%en0        f8:ff:c2:12:34:56  en0   23h59m59s R
+        2001:db8:1:10:917c:bd7a:aaa6:4dc6    f8:ff:c2:12:34:56  en0   23h58m12s R
+        """
+
+        let engine = LocalDiscoveryEngine()
+        let arpNeighbors = await engine.parseARPOutput(arp)
+        let ndpNeighbors = await engine.parseNDPOutput(ndp)
+
+        #expect(arpNeighbors.count == 1)
+        #expect(ndpNeighbors.count == 1) // Link-local fe80:: is completely excluded!
+        #expect(ndpNeighbors[0].ipAddress == "2001:db8:1:10:917c:bd7a:aaa6:4dc6")
+        #expect(ndpNeighbors[0].macAddress == "f8:ff:c2:12:34:56")
     }
 
     @Test("Device CRUD and MAC Address Persistence in SQLite")

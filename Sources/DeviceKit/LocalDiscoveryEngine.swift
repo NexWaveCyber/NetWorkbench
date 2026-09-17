@@ -26,14 +26,27 @@ public actor LocalDiscoveryEngine {
             results[n.ipAddress] = n
         }
 
-        // 4. Ingest IPv6 NDP cache
+        // 4. Ingest IPv6 NDP cache (unique/global IPv6 only, link-local excluded)
         let ndpNeighbors = parseNDPOutput(runCommand("/usr/sbin/ndp", arguments: ["-an"]))
         for n in ndpNeighbors {
             guard isEligibleHost(ip: n.ipAddress, interface: n.interface) else { continue }
-            if var existing = results[n.ipAddress] {
+
+            // If an ARP neighbor already exists for this exact MAC, consolidate IPv4 + unique IPv6!
+            if let existingKey = results.keys.first(where: { results[$0]?.macAddress == n.macAddress }) {
+                var existing = results[existingKey]!
+                if existing.ipv6Address == nil {
+                    existing.ipv6Address = n.ipAddress
+                }
                 existing.discoveredServices.append(contentsOf: n.discoveredServices)
-                results[n.ipAddress] = existing
+                results[existingKey] = existing
+            } else if var existingByIP = results[n.ipAddress] {
+                if existingByIP.ipv6Address == nil {
+                    existingByIP.ipv6Address = n.ipAddress
+                }
+                existingByIP.discoveredServices.append(contentsOf: n.discoveredServices)
+                results[n.ipAddress] = existingByIP
             } else {
+                // Device discovered solely via unique IPv6
                 results[n.ipAddress] = n
             }
         }
@@ -58,10 +71,12 @@ public actor LocalDiscoveryEngine {
                 }
             }
 
-            // If neighbor has Bonjour services, upgrade source to combined
-            if !neighbor.discoveredServices.isEmpty && neighbor.discoverySource != .bonjour {
+            // If neighbor has Bonjour services or dual-stack IPv4+IPv6, upgrade source to combined
+            let isDualStack = neighbor.ipAddress.contains(".") && neighbor.ipv6Address != nil
+            if (!neighbor.discoveredServices.isEmpty || isDualStack) && neighbor.discoverySource != .bonjour {
                 neighbor = DiscoveredNeighbor(
                     ipAddress: neighbor.ipAddress,
+                    ipv6Address: neighbor.ipv6Address,
                     macAddress: neighbor.macAddress,
                     hostname: neighbor.hostname,
                     interface: neighbor.interface,
@@ -241,12 +256,27 @@ public actor LocalDiscoveryEngine {
     // MARK: - Filtering & Eligibility
 
     private func isEligibleHost(ip: String, interface: String) -> Bool {
+        let cleanIP = ip.components(separatedBy: "%").first?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ip
+        let lower = cleanIP.lowercased()
+
+        // Filter out IPv6 link-local addresses (fe80::/10)
+        if lower.hasPrefix("fe8") || lower.hasPrefix("fe9") || lower.hasPrefix("fea") || lower.hasPrefix("feb") {
+            return false
+        }
+        // Filter out IPv4 link-local (169.254.0.0/16)
+        if lower.hasPrefix("169.254.") {
+            return false
+        }
+        // Filter out loopback
+        if lower == "127.0.0.1" || lower.hasPrefix("127.") || lower == "::1" {
+            return false
+        }
         // Filter out multicast
-        if ip.hasPrefix("224.") || ip.hasPrefix("225.") || ip.hasPrefix("239.") || ip.hasPrefix("ff") {
+        if lower.hasPrefix("224.") || lower.hasPrefix("225.") || lower.hasPrefix("239.") || lower.hasPrefix("ff") {
             return false
         }
         // Filter out broadcast
-        if ip.hasSuffix(".255") || ip == "255.255.255.255" {
+        if lower.hasSuffix(".255") || lower == "255.255.255.255" {
             return false
         }
         // Filter out virtual/tunnel interfaces
@@ -254,6 +284,14 @@ public actor LocalDiscoveryEngine {
         if lowerIface.hasPrefix("lo") || lowerIface.hasPrefix("utun") || lowerIface.hasPrefix("awdl") || lowerIface.hasPrefix("llw") {
             return false
         }
+
+        // If it's an IPv6 address, ensure it is a unique IPv6 (Global Unicast 2000::/3 or ULA fc00::/7)
+        if cleanIP.contains(":") {
+            guard let parsed = IPAddress(cleanIP), parsed.isUniqueIPv6 else {
+                return false
+            }
+        }
+
         return true
     }
 
@@ -308,7 +346,7 @@ public actor LocalDiscoveryEngine {
         return neighbors
     }
 
-    /// Parses output from `/usr/sbin/ndp -an`.
+    /// Parses output from `/usr/sbin/ndp -an`, extracting only unique/global IPv6 addresses (link-local excluded).
     public func parseNDPOutput(_ output: String) -> [DiscoveredNeighbor] {
         var neighbors: [DiscoveredNeighbor] = []
         let lines = output.components(separatedBy: .newlines)
@@ -327,11 +365,23 @@ public actor LocalDiscoveryEngine {
 
             guard rawMac.contains(":") else { continue }
             let formattedMac = normalizeMAC(rawMac)
-            let cleanIP = rawIP.components(separatedBy: "%").first ?? rawIP
+            let cleanIP = rawIP.components(separatedBy: "%").first?.trimmingCharacters(in: .whitespacesAndNewlines) ?? rawIP
+
+            // Strictly filter out link-local addresses (fe80::/10)
+            let lower = cleanIP.lowercased()
+            if lower.hasPrefix("fe8") || lower.hasPrefix("fe9") || lower.hasPrefix("fea") || lower.hasPrefix("feb") {
+                continue
+            }
+
+            // Only accept unique IPv6 (Global Unicast 2000::/3 or ULA fc00::/7)
+            guard let parsed = IPAddress(cleanIP), parsed.isUniqueIPv6 else {
+                continue
+            }
 
             let vendor = OUIResolver.resolve(mac: formattedMac)
             neighbors.append(DiscoveredNeighbor(
                 ipAddress: cleanIP,
+                ipv6Address: cleanIP,
                 macAddress: formattedMac,
                 interface: iface,
                 discoverySource: .ndp,
