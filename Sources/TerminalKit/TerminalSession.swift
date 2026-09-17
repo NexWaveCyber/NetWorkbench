@@ -202,12 +202,19 @@ public final class TerminalSession: Identifiable, @unchecked Sendable {
         }
     }
 
+    /// Indicates whether the session is actively prompting for a password or passphrase
+    public var isAwaitingPasswordPrompt: Bool {
+        guard simulatedCLI == nil else { return false }
+        guard let lastLine = lines.last?.text.trimmingCharacters(in: .whitespaces) else { return false }
+        let lower = lastLine.lowercased()
+        return (lower.hasSuffix("password:") || lower.hasSuffix("passphrase:") || lower.contains("'s password:"))
+            && !lower.contains("[verified]")
+    }
+
     /// Send a user input line or command to the session
     public func sendCommand(_ command: String) {
         let trimmed = command.trimmingCharacters(in: .newlines)
-        let isPassword = lines.last?.text.lowercased().contains("password:") == true ||
-                         lines.last?.text.lowercased().contains("password for") == true ||
-                         lines.last?.text.lowercased().contains("passphrase:") == true
+        let isPassword = isAwaitingPasswordPrompt
 
         if !trimmed.isEmpty {
             if !isPassword {
@@ -220,7 +227,8 @@ public final class TerminalSession: Identifiable, @unchecked Sendable {
         if let sim = simulatedCLI {
             sim.processInput(trimmed)
         } else if let runner = ptyRunner {
-            runner.send(text: "\(trimmed)\r")
+            let terminator = isPassword ? "\n" : "\r"
+            runner.send(text: "\(trimmed)\(terminator)")
         }
     }
 

@@ -563,6 +563,45 @@ struct TerminalTests {
         #expect(!combinedOutput.isEmpty)
         #expect(combinedOutput.contains("password:") || combinedOutput.contains("185.81.99.104") || combinedOutput.contains("Permission denied"))
     }
+
+    @Test("Live Online SSH Authentication with Password against User Test VM")
+    func testLiveSSHUserVM() async throws {
+        let runner = PTYProcessRunner()
+        let receivedText = AsyncStream<String> { continuation in
+            runner.onOutput = { chunk in
+                continuation.yield(chunk)
+            }
+            runner.onTermination = { _ in
+                continuation.finish()
+            }
+        }
+
+        try runner.launchSSH(
+            host: "170.75.170.64",
+            port: 22,
+            username: "ubuntu",
+            password: "wC9xhrrRQcZfyPBl",
+            enableLegacyCiphers: false
+        )
+
+        var combinedOutput = ""
+        let timeoutTask = Task {
+            try? await Task.sleep(nanoseconds: 12_000_000_000)
+            runner.terminate()
+        }
+
+        for await chunk in receivedText {
+            combinedOutput += chunk
+            if combinedOutput.contains("ubuntu@") && (combinedOutput.contains("$") || combinedOutput.contains("Welcome to Ubuntu")) {
+                break
+            }
+        }
+
+        timeoutTask.cancel()
+        runner.terminate()
+
+        #expect(combinedOutput.contains("ubuntu@") || combinedOutput.contains("Welcome to Ubuntu"))
+    }
 }
 
 

@@ -829,9 +829,9 @@ public struct TerminalWorkbenchView: View {
             // Interactive Bottom Input Bar
             let askingPassword = isPasswordPrompt(session)
             HStack(spacing: 8) {
-                Text("\(session.title) #")
+                Text(askingPassword ? "PASSWORD :" : "\(session.title) #")
                     .font(Theme.monoText(11, weight: .bold))
-                    .foregroundStyle(Color(hex: selectedTheme.promptColorHex))
+                    .foregroundStyle(askingPassword ? Theme.pulseCrimson : Color(hex: selectedTheme.promptColorHex))
 
                 if askingPassword {
                     SecureField("Remote host password / passphrase (press Enter to send)...", text: $inputCommand)
@@ -1350,8 +1350,7 @@ public struct TerminalWorkbenchView: View {
     }
 
     private func isPasswordPrompt(_ session: TerminalSession) -> Bool {
-        guard let last = session.lines.last?.text.lowercased() else { return false }
-        return last.contains("password:") || last.contains("password for") || last.contains("passphrase:")
+        session.isAwaitingPasswordPrompt
     }
 
     private func handleDirectKeyPress(_ press: KeyPress, session: TerminalSession) -> KeyPress.Result {

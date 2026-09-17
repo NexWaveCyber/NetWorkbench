@@ -22,9 +22,11 @@ public final class PTYProcessRunner: @unchecked Sendable {
     public func launch(
         executableURL: URL,
         arguments: [String],
-        environment: [String: String] = ProcessInfo.processInfo.environment
+        environment: [String: String] = ProcessInfo.processInfo.environment,
+        pendingPassword: String? = nil
     ) throws {
         terminate()
+        self.pendingPassword = pendingPassword
 
         var master: Int32 = 0
         let pid = forkpty(&master, nil, nil, nil)
@@ -81,7 +83,6 @@ public final class PTYProcessRunner: @unchecked Sendable {
         jumpHost: SSHJumpConfig? = nil,
         enableLegacyCiphers: Bool = false
     ) throws {
-        self.pendingPassword = password
         var args = [
             "-p", "\(port)",
             "-o", "StrictHostKeyChecking=accept-new",
@@ -118,7 +119,7 @@ public final class PTYProcessRunner: @unchecked Sendable {
         args.append("\(username)@\(host)")
 
         let sshURL = URL(fileURLWithPath: "/usr/bin/ssh")
-        try launch(executableURL: sshURL, arguments: args)
+        try launch(executableURL: sshURL, arguments: args, pendingPassword: password)
     }
 
     /// Launch direct POSIX serial communication without screen wrapper
@@ -287,10 +288,10 @@ public final class PTYProcessRunner: @unchecked Sendable {
                                 if let pass = self.pendingPassword, !pass.isEmpty {
                                     promptAccumulator += string
                                     let lower = promptAccumulator.lowercased()
-                                    if lower.contains("password:") || lower.contains("password for") || lower.contains("passphrase:") {
+                                    if lower.contains("password:") || lower.contains("password for") || lower.contains("passphrase:") || lower.contains("'s password") {
                                         self.pendingPassword = nil
                                         promptAccumulator = ""
-                                        DispatchQueue.global().asyncAfter(deadline: .now() + 0.05) { [weak self] in
+                                        DispatchQueue.global().asyncAfter(deadline: .now() + 0.15) { [weak self] in
                                             self?.send(text: "\(pass)\n")
                                         }
                                     }
