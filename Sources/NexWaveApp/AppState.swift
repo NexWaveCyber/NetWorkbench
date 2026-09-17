@@ -100,6 +100,12 @@ public final class AppState: @unchecked Sendable {
             let monService = BackgroundMonitorService(repository: tsRepo)
             self.monitorService = monService
 
+            Task {
+                await monService.setOnAlertTriggered { alert in
+                    NotificationManager.shared.postSLAAlert(alert)
+                }
+            }
+
             self.investigations = (try? investigationManager.listInvestigations()) ?? []
             self.recentHistory = (try? investigationManager.fetchRecentHistory(limit: 20)) ?? []
             self.managedDevices = (try? deviceManager.listDevices()) ?? []

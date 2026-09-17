@@ -1,4 +1,6 @@
 import SwiftUI
+import AppKit
+import UniformTypeIdentifiers
 import TimeSeriesKit
 import PersistenceKit
 import NetworkCore
@@ -6,11 +8,28 @@ import NetworkCore
 public struct TimeSeriesStudioView: View {
     public var state: AppState?
 
+    public enum TimelineViewMode: String, CaseIterable, Identifiable {
+        case single = "Single Focus"
+        case overlay = "Comparative Overlay"
+        public var id: String { rawValue }
+    }
+
+    @State private var viewMode: TimelineViewMode = .single
     @State private var targets: [MonitorTargetConfig] = []
     @State private var selectedTargetIndex: Int = 0
     @State private var selectedRange: TimeRange = .lastHour
     @State private var buckets: [AggregatedBucket] = []
+    @State private var multiTargetBuckets: [UUID: [AggregatedBucket]] = [:]
     @State private var alerts: [SLAMonitorAlert] = []
+
+    private let targetPalette: [Color] = [
+        Theme.neonCyan,
+        Theme.solarAmber,
+        Theme.quantumViolet,
+        Theme.signalEmerald,
+        Theme.pulseCrimson,
+        Theme.azurePro
+    ]
 
     // Scrubber hover state
     @State private var scrubIndex: Int? = nil
@@ -144,25 +163,55 @@ public struct TimeSeriesStudioView: View {
     private var controlBar: some View {
         VStack(spacing: 10) {
             HStack(spacing: 12) {
-                // Target Picker
-                if !targets.isEmpty {
-                    Picker("", selection: $selectedTargetIndex) {
-                        ForEach(0..<targets.count, id: \.self) { idx in
-                            let cfg = targets[idx]
-                            HStack {
-                                Text("\(cfg.name) (\(cfg.target))")
-                            }
-                            .tag(idx)
-                        }
+                // View Mode Picker
+                Picker("Mode", selection: $viewMode) {
+                    ForEach(TimelineViewMode.allCases) { mode in
+                        Text(mode.rawValue).tag(mode)
                     }
-                    .frame(width: 300)
-                    .onChange(of: selectedTargetIndex) { _, _ in
-                        loadData()
+                }
+                .pickerStyle(.segmented)
+                .frame(width: 280)
+                .onChange(of: viewMode) { _, _ in
+                    loadData()
+                }
+
+                Divider().frame(height: 16)
+
+                if viewMode == .single {
+                    // Target Picker
+                    if !targets.isEmpty {
+                        Picker("", selection: $selectedTargetIndex) {
+                            ForEach(0..<targets.count, id: \.self) { idx in
+                                let cfg = targets[idx]
+                                HStack {
+                                    Text("\(cfg.name) (\(cfg.target))")
+                                }
+                                .tag(idx)
+                            }
+                        }
+                        .frame(width: 250)
+                        .onChange(of: selectedTargetIndex) { _, _ in
+                            loadData()
+                        }
+                    } else {
+                        Text("No Monitored Targets")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
                     }
                 } else {
-                    Text("No Monitored Targets")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                    // Comparative Overlay badge
+                    HStack(spacing: 6) {
+                        Image(systemName: "square.3.layers.3d.down.right")
+                            .foregroundStyle(Theme.neonCyan)
+                            .font(.system(size: 11))
+                        Text("Overlaying \(targets.filter { $0.isEnabled }.count) Active Targets")
+                            .font(Theme.monoText(11, weight: .bold))
+                            .foregroundStyle(Theme.neonCyan)
+                    }
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 5)
+                    .background(Theme.neonCyan.opacity(0.10))
+                    .cornerRadius(6)
                 }
 
                 // Add Target Button
@@ -182,8 +231,8 @@ public struct TimeSeriesStudioView: View {
                 }
                 .buttonStyle(.plain)
 
-                // Edit Target Button
-                if activeConfig != nil {
+                if viewMode == .single, activeConfig != nil {
+                    // Edit Target Button
                     Button(action: {
                         openEditSheet()
                     }) {
@@ -225,7 +274,7 @@ public struct TimeSeriesStudioView: View {
                     }
                 }
                 .pickerStyle(.segmented)
-                .frame(width: 280)
+                .frame(width: 260)
                 .onChange(of: selectedRange) { _, _ in
                     loadData()
                 }
@@ -243,7 +292,7 @@ public struct TimeSeriesStudioView: View {
             }
 
             // Target Metadata Strip
-            if let cfg = activeConfig {
+            if viewMode == .single, let cfg = activeConfig {
                 HStack(spacing: 12) {
                     HStack(spacing: 4) {
                         Circle()
@@ -283,6 +332,27 @@ public struct TimeSeriesStudioView: View {
                     Spacer()
                 }
                 .padding(.top, 2)
+            } else if viewMode == .overlay {
+                HStack(spacing: 12) {
+                    Text("ACTIVE OVERLAY MATRIX:")
+                        .font(Theme.monoText(10, weight: .bold))
+                        .foregroundStyle(.secondary)
+
+                    ForEach(Array(targets.filter { $0.isEnabled }.enumerated()), id: \.element.id) { tIdx, cfg in
+                        let color = targetPalette[tIdx % targetPalette.count]
+                        HStack(spacing: 4) {
+                            Circle().fill(color).frame(width: 6, height: 6)
+                            Text(cfg.name)
+                                .font(Theme.monoText(10, weight: .semibold))
+                                .foregroundStyle(color)
+                            Text("(\(cfg.probeProtocol == .tcp ? "TCP" : "ICMP"))")
+                                .font(Theme.monoText(9))
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    Spacer()
+                }
+                .padding(.top, 2)
             }
         }
         .padding(14)
@@ -297,41 +367,95 @@ public struct TimeSeriesStudioView: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
                 HStack(spacing: 6) {
-                    Circle().fill(Theme.signalEmerald).frame(width: 8, height: 8)
-                    Text(activeConfig != nil ? "\(activeConfig!.name) • \(selectedRange.displayName)" : "Timeline")
+                    Circle().fill(viewMode == .overlay ? Theme.neonCyan : Theme.signalEmerald).frame(width: 8, height: 8)
+                    Text(viewMode == .overlay ? "Comparative Multi-Target Telemetry (\(targets.filter { $0.isEnabled }.count) Active) • \(selectedRange.displayName)" : (activeConfig != nil ? "\(activeConfig!.name) • \(selectedRange.displayName)" : "Timeline"))
                         .font(.subheadline.bold())
                 }
                 Spacer()
 
-                if let idx = scrubIndex, idx < buckets.count {
-                    let b = buckets[idx]
-                    HStack(spacing: 12) {
-                        Text(b.timestamp, style: .time)
-                            .font(Theme.monoText(10))
-                            .foregroundStyle(.secondary)
-                        Text("Avg: \(String(format: "%.1f ms", b.avgMs))")
-                            .font(Theme.monoText(11, weight: .bold))
-                            .foregroundStyle(Theme.neonCyan)
-                        Text("Min/Max: \(String(format: "%.1f", b.minMs))/\(String(format: "%.1f", b.maxMs)) ms")
-                            .font(Theme.monoText(10))
-                            .foregroundStyle(.secondary)
-                        Text("Jitter: \(String(format: "%.1f ms", b.jitterMs))")
-                            .font(Theme.monoText(10))
-                            .foregroundStyle(Theme.azurePro)
-                        if b.packetLossPct > 0 {
-                            Text("Loss: \(String(format: "%.1f%%", b.packetLossPct))")
-                                .font(Theme.monoText(10, weight: .bold))
-                                .foregroundStyle(Theme.pulseCrimson)
+                if let idx = scrubIndex {
+                    if viewMode == .overlay {
+                        let enabledTargets = targets.filter { $0.isEnabled }
+                        HStack(spacing: 10) {
+                            if let first = enabledTargets.first, let bList = multiTargetBuckets[first.id], idx < bList.count {
+                                Text(bList[idx].timestamp, style: .time)
+                                    .font(Theme.monoText(10))
+                                    .foregroundStyle(.secondary)
+                            }
+                            ForEach(Array(enabledTargets.enumerated()), id: \.element.id) { tIdx, cfg in
+                                if let bList = multiTargetBuckets[cfg.id], idx < bList.count {
+                                    let b = bList[idx]
+                                    let color = targetPalette[tIdx % targetPalette.count]
+                                    HStack(spacing: 4) {
+                                        Circle().fill(color).frame(width: 5, height: 5)
+                                        Text(cfg.name)
+                                            .font(Theme.monoText(10))
+                                            .foregroundStyle(.secondary)
+                                        Text(String(format: "%.1f ms", b.avgMs))
+                                            .font(Theme.monoText(10, weight: .bold))
+                                            .foregroundStyle(color)
+                                    }
+                                }
+                            }
                         }
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 3)
+                        .background(Theme.secondaryBackground)
+                        .cornerRadius(6)
+                    } else if idx < buckets.count {
+                        let b = buckets[idx]
+                        HStack(spacing: 12) {
+                            Text(b.timestamp, style: .time)
+                                .font(Theme.monoText(10))
+                                .foregroundStyle(.secondary)
+                            Text("Avg: \(String(format: "%.1f ms", b.avgMs))")
+                                .font(Theme.monoText(11, weight: .bold))
+                                .foregroundStyle(Theme.neonCyan)
+                            Text("Min/Max: \(String(format: "%.1f", b.minMs))/\(String(format: "%.1f", b.maxMs)) ms")
+                                .font(Theme.monoText(10))
+                                .foregroundStyle(.secondary)
+                            Text("Jitter: \(String(format: "%.1f ms", b.jitterMs))")
+                                .font(Theme.monoText(10))
+                                .foregroundStyle(Theme.azurePro)
+                            if b.packetLossPct > 0 {
+                                Text("Loss: \(String(format: "%.1f%%", b.packetLossPct))")
+                                    .font(Theme.monoText(10, weight: .bold))
+                                    .foregroundStyle(Theme.pulseCrimson)
+                            }
+                        }
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 3)
+                        .background(Theme.secondaryBackground)
+                        .cornerRadius(6)
                     }
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 3)
-                    .background(Theme.secondaryBackground)
-                    .cornerRadius(6)
                 } else {
-                    Text("Hover cursor or drag over timeline to inspect point-in-time SLA telemetry")
+                    Text(viewMode == .overlay ? "Hover or drag cursor across timeline for cross-target point-in-time correlation" : "Hover cursor or drag over timeline to inspect point-in-time SLA telemetry")
                         .font(.caption2)
                         .foregroundStyle(.secondary)
+                }
+            }
+
+            // In Overlay Mode, show interactive colored legend badges
+            if viewMode == .overlay {
+                HStack(spacing: 12) {
+                    ForEach(Array(targets.filter { $0.isEnabled }.enumerated()), id: \.element.id) { tIdx, cfg in
+                        let color = targetPalette[tIdx % targetPalette.count]
+                        let avg = calcTargetAvg(cfg.id)
+                        HStack(spacing: 6) {
+                            Circle().fill(color).frame(width: 7, height: 7)
+                            Text(cfg.name)
+                                .font(.system(size: 11, weight: .semibold))
+                            Text(String(format: "%.1f ms", avg))
+                                .font(Theme.monoText(10, weight: .bold))
+                                .foregroundStyle(color)
+                        }
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 3)
+                        .background(color.opacity(0.08))
+                        .cornerRadius(6)
+                        .overlay(RoundedRectangle(cornerRadius: 6).stroke(color.opacity(0.25), lineWidth: 1))
+                    }
+                    Spacer()
                 }
             }
 
@@ -339,130 +463,261 @@ public struct TimeSeriesStudioView: View {
             GeometryReader { geo in
                 let width = geo.size.width
                 let height = geo.size.height
+                let usableHeight = height - 24.0 // leave bottom 24px for X-axis time labels
 
                 Canvas { context, size in
-                    guard !buckets.isEmpty else { return }
+                    if viewMode == .overlay {
+                        let enabledTargets = targets.filter { $0.isEnabled }
+                        guard !enabledTargets.isEmpty else { return }
 
-                    let rawMax = (buckets.map { $0.maxMs }.max() ?? 0.0)
-                    // Adaptive Y-axis scaling: adapts to low LAN latency (<4ms) up to WAN spikes
-                    let maxLatency: Double = {
-                        if rawMax <= 4.0 { return 5.0 }
-                        if rawMax <= 15.0 { return 20.0 }
-                        return max(30.0, rawMax * 1.15)
-                    }()
+                        // Find global max across all overlaid targets
+                        var globalRawMax: Double = 0.0
+                        var referenceBuckets: [AggregatedBucket] = []
 
-                    let stepX = width / CGFloat(max(1, buckets.count - 1))
-                    let usableHeight = height - 24.0 // leave bottom 24px for X-axis time labels
+                        for cfg in enabledTargets {
+                            if let bList = multiTargetBuckets[cfg.id], !bList.isEmpty {
+                                if referenceBuckets.isEmpty { referenceBuckets = bList }
+                                if let m = bList.map({ $0.maxMs }).max() {
+                                    globalRawMax = max(globalRawMax, m)
+                                }
+                            }
+                        }
+                        guard !referenceBuckets.isEmpty else { return }
 
-                    // 1. Draw Background Grid Lines & Y-Axis Labels
-                    for yFraction in [0.25, 0.5, 0.75, 1.0] {
-                        let y = usableHeight - (usableHeight * CGFloat(yFraction) * 0.88)
-                        var gridPath = Path()
-                        gridPath.move(to: CGPoint(x: 0, y: y))
-                        gridPath.addLine(to: CGPoint(x: width, y: y))
-                        context.stroke(gridPath, with: .color(Color.primary.opacity(0.06)), lineWidth: 1)
+                        let maxLatency: Double = {
+                            if globalRawMax <= 4.0 { return 5.0 }
+                            if globalRawMax <= 15.0 { return 20.0 }
+                            return max(30.0, globalRawMax * 1.15)
+                        }()
 
-                        let latValue = maxLatency * yFraction
-                        let textStr = maxLatency <= 10.0 ? String(format: "%.1f ms", latValue) : "\(Int(latValue))ms"
-                        let text = Text(textStr).font(.system(size: 8, design: .monospaced)).foregroundColor(.secondary.opacity(0.6))
-                        context.draw(text, at: CGPoint(x: 22, y: y - 6))
-                    }
+                        let stepX = width / CGFloat(max(1, referenceBuckets.count - 1))
 
-                    // 2. Draw Dynamic X-Axis Time Ticks Along Bottom
-                    let tickCount = 5
-                    for t in 0...tickCount {
-                        let frac = CGFloat(t) / CGFloat(tickCount)
-                        let x = width * frac
-                        let bucketIdx = min(buckets.count - 1, Int(round(CGFloat(buckets.count - 1) * frac)))
-                        let bucketTime = buckets[bucketIdx].timestamp
+                        // 1. Draw Background Grid Lines & Y-Axis Labels
+                        for yFraction in [0.25, 0.5, 0.75, 1.0] {
+                            let y = usableHeight - (usableHeight * CGFloat(yFraction) * 0.88)
+                            var gridPath = Path()
+                            gridPath.move(to: CGPoint(x: 0, y: y))
+                            gridPath.addLine(to: CGPoint(x: width, y: y))
+                            context.stroke(gridPath, with: .color(Color.primary.opacity(0.06)), lineWidth: 1)
 
-                        var tickPath = Path()
-                        tickPath.move(to: CGPoint(x: x, y: 0))
-                        tickPath.addLine(to: CGPoint(x: x, y: usableHeight))
-                        context.stroke(tickPath, with: .color(Color.primary.opacity(0.04)), style: StrokeStyle(lineWidth: 1, dash: [2, 4]))
+                            let latValue = maxLatency * yFraction
+                            let textStr = maxLatency <= 10.0 ? String(format: "%.1f ms", latValue) : "\(Int(latValue))ms"
+                            let text = Text(textStr).font(.system(size: 8, design: .monospaced)).foregroundColor(.secondary.opacity(0.6))
+                            context.draw(text, at: CGPoint(x: 22, y: y - 6))
+                        }
 
-                        let df = DateFormatter()
-                        df.dateFormat = selectedRange == .last7Days || selectedRange == .last24Hours ? "MM/dd HH:mm" : "HH:mm:ss"
-                        let timeStr = t == tickCount ? "Now" : df.string(from: bucketTime)
-                        let text = Text(timeStr).font(.system(size: 8, design: .monospaced)).foregroundColor(.secondary.opacity(0.7))
-                        context.draw(text, at: CGPoint(x: min(width - 25, max(25, x)), y: height - 10))
-                    }
+                        // 2. Draw Dynamic X-Axis Time Ticks Along Bottom
+                        let tickCount = 5
+                        for t in 0...tickCount {
+                            let frac = CGFloat(t) / CGFloat(tickCount)
+                            let x = width * frac
+                            let bucketIdx = min(referenceBuckets.count - 1, Int(round(CGFloat(referenceBuckets.count - 1) * frac)))
+                            let bucketTime = referenceBuckets[bucketIdx].timestamp
 
-                    // 3. Draw SLA Latency Threshold Line if active
-                    if let cfg = activeConfig, cfg.latencyThresholdMs <= maxLatency {
-                        let slaY = usableHeight - (usableHeight * CGFloat(cfg.latencyThresholdMs / maxLatency) * 0.88)
-                        var slaPath = Path()
-                        slaPath.move(to: CGPoint(x: 0, y: slaY))
-                        slaPath.addLine(to: CGPoint(x: width, y: slaY))
-                        context.stroke(slaPath, with: .color(Theme.solarAmber.opacity(0.6)), style: StrokeStyle(lineWidth: 1.5, dash: [4, 4]))
+                            var tickPath = Path()
+                            tickPath.move(to: CGPoint(x: x, y: 0))
+                            tickPath.addLine(to: CGPoint(x: x, y: usableHeight))
+                            context.stroke(tickPath, with: .color(Color.primary.opacity(0.04)), style: StrokeStyle(lineWidth: 1, dash: [2, 4]))
 
-                        let slaText = Text("SLA LIMIT (\(Int(cfg.latencyThresholdMs))ms)").font(.system(size: 7, weight: .bold, design: .monospaced)).foregroundColor(Theme.solarAmber)
-                        context.draw(slaText, at: CGPoint(x: width - 60, y: slaY - 7))
-                    }
+                            let df = DateFormatter()
+                            df.dateFormat = selectedRange == .last7Days || selectedRange == .last24Hours ? "MM/dd HH:mm" : "HH:mm:ss"
+                            let timeStr = t == tickCount ? "Now" : df.string(from: bucketTime)
+                            let text = Text(timeStr).font(.system(size: 8, design: .monospaced)).foregroundColor(.secondary.opacity(0.7))
+                            context.draw(text, at: CGPoint(x: min(width - 25, max(25, x)), y: height - 10))
+                        }
 
-                    // 4. Draw Packet Loss Red Columns
-                    for (i, b) in buckets.enumerated() {
-                        if b.packetLossPct > 0 {
+                        // 3. Draw Each Target's Curve & Subtle Area Gradient
+                        for (tIdx, cfg) in enabledTargets.enumerated() {
+                            guard let tBuckets = multiTargetBuckets[cfg.id], !tBuckets.isEmpty else { continue }
+                            let color = targetPalette[tIdx % targetPalette.count]
+
+                            var linePath = Path()
+                            var areaPath = Path()
+                            areaPath.move(to: CGPoint(x: 0, y: usableHeight))
+
+                            for (i, b) in tBuckets.enumerated() {
+                                let x = CGFloat(i) * stepX
+                                let normalizedY = usableHeight - (usableHeight * CGFloat(b.avgMs / maxLatency) * 0.88)
+                                let pt = CGPoint(x: x, y: max(10, min(usableHeight, normalizedY)))
+
+                                if i == 0 {
+                                    linePath.move(to: pt)
+                                    areaPath.addLine(to: pt)
+                                } else {
+                                    linePath.addLine(to: pt)
+                                    areaPath.addLine(to: pt)
+                                }
+                            }
+
+                            if let last = tBuckets.indices.last {
+                                let lastX = CGFloat(last) * stepX
+                                areaPath.addLine(to: CGPoint(x: lastX, y: usableHeight))
+                                areaPath.closeSubpath()
+                            }
+
+                            // Area gradient
+                            let gradient = Gradient(colors: [color.opacity(0.12), color.opacity(0.01)])
+                            context.fill(areaPath, with: .linearGradient(gradient, startPoint: CGPoint(x: 0, y: 0), endPoint: CGPoint(x: 0, y: usableHeight)))
+
+                            // Stroke line
+                            context.stroke(linePath, with: .color(color), lineWidth: 2)
+                        }
+
+                        // 4. Draw Interactive Scrubber Line
+                        if let sIdx = scrubIndex, sIdx < referenceBuckets.count {
+                            let sx = CGFloat(sIdx) * stepX
+                            var scrubPath = Path()
+                            scrubPath.move(to: CGPoint(x: sx, y: 0))
+                            scrubPath.addLine(to: CGPoint(x: sx, y: usableHeight))
+                            context.stroke(scrubPath, with: .color(Theme.neonCyan.opacity(0.8)), style: StrokeStyle(lineWidth: 1.5, dash: [3, 3]))
+
+                            for (tIdx, cfg) in enabledTargets.enumerated() {
+                                if let tBuckets = multiTargetBuckets[cfg.id], sIdx < tBuckets.count {
+                                    let b = tBuckets[sIdx]
+                                    let color = targetPalette[tIdx % targetPalette.count]
+                                    let normalizedY = usableHeight - (usableHeight * CGFloat(b.avgMs / maxLatency) * 0.88)
+                                    let pt = CGPoint(x: sx, y: max(10, min(usableHeight, normalizedY)))
+
+                                    var dot = Path()
+                                    dot.addEllipse(in: CGRect(x: pt.x - 4, y: pt.y - 4, width: 8, height: 8))
+                                    context.fill(dot, with: .color(color))
+                                    context.stroke(dot, with: .color(.white), lineWidth: 1.5)
+                                }
+                            }
+                        }
+                    } else {
+                        // Single Focus Mode
+                        guard !buckets.isEmpty else { return }
+
+                        let rawMax = (buckets.map { $0.maxMs }.max() ?? 0.0)
+                        let maxLatency: Double = {
+                            if rawMax <= 4.0 { return 5.0 }
+                            if rawMax <= 15.0 { return 20.0 }
+                            return max(30.0, rawMax * 1.15)
+                        }()
+
+                        let stepX = width / CGFloat(max(1, buckets.count - 1))
+
+                        // 1. Draw Background Grid Lines & Y-Axis Labels
+                        for yFraction in [0.25, 0.5, 0.75, 1.0] {
+                            let y = usableHeight - (usableHeight * CGFloat(yFraction) * 0.88)
+                            var gridPath = Path()
+                            gridPath.move(to: CGPoint(x: 0, y: y))
+                            gridPath.addLine(to: CGPoint(x: width, y: y))
+                            context.stroke(gridPath, with: .color(Color.primary.opacity(0.06)), lineWidth: 1)
+
+                            let latValue = maxLatency * yFraction
+                            let textStr = maxLatency <= 10.0 ? String(format: "%.1f ms", latValue) : "\(Int(latValue))ms"
+                            let text = Text(textStr).font(.system(size: 8, design: .monospaced)).foregroundColor(.secondary.opacity(0.6))
+                            context.draw(text, at: CGPoint(x: 22, y: y - 6))
+                        }
+
+                        // 2. Draw Dynamic X-Axis Time Ticks Along Bottom
+                        let tickCount = 5
+                        for t in 0...tickCount {
+                            let frac = CGFloat(t) / CGFloat(tickCount)
+                            let x = width * frac
+                            let bucketIdx = min(buckets.count - 1, Int(round(CGFloat(buckets.count - 1) * frac)))
+                            let bucketTime = buckets[bucketIdx].timestamp
+
+                            var tickPath = Path()
+                            tickPath.move(to: CGPoint(x: x, y: 0))
+                            tickPath.addLine(to: CGPoint(x: x, y: usableHeight))
+                            context.stroke(tickPath, with: .color(Color.primary.opacity(0.04)), style: StrokeStyle(lineWidth: 1, dash: [2, 4]))
+
+                            let df = DateFormatter()
+                            df.dateFormat = selectedRange == .last7Days || selectedRange == .last24Hours ? "MM/dd HH:mm" : "HH:mm:ss"
+                            let timeStr = t == tickCount ? "Now" : df.string(from: bucketTime)
+                            let text = Text(timeStr).font(.system(size: 8, design: .monospaced)).foregroundColor(.secondary.opacity(0.7))
+                            context.draw(text, at: CGPoint(x: min(width - 25, max(25, x)), y: height - 10))
+                        }
+
+                        // 3. Draw SLA Latency Threshold Line if active
+                        if let cfg = activeConfig, cfg.latencyThresholdMs <= maxLatency {
+                            let slaY = usableHeight - (usableHeight * CGFloat(cfg.latencyThresholdMs / maxLatency) * 0.88)
+                            var slaPath = Path()
+                            slaPath.move(to: CGPoint(x: 0, y: slaY))
+                            slaPath.addLine(to: CGPoint(x: width, y: slaY))
+                            context.stroke(slaPath, with: .color(Theme.solarAmber.opacity(0.6)), style: StrokeStyle(lineWidth: 1.5, dash: [4, 4]))
+
+                            let slaText = Text("SLA LIMIT (\(Int(cfg.latencyThresholdMs))ms)").font(.system(size: 7, weight: .bold, design: .monospaced)).foregroundColor(Theme.solarAmber)
+                            context.draw(slaText, at: CGPoint(x: width - 60, y: slaY - 7))
+                        }
+
+                        // 4. Draw Packet Loss Red Columns
+                        for (i, b) in buckets.enumerated() {
+                            if b.packetLossPct > 0 {
+                                let x = CGFloat(i) * stepX
+                                let colWidth = max(2.5, stepX * 0.85)
+                                let lossHeight = usableHeight * CGFloat(b.packetLossPct / 100.0)
+                                let rect = CGRect(x: x - colWidth / 2, y: usableHeight - lossHeight, width: colWidth, height: lossHeight)
+                                context.fill(Path(rect), with: .color(Theme.pulseCrimson.opacity(0.40)))
+                            }
+                        }
+
+                        // 5. Draw Latency Curve & Gradient Area Fill
+                        var linePath = Path()
+                        var areaPath = Path()
+                        areaPath.move(to: CGPoint(x: 0, y: usableHeight))
+
+                        for (i, b) in buckets.enumerated() {
                             let x = CGFloat(i) * stepX
-                            let colWidth = max(2.5, stepX * 0.85)
-                            let lossHeight = usableHeight * CGFloat(b.packetLossPct / 100.0)
-                            let rect = CGRect(x: x - colWidth / 2, y: usableHeight - lossHeight, width: colWidth, height: lossHeight)
-                            context.fill(Path(rect), with: .color(Theme.pulseCrimson.opacity(0.40)))
+                            let normalizedY = usableHeight - (usableHeight * CGFloat(b.avgMs / maxLatency) * 0.88)
+                            let pt = CGPoint(x: x, y: max(10, min(usableHeight, normalizedY)))
+
+                            if i == 0 {
+                                linePath.move(to: pt)
+                                areaPath.addLine(to: pt)
+                            } else {
+                                linePath.addLine(to: pt)
+                                areaPath.addLine(to: pt)
+                            }
                         }
-                    }
 
-                    // 5. Draw Latency Curve & Gradient Area Fill
-                    var linePath = Path()
-                    var areaPath = Path()
-                    areaPath.move(to: CGPoint(x: 0, y: usableHeight))
-
-                    for (i, b) in buckets.enumerated() {
-                        let x = CGFloat(i) * stepX
-                        let normalizedY = usableHeight - (usableHeight * CGFloat(b.avgMs / maxLatency) * 0.88)
-                        let pt = CGPoint(x: x, y: max(10, min(usableHeight, normalizedY)))
-
-                        if i == 0 {
-                            linePath.move(to: pt)
-                            areaPath.addLine(to: pt)
-                        } else {
-                            linePath.addLine(to: pt)
-                            areaPath.addLine(to: pt)
+                        if let last = buckets.indices.last {
+                            let lastX = CGFloat(last) * stepX
+                            areaPath.addLine(to: CGPoint(x: lastX, y: usableHeight))
+                            areaPath.closeSubpath()
                         }
-                    }
 
-                    if let last = buckets.indices.last {
-                        let lastX = CGFloat(last) * stepX
-                        areaPath.addLine(to: CGPoint(x: lastX, y: usableHeight))
-                        areaPath.closeSubpath()
-                    }
+                        // Gradient Fill under curve
+                        let gradient = Gradient(colors: [Theme.neonCyan.opacity(0.28), Theme.azurePro.opacity(0.02)])
+                        context.fill(areaPath, with: .linearGradient(gradient, startPoint: CGPoint(x: 0, y: 0), endPoint: CGPoint(x: 0, y: usableHeight)))
 
-                    // Gradient Fill under curve
-                    let gradient = Gradient(colors: [Theme.neonCyan.opacity(0.28), Theme.azurePro.opacity(0.02)])
-                    context.fill(areaPath, with: .linearGradient(gradient, startPoint: CGPoint(x: 0, y: 0), endPoint: CGPoint(x: 0, y: usableHeight)))
+                        // Stroke Latency Line
+                        context.stroke(linePath, with: .color(Theme.neonCyan), lineWidth: 2)
 
-                    // Stroke Latency Line
-                    context.stroke(linePath, with: .color(Theme.neonCyan), lineWidth: 2)
+                        // 6. Draw Interactive Scrubber Cursor
+                        if let sIdx = scrubIndex, sIdx < buckets.count {
+                            let sx = CGFloat(sIdx) * stepX
+                            var scrubPath = Path()
+                            scrubPath.move(to: CGPoint(x: sx, y: 0))
+                            scrubPath.addLine(to: CGPoint(x: sx, y: usableHeight))
+                            context.stroke(scrubPath, with: .color(Color.white.opacity(0.85)), lineWidth: 1.5)
 
-                    // 6. Draw Interactive Scrubber Cursor
-                    if let sIdx = scrubIndex, sIdx < buckets.count {
-                        let sx = CGFloat(sIdx) * stepX
-                        var scrubPath = Path()
-                        scrubPath.move(to: CGPoint(x: sx, y: 0))
-                        scrubPath.addLine(to: CGPoint(x: sx, y: usableHeight))
-                        context.stroke(scrubPath, with: .color(Color.white.opacity(0.85)), lineWidth: 1.5)
-
-                        let b = buckets[sIdx]
-                        let sy = usableHeight - (usableHeight * CGFloat(b.avgMs / maxLatency) * 0.88)
-                        let circleRect = CGRect(x: sx - 4, y: sy - 4, width: 8, height: 8)
-                        context.fill(Path(ellipseIn: circleRect), with: .color(Theme.signalEmerald))
+                            let b = buckets[sIdx]
+                            let sy = usableHeight - (usableHeight * CGFloat(b.avgMs / maxLatency) * 0.88)
+                            let circleRect = CGRect(x: sx - 4, y: sy - 4, width: 8, height: 8)
+                            context.fill(Path(ellipseIn: circleRect), with: .color(Theme.signalEmerald))
+                        }
                     }
                 }
                 .onContinuousHover { phase in
+                    let totalCount: Int = {
+                        if viewMode == .overlay {
+                            let enabledTargets = targets.filter { $0.isEnabled }
+                            return enabledTargets.compactMap { multiTargetBuckets[$0.id]?.count }.max() ?? 1
+                        } else {
+                            return buckets.count
+                        }
+                    }()
+                    guard totalCount > 1 else { return }
+
                     switch phase {
                     case .active(let location):
-                        let stepX = width / CGFloat(max(1, buckets.count - 1))
+                        let stepX = width / CGFloat(totalCount - 1)
                         let idx = Int(round(location.x / stepX))
-                        if idx >= 0 && idx < buckets.count {
+                        if idx >= 0 && idx < totalCount {
                             scrubIndex = idx
                         }
                     case .ended:
@@ -472,9 +727,19 @@ public struct TimeSeriesStudioView: View {
                 .gesture(
                     DragGesture(minimumDistance: 0)
                         .onChanged { value in
-                            let stepX = width / CGFloat(max(1, buckets.count - 1))
+                            let totalCount: Int = {
+                                if viewMode == .overlay {
+                                    let enabledTargets = targets.filter { $0.isEnabled }
+                                    return enabledTargets.compactMap { multiTargetBuckets[$0.id]?.count }.max() ?? 1
+                                } else {
+                                    return buckets.count
+                                }
+                            }()
+                            guard totalCount > 1 else { return }
+
+                            let stepX = width / CGFloat(totalCount - 1)
                             let idx = Int(round(value.location.x / stepX))
-                            if idx >= 0 && idx < buckets.count {
+                            if idx >= 0 && idx < totalCount {
                                 scrubIndex = idx
                             }
                         }
@@ -640,11 +905,19 @@ public struct TimeSeriesStudioView: View {
                     .foregroundStyle(.secondary)
             }
 
-            // Export CSV
-            Button(action: exportCSV) {
+            // CSV Actions Menu
+            Menu {
+                Button(action: saveCSVToFile) {
+                    Label("Save CSV to File... (NSSavePanel)", systemImage: "folder.badge.plus")
+                }
+                Button(action: exportCSV) {
+                    Label("Copy CSV to Clipboard", systemImage: "doc.on.doc")
+                }
+            } label: {
                 HStack(spacing: 4) {
                     Image(systemName: "tablecells")
                     Text("Export CSV")
+                    Image(systemName: "chevron.down").font(.system(size: 8))
                 }
                 .font(.caption.bold())
                 .padding(.horizontal, 10)
@@ -653,13 +926,21 @@ public struct TimeSeriesStudioView: View {
                 .cornerRadius(6)
                 .overlay(RoundedRectangle(cornerRadius: 6).stroke(Theme.borderLight, lineWidth: 1))
             }
-            .buttonStyle(.plain)
+            .menuStyle(.borderlessButton)
 
-            // Export JSON
-            Button(action: exportJSON) {
+            // JSON Actions Menu
+            Menu {
+                Button(action: saveJSONToFile) {
+                    Label("Save JSON to File... (NSSavePanel)", systemImage: "folder.badge.plus")
+                }
+                Button(action: exportJSON) {
+                    Label("Copy JSON to Clipboard", systemImage: "doc.on.doc")
+                }
+            } label: {
                 HStack(spacing: 4) {
                     Image(systemName: "curlybraces")
                     Text("Export JSON")
+                    Image(systemName: "chevron.down").font(.system(size: 8))
                 }
                 .font(.caption.bold())
                 .padding(.horizontal, 10)
@@ -668,13 +949,21 @@ public struct TimeSeriesStudioView: View {
                 .cornerRadius(6)
                 .overlay(RoundedRectangle(cornerRadius: 6).stroke(Theme.borderLight, lineWidth: 1))
             }
-            .buttonStyle(.plain)
+            .menuStyle(.borderlessButton)
 
-            // Copy Markdown SLA Report
-            Button(action: copyMarkdownReport) {
+            // Markdown Report Actions Menu
+            Menu {
+                Button(action: saveMarkdownToFile) {
+                    Label("Save Markdown Audit Report to File...", systemImage: "folder.badge.plus")
+                }
+                Button(action: copyMarkdownReport) {
+                    Label("Copy Markdown to Clipboard", systemImage: "doc.on.doc")
+                }
+            } label: {
                 HStack(spacing: 4) {
                     Image(systemName: "doc.plaintext")
-                    Text("Copy Markdown SLA Report")
+                    Text("Markdown SLA Report")
+                    Image(systemName: "chevron.down").font(.system(size: 8))
                 }
                 .font(.caption.bold())
                 .padding(.horizontal, 10)
@@ -683,9 +972,28 @@ public struct TimeSeriesStudioView: View {
                 .cornerRadius(6)
                 .overlay(RoundedRectangle(cornerRadius: 6).stroke(Theme.borderLight, lineWidth: 1))
             }
-            .buttonStyle(.plain)
+            .menuStyle(.borderlessButton)
 
             Spacer()
+
+            // System Notification Status Indicator & Toggle
+            Button(action: toggleDesktopNotifications) {
+                HStack(spacing: 5) {
+                    Image(systemName: NotificationManager.shared.isNotificationsEnabled ? "bell.badge.fill" : "bell.slash")
+                        .font(.system(size: 10))
+                        .foregroundStyle(NotificationManager.shared.isNotificationsEnabled ? Theme.signalEmerald : .secondary)
+                    Text(NotificationManager.shared.isNotificationsEnabled ? "Desktop Alerts Active" : "Desktop Alerts Muted")
+                        .font(Theme.monoText(10, weight: .semibold))
+                        .foregroundStyle(NotificationManager.shared.isNotificationsEnabled ? Theme.signalEmerald : .secondary)
+                }
+                .padding(.horizontal, 9)
+                .padding(.vertical, 4)
+                .background(Color.primary.opacity(0.04))
+                .cornerRadius(6)
+                .overlay(RoundedRectangle(cornerRadius: 6).stroke(Theme.borderLight, lineWidth: 1))
+            }
+            .buttonStyle(.plain)
+            .help("Toggle macOS Desktop Notification Banners for SLA Breaches")
         }
         .padding(12)
         .background(Theme.cardBackground.opacity(0.7))
@@ -863,15 +1171,27 @@ public struct TimeSeriesStudioView: View {
     }
 
     private func loadData() {
-        guard let repo = repository, let cfg = activeConfig else { return }
+        guard let repo = repository else { return }
         let now = Date()
         let start = selectedRange.startDate(from: now)
 
         do {
-            let b = try repo.fetchBuckets(target: cfg.target, from: start, to: now, bucketCount: selectedRange.targetBucketCount)
-            self.buckets = b
-            let a = try repo.fetchAlerts(target: cfg.target, limit: 12)
-            self.alerts = a
+            if let cfg = activeConfig {
+                let b = try repo.fetchBuckets(target: cfg.target, from: start, to: now, bucketCount: selectedRange.targetBucketCount)
+                self.buckets = b
+                let a = try repo.fetchAlerts(target: cfg.target, limit: 12)
+                self.alerts = a
+            }
+
+            if viewMode == .overlay {
+                var multi: [UUID: [AggregatedBucket]] = [:]
+                for t in targets where t.isEnabled {
+                    if let tBuckets = try? repo.fetchBuckets(target: t.target, from: start, to: now, bucketCount: selectedRange.targetBucketCount) {
+                        multi[t.id] = tBuckets
+                    }
+                }
+                self.multiTargetBuckets = multi
+            }
         } catch {
             print("Error loading time series data: \(error)")
         }
@@ -1017,6 +1337,96 @@ public struct TimeSeriesStudioView: View {
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(md, forType: .string)
         showToast("Copied Markdown SLA Report to Clipboard")
+    }
+
+    private func toggleDesktopNotifications() {
+        NotificationManager.shared.isNotificationsEnabled.toggle()
+        showToast(NotificationManager.shared.isNotificationsEnabled ? "macOS Desktop Alerts Enabled" : "Desktop Alerts Muted")
+    }
+
+    private func saveCSVToFile() {
+        guard let cfg = activeConfig else { return }
+        let csv = buckets.toCSV(target: cfg.target, targetName: cfg.name)
+        let panel = NSSavePanel()
+        panel.title = "Save SLA CSV Telemetry"
+        panel.allowedContentTypes = [UTType.commaSeparatedText]
+        let sanitizedName = cfg.name.replacingOccurrences(of: " ", with: "_").replacingOccurrences(of: "/", with: "-")
+        panel.nameFieldStringValue = "SLA_\(sanitizedName)_\(selectedRange.rawValue).csv"
+        panel.canCreateDirectories = true
+
+        if panel.runModal() == .OK, let url = panel.url {
+            do {
+                try csv.write(to: url, atomically: true, encoding: .utf8)
+                showToast("Saved CSV to \(url.lastPathComponent)")
+            } catch {
+                showToast("Failed to save file: \(error.localizedDescription)")
+            }
+        }
+    }
+
+    private func saveJSONToFile() {
+        guard let cfg = activeConfig else { return }
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        encoder.outputFormatting = .prettyPrinted
+        guard let data = try? encoder.encode(buckets), let jsonStr = String(data: data, encoding: .utf8) else { return }
+
+        let panel = NSSavePanel()
+        panel.title = "Save SLA JSON Telemetry"
+        panel.allowedContentTypes = [UTType.json]
+        let sanitizedName = cfg.name.replacingOccurrences(of: " ", with: "_").replacingOccurrences(of: "/", with: "-")
+        panel.nameFieldStringValue = "SLA_\(sanitizedName)_\(selectedRange.rawValue).json"
+        panel.canCreateDirectories = true
+
+        if panel.runModal() == .OK, let url = panel.url {
+            do {
+                try jsonStr.write(to: url, atomically: true, encoding: .utf8)
+                showToast("Saved JSON to \(url.lastPathComponent)")
+            } catch {
+                showToast("Failed to save file: \(error.localizedDescription)")
+            }
+        }
+    }
+
+    private func saveMarkdownToFile() {
+        guard let cfg = activeConfig else { return }
+        var md = "# NexWave Timeline & SLA Audit: \(cfg.name) (\(cfg.target))\n\n"
+        md += "- **Generated:** \(Date().formatted(date: .abbreviated, time: .standard))\n"
+        md += "- **Time Range:** \(selectedRange.displayName)\n"
+        md += "- **Probe Protocol:** \(cfg.probeProtocol.displayName) \(cfg.port != nil ? ":\(cfg.port!)" : "")\n"
+        md += "- **Min RTT:** \(String(format: "%.1f ms", calcMin()))\n"
+        md += "- **Avg RTT:** \(String(format: "%.1f ms", calcAvg()))\n"
+        md += "- **Max RTT:** \(String(format: "%.1f ms", calcMax()))\n"
+        md += "- **RFC 3550 Jitter:** \(String(format: "%.1f ms", calcJitter()))\n"
+        md += "- **Packet Loss:** \(String(format: "%.1f%%", calcLoss()))\n"
+        md += "- **SLA Violations:** \(alerts.count) recorded\n\n"
+        md += "```\n"
+        md += buckets.toCSV(target: cfg.target, targetName: cfg.name)
+        md += "```\n"
+
+        let panel = NSSavePanel()
+        panel.title = "Save SLA Markdown Audit Report"
+        panel.allowedContentTypes = [UTType.plainText]
+        let sanitizedName = cfg.name.replacingOccurrences(of: " ", with: "_").replacingOccurrences(of: "/", with: "-")
+        panel.nameFieldStringValue = "SLA_Report_\(sanitizedName)_\(selectedRange.rawValue).md"
+        panel.canCreateDirectories = true
+
+        if panel.runModal() == .OK, let url = panel.url {
+            do {
+                try md.write(to: url, atomically: true, encoding: .utf8)
+                showToast("Saved Markdown report to \(url.lastPathComponent)")
+            } catch {
+                showToast("Failed to save file: \(error.localizedDescription)")
+            }
+        }
+    }
+
+    private func calcTargetAvg(_ targetId: UUID) -> Double {
+        guard let bList = multiTargetBuckets[targetId], !bList.isEmpty else { return 0.0 }
+        let totalSamples = bList.reduce(0) { $0 + $1.sampleCount }
+        guard totalSamples > 0 else { return 0.0 }
+        let weightedSum = bList.reduce(0.0) { $0 + ($1.avgMs * Double($1.sampleCount)) }
+        return weightedSum / Double(totalSamples)
     }
 
     private func showToast(_ msg: String) {

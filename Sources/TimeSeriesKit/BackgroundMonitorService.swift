@@ -30,9 +30,14 @@ public actor BackgroundMonitorService {
     private var runningTasks: [UUID: Task<Void, Never>] = [:]
     private var rollingWindows: [UUID: [LatencySample]] = [:]
     private var lastAlertTime: [String: Date] = [:]
+    private var onAlertTriggered: (@Sendable (SLAMonitorAlert) -> Void)?
 
     public init(repository: TimeSeriesRepository) {
         self.repository = repository
+    }
+
+    public func setOnAlertTriggered(_ handler: @escaping @Sendable (SLAMonitorAlert) -> Void) {
+        self.onAlertTriggered = handler
     }
 
     public func updateConfigs(_ configs: [MonitorTargetConfig]) {
@@ -267,6 +272,7 @@ public actor BackgroundMonitorService {
                     message: "Packet loss reached \(String(format: "%.1f", lossPct))% (Threshold: \(String(format: "%.1f", config.packetLossThresholdPct))%) across last \(window.count) probes."
                 )
                 try? repository.recordAlert(alert: alert)
+                onAlertTriggered?(alert)
             }
         }
 
@@ -287,6 +293,7 @@ public actor BackgroundMonitorService {
                     message: "Latency spiked to \(String(format: "%.1f", lat)) ms (Threshold: \(String(format: "%.1f", config.latencyThresholdMs)) ms)."
                 )
                 try? repository.recordAlert(alert: alert)
+                onAlertTriggered?(alert)
             }
         }
     }

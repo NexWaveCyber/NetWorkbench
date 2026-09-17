@@ -260,4 +260,28 @@ struct TimeSeriesKitTests {
         #expect(remaining.count == 1)
         #expect(remaining[0].id == recentSample.id)
     }
+
+    @Test("BackgroundMonitorService onAlertTriggered Callback Registration")
+    func testOnAlertTriggeredCallback() async throws {
+        let tempDir = FileManager.default.temporaryDirectory
+        let dbPath = tempDir.appendingPathComponent("test_alert_cb_\(UUID().uuidString).sqlite").path
+        let db = try SQLiteDatabase(path: dbPath)
+        let repo = TimeSeriesRepository(database: db)
+        let service = BackgroundMonitorService(repository: repo)
+
+        await service.setOnAlertTriggered { alert in
+            #expect(alert.target == "1.1.1.1")
+        }
+
+        let config = MonitorTargetConfig(
+            target: "1.1.1.1",
+            name: "Cloudflare",
+            intervalSeconds: 2.0,
+            latencyThresholdMs: 40.0,
+            packetLossThresholdPct: 5.0,
+            isEnabled: true
+        )
+        await service.addConfig(config)
+        await service.removeConfig(id: config.id)
+    }
 }
