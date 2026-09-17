@@ -173,6 +173,7 @@ public final class MenuBarMonitorEngine: @unchecked Sendable {
 
     private var monitorTask: Task<Void, Never>? = nil
     private var lastPublicIPCheck: Date = .distantPast
+    private var cycleCounter: Int = 0
 
     public init() {
         // Fast synchronous discovery of route, local IP, and DNS resolver
@@ -217,7 +218,7 @@ public final class MenuBarMonitorEngine: @unchecked Sendable {
         monitorTask = Task { [weak self] in
             while !Task.isCancelled {
                 await self?.performMonitorCycle()
-                try? await Task.sleep(nanoseconds: 2_500_000_000) // 2.5s tick
+                try? await Task.sleep(nanoseconds: 8_000_000_000) // 8s tick (energy and CPU friendly)
             }
         }
     }
@@ -229,37 +230,46 @@ public final class MenuBarMonitorEngine: @unchecked Sendable {
 
     @MainActor
     public func performMonitorCycle() async {
-        // 1. Detect default gateway and active interface
-        let route = parseDefaultRoute()
-        if !route.interface.isEmpty {
-            self.activeInterface = route.interface
-        }
-        if !route.gateway.isEmpty {
-            self.defaultGateway = route.gateway
-        }
+        cycleCounter += 1
+        let shouldRefreshInterfaces = (cycleCounter == 1 || cycleCounter % 4 == 0) // Every 32s or initial cycle
 
-        // 2. Query local IP on active interface
-        let ip = queryLocalIP(interface: self.activeInterface)
-        if !ip.isEmpty && ip != "127.0.0.1" {
-            self.localIP = ip
-        }
-        let subnet = querySubnetInfo(interface: self.activeInterface)
-        self.subnetMask = subnet.mask
-        self.broadcastAddress = subnet.broadcast
-        let v6 = queryLocalIPv6(interface: self.activeInterface)
-        if !v6.isEmpty {
-            self.localIPv6 = v6
-            self.hasIPv6 = true
-        }
+        if shouldRefreshInterfaces {
+            // 1. Detect default gateway and active interface
+            let route = parseDefaultRoute()
+            if !route.interface.isEmpty {
+                self.activeInterface = route.interface
+            }
+            if !route.gateway.isEmpty {
+                self.defaultGateway = route.gateway
+            }
 
-        // 3. Query system DNS
-        let dns = parseSystemDNS()
-        if !dns.primary.isEmpty {
-            self.dnsServer = dns.primary
-            self.allDnsServers = dns.all
-        }
-        if let v6DNS = dns.all.first(where: { $0.contains(":") }) {
-            self.dnsServerIPv6 = v6DNS
+            // 2. Query local IP on active interface
+            let ip = queryLocalIP(interface: self.activeInterface)
+            if !ip.isEmpty && ip != "127.0.0.1" {
+                self.localIP = ip
+            }
+            let subnet = querySubnetInfo(interface: self.activeInterface)
+            self.subnetMask = subnet.mask
+            self.broadcastAddress = subnet.broadcast
+            let v6 = queryLocalIPv6(interface: self.activeInterface)
+            if !v6.isEmpty {
+                self.localIPv6 = v6
+                self.hasIPv6 = true
+            }
+
+            // 3. Query system DNS
+            let dns = parseSystemDNS()
+            if !dns.primary.isEmpty {
+                self.dnsServer = dns.primary
+                self.allDnsServers = dns.all
+            }
+            if let v6DNS = dns.all.first(where: { $0.contains(":") }) {
+                self.dnsServerIPv6 = v6DNS
+            }
+
+            // Wi-Fi status if active interface is Wi-Fi
+            let link = await WiFiEngine.shared.fetchCurrentLink(interfaceName: self.activeInterface)
+            self.wifiLink = link
         }
 
         // 4. Ping local default gateway
@@ -279,11 +289,11 @@ public final class MenuBarMonitorEngine: @unchecked Sendable {
             self.gatewayIPv6LatencyMs = await pingHostIPv6(host: gw6, interface: self.activeInterface)
         }
 
-        // 5. Ping Internet (1.1.1.1)
+        // 6. Ping Internet (1.1.1.1)
         let inetRTT = await pingHost(host: "1.1.1.1", timeoutMs: 900)
         self.internetLatencyMs = inetRTT
 
-        // 6. Evaluate Health Status
+        // 7. Evaluate Health Status
         if gwRTT == nil && inetRTT == nil {
             self.healthStatus = .offline
         } else if let gw = gwRTT, gw > 60.0 || inetRTT == nil {

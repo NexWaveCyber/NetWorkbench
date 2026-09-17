@@ -253,8 +253,8 @@ public final class AppState: @unchecked Sendable {
 
             Task {
                 await monService.updateConfigs(existingTargets)
-                await monService.startAll()
-                try? tsRepo.pruneOldSamples(olderThanDays: 7)
+                // Do not auto-start background monitoring on launch; monitoring runs when TimeSeriesStudio is opened
+                try? tsRepo.pruneOldSamples(olderThanDays: 2)
             }
         } catch {
             fatalError("Failed to initialize SQLite persistence: \(error)")

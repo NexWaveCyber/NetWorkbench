@@ -109,6 +109,9 @@ public struct TimeSeriesStudioView: View {
         }
         .onDisappear {
             stopPolling()
+            Task {
+                await monitorService?.stopAll()
+            }
         }
         .sheet(isPresented: $isShowingAddSheet) {
             targetFormSheet(isEditing: false)
