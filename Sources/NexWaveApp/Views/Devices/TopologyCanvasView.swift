@@ -43,6 +43,30 @@ public enum TopologyLayoutMode: String, CaseIterable, Identifiable {
     }
 }
 
+public enum TrafficSpeed: String, CaseIterable, Identifiable {
+    case slow = "Slow (0.1x)"
+    case calm = "Calm (0.2x)"
+    case brisk = "Brisk (0.35x)"
+
+    public var id: String { rawValue }
+
+    public var shortTitle: String {
+        switch self {
+        case .slow: return "0.1x"
+        case .calm: return "0.2x"
+        case .brisk: return "0.35x"
+        }
+    }
+
+    public var multiplier: Double {
+        switch self {
+        case .slow: return 0.10
+        case .calm: return 0.20
+        case .brisk: return 0.35
+        }
+    }
+}
+
 public struct TopologyCanvasView: View {
     @Bindable var state: AppState
 
@@ -64,6 +88,7 @@ public struct TopologyCanvasView: View {
 
     // Simulation & Feature Flags
     @State private var simulateTraffic: Bool = true
+    @State private var trafficSpeed: TrafficSpeed = .calm
     @State private var selectedVlanFilter: Int? = nil
     @State private var searchInput: String = ""
     @State private var showMiniMap: Bool = true
@@ -276,17 +301,41 @@ public struct TopologyCanvasView: View {
                 .overlay(RoundedRectangle(cornerRadius: 6).stroke(Theme.borderLight, lineWidth: 1))
                 .frame(width: 210)
 
-                // Live Traffic Simulation Toggle
-                Button(action: { withAnimation { simulateTraffic.toggle() } }) {
+                // Live Traffic Simulation & Speed Menu
+                Menu {
+                    Button(action: { withAnimation { simulateTraffic.toggle() } }) {
+                        Label(simulateTraffic ? "Disable Traffic Simulation" : "Enable Traffic Simulation", systemImage: simulateTraffic ? "stop.circle" : "play.circle")
+                    }
+                    Divider()
+                    Text("PACKET VELOCITY")
+                        .font(Theme.monoText(9))
+                        .foregroundStyle(.secondary)
+                    ForEach(TrafficSpeed.allCases) { speed in
+                        Button {
+                            trafficSpeed = speed
+                            simulateTraffic = true
+                        } label: {
+                            HStack {
+                                Text(speed.rawValue)
+                                if trafficSpeed == speed && simulateTraffic {
+                                    Image(systemName: "checkmark")
+                                }
+                            }
+                        }
+                    }
+                } label: {
                     HStack(spacing: 4) {
                         Image(systemName: simulateTraffic ? "waveform.path.ecg" : "waveform.path")
-                        Text("Traffic Flow")
+                        Text(simulateTraffic ? "Traffic (\(trafficSpeed.shortTitle))" : "Traffic Off")
                             .font(.system(size: 11, weight: .medium))
+                        Image(systemName: "chevron.down")
+                            .font(.system(size: 8))
                     }
                 }
+                .menuStyle(.borderlessButton)
                 .buttonStyle(.bordered)
                 .tint(simulateTraffic ? Theme.cyanPulse : .secondary)
-                .help("Toggle live packet flow simulation on links")
+                .help("Configure live packet flow simulation velocity or toggle off")
 
                 // Path Trace Simulator Mode Toggle
                 Button(action: togglePathTraceMode) {
@@ -406,44 +455,47 @@ public struct TopologyCanvasView: View {
 
     // MARK: - Canvas Surface (Infinite Pan/Zoom + Isolated Layers)
     private func canvasSurface(size: CGSize) -> some View {
-        TimelineView(.animation(minimumInterval: 0.03)) { timeline in
-            ZStack(alignment: .topLeading) {
-                // Infinite Canvas Panning Hit Surface
-                Color.clear
-                    .frame(width: 8000, height: 8000)
-                    .offset(x: -3000, y: -3000)
-                    .contentShape(Rectangle())
-                    .gesture(
-                        DragGesture(minimumDistance: 3)
-                            .onChanged { val in
-                                guard draggingNodeId == nil else { return }
-                                dragCurrent = val.translation
-                            }
-                            .onEnded { val in
-                                panOffset.width += dragCurrent.width
-                                panOffset.height += dragCurrent.height
-                                dragCurrent = .zero
-                            }
-                    )
-                    .onTapGesture {
-                        withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
-                            selectedNodeId = nil
-                            selectedLinkId = nil
+        ZStack(alignment: .topLeading) {
+            // Infinite Canvas Panning Hit Surface
+            Color.clear
+                .frame(width: 8000, height: 8000)
+                .offset(x: -3000, y: -3000)
+                .contentShape(Rectangle())
+                .gesture(
+                    DragGesture(minimumDistance: 3)
+                        .onChanged { val in
+                            guard draggingNodeId == nil else { return }
+                            dragCurrent = val.translation
                         }
+                        .onEnded { val in
+                            panOffset.width += dragCurrent.width
+                            panOffset.height += dragCurrent.height
+                            dragCurrent = .zero
+                        }
+                )
+                .onTapGesture {
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                        selectedNodeId = nil
+                        selectedLinkId = nil
                     }
+                }
 
-                // Background Cyber-Grid
-                cyberGrid(size: size)
+            // Background Cyber-Grid
+            cyberGrid(size: size)
 
-                // Links Layer with Bezier Curves & Live Traffic Flow
-                linksLayer(date: timeline.date)
+            // Links Base Layer (Static Cables, Badges, Hit Testing)
+            linksBaseLayer
 
-                // Nodes Layer with Isolated Coordinate Frame
-                nodesLayer
+            // Animated Live Traffic Particle Overlay (Isolated strictly to its own TimelineView)
+            if simulateTraffic {
+                trafficParticlesOverlay
             }
-            .scaleEffect(zoomScale)
-            .offset(x: panOffset.width + dragCurrent.width, y: panOffset.height + dragCurrent.height)
+
+            // Nodes Layer with Isolated Coordinate Frame (Stationary, NO 30FPS redraws, rock-solid context menus)
+            nodesLayer
         }
+        .scaleEffect(zoomScale)
+        .offset(x: panOffset.width + dragCurrent.width, y: panOffset.height + dragCurrent.height)
     }
 
     // MARK: - Background Grid
@@ -467,12 +519,54 @@ public struct TopologyCanvasView: View {
         .allowsHitTesting(false)
     }
 
-    // MARK: - Links Layer with Bezier Curvature & Traffic Flow
-    private func linksLayer(date: Date) -> some View {
+    // MARK: - Live Traffic Particle Overlay (Isolated TimelineView)
+    private var trafficParticlesOverlay: some View {
+        TimelineView(.animation(minimumInterval: 0.04)) { timeline in
+            let posMap = nodePositionsMap
+            let vlanOverlay = activeVlanOverlay
+            let pathTrace = activePathTrace
+            let timeOffset = timeline.date.timeIntervalSince1970
+            let speed = trafficSpeed.multiplier
+
+            ZStack(alignment: .topLeading) {
+                ForEach(graph.links) { link in
+                    if let src = posMap[link.sourceNodeId], let dst = posMap[link.targetNodeId] {
+                        let isLinkInVlan = vlanOverlay == nil || (vlanOverlay?.matchingLinkIds.contains(link.id) == true)
+                        if isLinkInVlan {
+                            let isLinkInTrace = pathTrace?.linkIds.contains(link.id) == true
+                            let strokeColor = isLinkInTrace ? Theme.signalEmerald : Color(hex: link.linkType.badgeColorHex)
+                            let curveOffset = graph.curvatureOffset(for: link)
+
+                            let mid = CGPoint(x: (src.x + dst.x) / 2.0, y: (src.y + dst.y) / 2.0)
+                            let dx = dst.x - src.x
+                            let dy = dst.y - src.y
+                            let len = max(1.0, hypot(dx, dy))
+                            let nx = -dy / len
+                            let ny = dx / len
+                            let controlPoint = CGPoint(x: mid.x + nx * curveOffset, y: mid.y + ny * curveOffset)
+
+                            trafficParticles(
+                                from: src,
+                                to: dst,
+                                control: controlPoint,
+                                curveOffset: curveOffset,
+                                timeOffset: timeOffset,
+                                speedMultiplier: speed,
+                                color: strokeColor
+                            )
+                        }
+                    }
+                }
+            }
+            .allowsHitTesting(false)
+        }
+    }
+
+    // MARK: - Links Base Layer with Bezier Curvature & Port Badges
+    private var linksBaseLayer: some View {
         let posMap = nodePositionsMap
         let vlanOverlay = activeVlanOverlay
         let pathTrace = activePathTrace
-        let timeOffset = date.timeIntervalSince1970
 
         return ForEach(graph.links) { link in
             if let src = posMap[link.sourceNodeId], let dst = posMap[link.targetNodeId] {
@@ -486,8 +580,7 @@ public struct TopologyCanvasView: View {
                     to: dst,
                     curveOffset: curveOffset,
                     isDimmed: !isLinkInVlan,
-                    isPathTraced: isLinkInTrace,
-                    timeOffset: timeOffset
+                    isPathTraced: isLinkInTrace
                 )
             }
         }
@@ -499,8 +592,7 @@ public struct TopologyCanvasView: View {
         to: CGPoint,
         curveOffset: CGFloat,
         isDimmed: Bool,
-        isPathTraced: Bool,
-        timeOffset: Double
+        isPathTraced: Bool
     ) -> some View {
         let isConnectedToDragged = draggingNodeId == link.sourceNodeId || draggingNodeId == link.targetNodeId
         let isSelected = selectedLinkId == link.id
@@ -536,11 +628,6 @@ public struct TopologyCanvasView: View {
                     )
                 )
                 .shadow(color: isPathTraced ? Theme.signalEmerald.opacity(0.8) : (isSelected ? strokeColor.opacity(0.7) : .clear), radius: 8)
-
-            // Animated Traffic Flow Particles
-            if simulateTraffic && !isDimmed {
-                trafficParticles(from: from, to: to, control: controlPoint, curveOffset: curveOffset, timeOffset: timeOffset, color: strokeColor)
-            }
 
             // Clickable Hit Zone
             linkPath
@@ -606,9 +693,9 @@ public struct TopologyCanvasView: View {
         control: CGPoint,
         curveOffset: CGFloat,
         timeOffset: Double,
+        speedMultiplier: Double,
         color: Color
     ) -> some View {
-        let speedMultiplier = 0.65
         let particle1T = (timeOffset * speedMultiplier).truncatingRemainder(dividingBy: 1.0)
         let particle2T = ((timeOffset * speedMultiplier) + 0.5).truncatingRemainder(dividingBy: 1.0)
 
@@ -644,7 +731,7 @@ public struct TopologyCanvasView: View {
         }
     }
 
-    // MARK: - Nodes Layer (Strict Isolated Coordinates & Drag Anchor)
+    // MARK: - Nodes Layer (Strict Isolated Coordinates & Stationary Drag Anchor)
     private var nodesLayer: some View {
         ZStack(alignment: .topLeading) {
             let vlanOverlay = activeVlanOverlay
@@ -670,10 +757,13 @@ public struct TopologyCanvasView: View {
                 )
                 .frame(width: 140, height: 75)
                 .contentShape(Rectangle())
+                .contextMenu {
+                    nodeContextMenu(for: node)
+                }
                 .offset(x: pos.x - 70, y: pos.y - 37.5)
                 .zIndex(isBeingDragged ? 300 : (pathHopIndex != nil ? 250 : (isSelected ? 200 : Double(node.tier.tierLevel * -1))))
                 .gesture(
-                    DragGesture(minimumDistance: 2)
+                    DragGesture(minimumDistance: 4)
                         .onChanged { val in
                             if draggingNodeId == nil {
                                 draggingNodeId = node.id
@@ -703,9 +793,6 @@ public struct TopologyCanvasView: View {
                             dragOffset = .zero
                         }
                 )
-                .contextMenu {
-                    nodeContextMenu(for: node)
-                }
             }
         }
     }
@@ -1296,7 +1383,7 @@ public struct TopologyCanvasView: View {
                     ZStack {
                         Theme.surfaceBackground
                         cyberGrid(size: CGSize(width: 1400, height: 900))
-                        linksLayer(date: Date())
+                        linksBaseLayer
                         nodesLayer
                     }
                     .frame(width: 1400, height: 900)
