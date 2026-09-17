@@ -215,4 +215,50 @@ struct DeviceKitTests {
 
         try? FileManager.default.removeItem(atPath: tempDBPath)
     }
+
+    @Test("Graph Mutation, Path Finding, and VLAN Filtering")
+    func testGraphPathFindingAndVLANFiltering() {
+        var graph = TopologyGraph.buildEnterpriseDemo()
+
+        // 1. Path finding from core to access AP
+        let path = graph.findShortestPath(from: "core-rtr01", to: "ap-lobby")
+        #expect(path != nil)
+        #expect(path?.nodeIds.first == "core-rtr01")
+        #expect(path?.nodeIds.last == "ap-lobby")
+        #expect((path?.nodeIds.count ?? 0) >= 3) // core -> dist -> acc -> ap
+
+        // 2. VLAN 20 filtering
+        let vlan20 = graph.filterByVLAN(20)
+        #expect(vlan20.matchingNodeIds.contains("core-rtr01"))
+        #expect(vlan20.matchingNodeIds.contains("dist-sw01"))
+
+        // 3. Multi-link detection
+        let parallelLinks = graph.linksBetween(nodeA: "dist-sw01", nodeB: "acc-sw01")
+        #expect(parallelLinks.count >= 1)
+
+        // 4. Graph mutation
+        let customNode = TopologyNode(
+            id: "custom-switch",
+            label: "custom-sw01",
+            role: .switchRole,
+            ipAddress: "10.0.99.1"
+        )
+        graph.addNode(customNode)
+        #expect(graph.nodes.contains(where: { $0.id == "custom-switch" }))
+
+        let customLink = TopologyLink(
+            id: "link-custom",
+            sourceNodeId: "dist-sw01",
+            targetNodeId: "custom-switch",
+            sourceInterface: "Eth1/40",
+            targetInterface: "Gi0/1"
+        )
+        graph.addLink(customLink)
+        #expect(graph.links.contains(where: { $0.id == "link-custom" }))
+
+        graph.removeNode(id: "custom-switch")
+        #expect(!graph.nodes.contains(where: { $0.id == "custom-switch" }))
+        #expect(!graph.links.contains(where: { $0.id == "link-custom" })) // cascading link deletion
+    }
 }
+

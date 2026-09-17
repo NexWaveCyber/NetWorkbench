@@ -95,6 +95,11 @@ public struct TopologyLink: Identifiable, Sendable, Codable, Equatable {
     public let speedMbps: Int
     public let status: DeviceStatus
     public let vlanId: Int?
+    public var duplex: String
+    public var mtu: Int
+    public var vlanTrunkAllowed: [Int]
+    public var packetLossPct: Double
+    public var currentUtilizationMbps: Double
 
     public init(
         id: String = UUID().uuidString,
@@ -105,7 +110,12 @@ public struct TopologyLink: Identifiable, Sendable, Codable, Equatable {
         linkType: TopologyLinkType = .fiber10G,
         speedMbps: Int = 10_000,
         status: DeviceStatus = .online,
-        vlanId: Int? = nil
+        vlanId: Int? = nil,
+        duplex: String = "Full",
+        mtu: Int = 1500,
+        vlanTrunkAllowed: [Int] = [],
+        packetLossPct: Double = 0.0,
+        currentUtilizationMbps: Double = 0.0
     ) {
         self.id = id
         self.sourceNodeId = sourceNodeId
@@ -116,6 +126,11 @@ public struct TopologyLink: Identifiable, Sendable, Codable, Equatable {
         self.speedMbps = speedMbps
         self.status = status
         self.vlanId = vlanId
+        self.duplex = duplex
+        self.mtu = mtu
+        self.vlanTrunkAllowed = vlanTrunkAllowed
+        self.packetLossPct = packetLossPct
+        self.currentUtilizationMbps = currentUtilizationMbps
     }
 }
 
@@ -126,6 +141,118 @@ public struct TopologyGraph: Sendable, Codable, Equatable {
     public init(nodes: [TopologyNode] = [], links: [TopologyLink] = []) {
         self.nodes = nodes
         self.links = links
+    }
+
+    // MARK: - Graph Mutation Operations
+    public mutating func addNode(_ node: TopologyNode) {
+        if let idx = nodes.firstIndex(where: { $0.id == node.id }) {
+            nodes[idx] = node
+        } else {
+            nodes.append(node)
+        }
+    }
+
+    public mutating func removeNode(id: String) {
+        nodes.removeAll(where: { $0.id == id })
+        links.removeAll(where: { $0.sourceNodeId == id || $0.targetNodeId == id })
+    }
+
+    public mutating func addLink(_ link: TopologyLink) {
+        if let idx = links.firstIndex(where: { $0.id == link.id }) {
+            links[idx] = link
+        } else {
+            links.append(link)
+        }
+    }
+
+    public mutating func removeLink(id: String) {
+        links.removeAll(where: { $0.id == id })
+    }
+
+    // MARK: - Multi-Link & Curvature Indexing
+    public func linksBetween(nodeA: String, nodeB: String) -> [TopologyLink] {
+        links.filter {
+            ($0.sourceNodeId == nodeA && $0.targetNodeId == nodeB) ||
+            ($0.sourceNodeId == nodeB && $0.targetNodeId == nodeA)
+        }
+    }
+
+    public func curvatureOffset(for link: TopologyLink) -> CGFloat {
+        let parallelLinks = linksBetween(nodeA: link.sourceNodeId, nodeB: link.targetNodeId)
+        guard parallelLinks.count > 1,
+              let index = parallelLinks.firstIndex(where: { $0.id == link.id }) else {
+            return 0.0
+        }
+        let spread: CGFloat = 28.0
+        let count = CGFloat(parallelLinks.count)
+        let normalizedIndex = CGFloat(index) - (count - 1.0) / 2.0
+        return normalizedIndex * spread
+    }
+
+    // MARK: - Path Finding (BFS / Dijkstra Layer 2/3 Tracer)
+    public func findShortestPath(from sourceNodeId: String, to targetNodeId: String) -> (nodeIds: [String], linkIds: [String])? {
+        guard sourceNodeId != targetNodeId else { return ([sourceNodeId], []) }
+        guard nodes.contains(where: { $0.id == sourceNodeId }),
+              nodes.contains(where: { $0.id == targetNodeId }) else { return nil }
+
+        var queue: [String] = [sourceNodeId]
+        var visited: Set<String> = [sourceNodeId]
+        var previous: [String: (nodeId: String, linkId: String)] = [:]
+
+        while !queue.isEmpty {
+            let current = queue.removeFirst()
+            if current == targetNodeId {
+                var pathNodes: [String] = [targetNodeId]
+                var pathLinks: [String] = []
+                var step = targetNodeId
+                while let prev = previous[step] {
+                    pathNodes.append(prev.nodeId)
+                    pathLinks.append(prev.linkId)
+                    step = prev.nodeId
+                }
+                return (pathNodes.reversed(), pathLinks.reversed())
+            }
+
+            for link in links {
+                let neighbor: String?
+                if link.sourceNodeId == current {
+                    neighbor = link.targetNodeId
+                } else if link.targetNodeId == current {
+                    neighbor = link.sourceNodeId
+                } else {
+                    neighbor = nil
+                }
+
+                if let n = neighbor, !visited.contains(n) {
+                    visited.insert(n)
+                    previous[n] = (current, link.id)
+                    queue.append(n)
+                }
+            }
+        }
+        return nil
+    }
+
+    // MARK: - VLAN Membership Filtering
+    public func filterByVLAN(_ vlanId: Int) -> (matchingNodeIds: Set<String>, matchingLinkIds: Set<String>) {
+        var matchingNodes = Set<String>()
+        var matchingLinks = Set<String>()
+
+        for node in nodes {
+            if node.vlans.contains(vlanId) {
+                matchingNodes.insert(node.id)
+            }
+        }
+
+        for link in links {
+            if link.vlanId == vlanId || link.vlanTrunkAllowed.contains(vlanId) {
+                matchingLinks.insert(link.id)
+                matchingNodes.insert(link.sourceNodeId)
+                matchingNodes.insert(link.targetNodeId)
+            }
+        }
+
+        return (matchingNodes, matchingLinks)
     }
 
     // MARK: - Auto-Layout Algorithms
