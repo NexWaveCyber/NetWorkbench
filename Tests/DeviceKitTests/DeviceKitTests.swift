@@ -28,20 +28,23 @@ struct DeviceKitTests {
         #expect(OUIResolver.resolve(mac: "00:00:01:dd:ee:ff") == nil)
 
         // Well-known home & enterprise router vendors
-        #expect(OUIResolver.resolve(mac: "68:7f:f0:55:35:45") == "Linksys / Belkin")
+        #expect(OUIResolver.resolve(mac: "68:7f:f0:55:35:45") == "TP-Link")
         #expect(OUIResolver.resolve(mac: "00:14:bf:12:34:56") == "Linksys")
+        #expect(OUIResolver.resolve(mac: "58:6d:8f:11:22:33") == "Linksys / Belkin")
         #expect(OUIResolver.resolve(mac: "50:c7:bf:11:22:33") == "TP-Link")
         #expect(OUIResolver.resolve(mac: "00:09:5b:aa:bb:cc") == "Netgear")
         #expect(OUIResolver.resolve(mac: "00:1e:8c:12:34:56") == "ASUS")
 
         #expect(OUIResolver.inferVendor(mac: "00:00:0c:00:00:00") == .cisco)
         #expect(OUIResolver.inferVendor(mac: "00:1c:73:00:00:00") == .arista)
-        #expect(OUIResolver.inferVendor(mac: "68:7f:f0:55:35:45") == .linksys)
+        #expect(OUIResolver.inferVendor(mac: "68:7f:f0:55:35:45") == .tpLink)
         #expect(OUIResolver.inferVendor(mac: "00:14:bf:11:22:33") == .linksys)
+        #expect(OUIResolver.inferVendor(mac: "58:6d:8f:11:22:33") == .linksys)
         #expect(OUIResolver.inferVendor(mac: "00:09:5b:aa:bb:cc") == .netgear)
         #expect(OUIResolver.inferVendor(mac: "50:c7:bf:11:22:33") == .tpLink)
         #expect(OUIResolver.inferVendor(mac: "00:1e:8c:11:22:33") == .asus)
         #expect(OUIResolver.inferVendor(fromName: "Linksys / Belkin") == .linksys)
+        #expect(OUIResolver.inferVendor(fromName: "TP-Link Systems Inc.") == .tpLink)
         #expect(OUIResolver.inferVendor(mac: "ff:ff:ff:ff:ff:ff") == .generic)
     }
 

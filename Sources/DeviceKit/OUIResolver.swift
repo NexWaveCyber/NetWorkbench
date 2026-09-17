@@ -202,6 +202,7 @@ public enum OUIResolver {
         "18D6C7": "TP-Link", "30B5C2": "TP-Link", "3CE624": "TP-Link",
         "54AF97": "TP-Link", "6466B3": "TP-Link", "84D81B": "TP-Link",
         "98DE77": "TP-Link", "B09575": "TP-Link", "9C5322": "TP-Link",
+        "687FF0": "TP-Link",
 
         // Netgear
         "00095B": "Netgear", "00146C": "Netgear", "001F33": "Netgear",
@@ -216,7 +217,7 @@ public enum OUIResolver {
         "002129": "Linksys", "00226B": "Linksys", "002369": "Linksys", "00259C": "Linksys",
         "149182": "Linksys / Belkin", "20AA4B": "Linksys / Belkin", "24F5A2": "Linksys / Belkin",
         "302303": "Linksys / Belkin", "3476C5": "Linksys / Belkin", "48F8B3": "Linksys / Belkin",
-        "586D8F": "Linksys / Belkin", "60334B": "Linksys / Belkin", "687FF0": "Linksys / Belkin",
+        "586D8F": "Linksys / Belkin", "60334B": "Linksys / Belkin",
         "C4411E": "Linksys / Belkin", "E89F80": "Linksys / Belkin",
         "EC1A59": "Belkin", "08863B": "Belkin", "94103E": "Belkin", "B4750E": "Belkin",
 
