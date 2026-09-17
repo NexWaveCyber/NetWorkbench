@@ -1555,6 +1555,12 @@ struct RFSpectrumCanvasView: View {
 
     @State private var hoveredAP: NearbyAP? = nil
     @State private var hoverLocation: CGPoint = .zero
+    @State private var isHovering: Bool = false
+
+    private let leftMargin: CGFloat = 55.0
+    private let rightMargin: CGFloat = 25.0
+    private let topMargin: CGFloat = 30.0
+    private let bottomMargin: CGFloat = 32.0
 
     private var domain: (minFreq: Double, maxFreq: Double) {
         switch band {
@@ -1591,179 +1597,332 @@ struct RFSpectrumCanvasView: View {
         }
     }
 
-    var body: some View {
-        let currentDomain = domain
-        let channels = standardChannels
-        ZStack {
-            Canvas { context, size in
-                let leftMargin: CGFloat = 55.0
-                let rightMargin: CGFloat = 25.0
-                let topMargin: CGFloat = 30.0
-                let bottomMargin: CGFloat = 32.0
+    private var apsInBand: [NearbyAP] {
+        var aps = networks.filter { $0.band == band }
 
-                let drawableW = size.width - leftMargin - rightMargin
-                let drawableH = size.height - topMargin - bottomMargin
-                let baseLineY = size.height - bottomMargin
+        if let link = currentLink, link.band == band {
+            if let idx = aps.firstIndex(where: { $0.isCurrentAssociation || $0.bssid.lowercased() == link.bssid.lowercased() }) {
+                let existing = aps[idx]
+                aps[idx] = NearbyAP(
+                    ssid: link.ssid,
+                    bssid: link.bssid,
+                    vendorName: link.vendorName ?? existing.vendorName,
+                    channel: link.channel,
+                    band: link.band,
+                    channelWidth: link.channelWidth,
+                    rssi: link.rssi,
+                    noise: link.noise,
+                    security: link.security,
+                    phyMode: link.phyMode.displayName,
+                    isCurrentAssociation: true
+                )
+            } else {
+                aps.append(
+                    NearbyAP(
+                        ssid: link.ssid,
+                        bssid: link.bssid,
+                        vendorName: link.vendorName,
+                        channel: link.channel,
+                        band: link.band,
+                        channelWidth: link.channelWidth,
+                        rssi: link.rssi,
+                        noise: link.noise,
+                        security: link.security,
+                        phyMode: link.phyMode.displayName,
+                        isCurrentAssociation: true
+                    )
+                )
+            }
+        }
 
-                func xFor(freq: Double) -> CGFloat {
-                    let ratio = (freq - currentDomain.minFreq) / (currentDomain.maxFreq - currentDomain.minFreq)
-                    return leftMargin + CGFloat(ratio) * drawableW
-                }
+        return aps.sorted { a, _ in !a.isCurrentAssociation }
+    }
 
-                func yFor(signal: Double) -> CGFloat {
-                    let clamped = max(-100.0, min(-20.0, signal))
-                    let ratio = (clamped - (-100.0)) / (-20.0 - (-100.0))
-                    return baseLineY - CGFloat(ratio) * drawableH
-                }
+    private func drawableW(for size: CGSize) -> CGFloat {
+        max(10, size.width - leftMargin - rightMargin)
+    }
 
-                // 1. Draw horizontal dBm reference grid lines
-                let gridLevels: [(dBm: Double, label: String)] = [
-                    (-30, "-30 dBm"),
-                    (-50, "-50 dBm"),
-                    (-70, "-70 dBm"),
-                    (-85, "-85 dBm")
-                ]
+    private func drawableH(for size: CGSize) -> CGFloat {
+        max(10, size.height - topMargin - bottomMargin)
+    }
 
-                for grid in gridLevels {
-                    let y = yFor(signal: grid.dBm)
-                    var line = Path()
-                    line.move(to: CGPoint(x: leftMargin, y: y))
-                    line.addLine(to: CGPoint(x: size.width - rightMargin, y: y))
-                    context.stroke(line, with: .color(Color.primary.opacity(0.08)), style: StrokeStyle(lineWidth: 1, dash: [4, 4]))
+    private func baseLineY(for size: CGSize) -> CGFloat {
+        size.height - bottomMargin
+    }
 
-                    let text = Text(grid.label)
-                        .font(.system(size: 9, weight: .semibold, design: .monospaced))
-                        .foregroundColor(Color.secondary.opacity(0.6))
-                    context.draw(text, at: CGPoint(x: 28, y: y))
-                }
+    private func xFor(freq: Double, size: CGSize) -> CGFloat {
+        let d = domain
+        let clampedFreq = max(d.minFreq, min(d.maxFreq, freq))
+        let ratio = (clampedFreq - d.minFreq) / (d.maxFreq - d.minFreq)
+        return leftMargin + CGFloat(ratio) * drawableW(for: size)
+    }
 
-                // 2. Draw channel vertical grid ticks & labels
-                for chInfo in channels {
-                    let x = xFor(freq: chInfo.freq)
-                    if x >= leftMargin && x <= (size.width - rightMargin) {
-                        var vline = Path()
-                        vline.move(to: CGPoint(x: x, y: topMargin))
-                        vline.addLine(to: CGPoint(x: x, y: baseLineY))
-                        context.stroke(vline, with: .color(Color.primary.opacity(0.05)), lineWidth: 1)
+    private func yFor(signal: Double, size: CGSize) -> CGFloat {
+        let clamped = max(-100.0, min(-20.0, signal))
+        let ratio = (clamped - (-100.0)) / (-20.0 - (-100.0))
+        return baseLineY(for: size) - CGFloat(ratio) * drawableH(for: size)
+    }
 
-                        let chText = Text(chInfo.label)
-                            .font(.system(size: 9, weight: .bold, design: .monospaced))
-                            .foregroundColor(Color.secondary)
-                        context.draw(chText, at: CGPoint(x: x, y: baseLineY + 14))
+    private func findAP(at location: CGPoint, in aps: [NearbyAP], size: CGSize) -> NearbyAP? {
+        let base = baseLineY(for: size)
+        guard location.x >= leftMargin - 5 && location.x <= (size.width - rightMargin + 5) &&
+              location.y >= topMargin - 15 && location.y <= base + 15 else {
+            return nil
+        }
+
+        var bestMatch: (ap: NearbyAP, score: CGFloat)? = nil
+
+        for ap in aps {
+            let span = ap.frequencySpanMHz
+            let xL = xFor(freq: span.lowerBound, size: size)
+            let xR = xFor(freq: span.upperBound, size: size)
+            let xC = xFor(freq: ap.centerFrequencyMHz, size: size)
+            guard xR > xL + 2 else { continue }
+
+            let isConn = ap.isCurrentAssociation
+            let sig = Double(isConn ? (currentLink?.rssi ?? ap.rssi ?? -50) : (ap.rssi ?? -85))
+            let yPeak = yFor(signal: sig, size: size)
+
+            let halfSpan = max(4.0, (xR - xL) / 2.0)
+            let dx = abs(location.x - xC)
+
+            if dx <= halfSpan + 8.0 {
+                let u = min(1.0, dx / halfSpan)
+                let curveY = yPeak + (base - yPeak) * (u * u)
+
+                let distFromPeak = hypot(location.x - xC, location.y - yPeak)
+                let isInsideCurve = location.y >= (curveY - 18) && location.y <= (base + 8)
+
+                if distFromPeak < 32 || isInsideCurve {
+                    let score = distFromPeak - (isConn ? 120 : 0)
+                    if bestMatch == nil || score < bestMatch!.score {
+                        bestMatch = (ap, score)
                     }
                 }
+            }
+        }
 
-                // 3. Draw Parabolic Curves for APs in this band
-                var apsInBand = networks.filter { $0.band == band }
+        return bestMatch?.ap
+    }
 
-                // Ensure active connected association is always present and updated with live telemetry
-                if let link = currentLink, link.band == band {
-                    if let idx = apsInBand.firstIndex(where: { $0.isCurrentAssociation || $0.bssid.lowercased() == link.bssid.lowercased() }) {
-                        let existing = apsInBand[idx]
-                        apsInBand[idx] = NearbyAP(
-                            ssid: link.ssid,
-                            bssid: link.bssid,
-                            vendorName: link.vendorName ?? existing.vendorName,
-                            channel: link.channel,
-                            band: link.band,
-                            channelWidth: link.channelWidth,
-                            rssi: link.rssi,
-                            noise: link.noise,
-                            security: link.security,
-                            phyMode: link.phyMode.displayName,
-                            isCurrentAssociation: true
+    var body: some View {
+        let channels = standardChannels
+        let aps = apsInBand
+
+        GeometryReader { geo in
+            let size = geo.size
+            let base = baseLineY(for: size)
+
+            ZStack {
+                Canvas { context, canvasSize in
+                    // 1. Draw horizontal dBm reference grid lines
+                    let gridLevels: [(dBm: Double, label: String)] = [
+                        (-30, "-30 dBm"),
+                        (-50, "-50 dBm"),
+                        (-70, "-70 dBm"),
+                        (-85, "-85 dBm")
+                    ]
+
+                    for grid in gridLevels {
+                        let y = yFor(signal: grid.dBm, size: canvasSize)
+                        var line = Path()
+                        line.move(to: CGPoint(x: leftMargin, y: y))
+                        line.addLine(to: CGPoint(x: canvasSize.width - rightMargin, y: y))
+                        context.stroke(line, with: .color(Color.primary.opacity(0.08)), style: StrokeStyle(lineWidth: 1, dash: [4, 4]))
+
+                        let text = Text(grid.label)
+                            .font(.system(size: 9, weight: .semibold, design: .monospaced))
+                            .foregroundColor(Color.secondary.opacity(0.6))
+                        context.draw(text, at: CGPoint(x: 28, y: y))
+                    }
+
+                    // 2. Draw channel vertical grid ticks & labels
+                    for chInfo in channels {
+                        let x = xFor(freq: chInfo.freq, size: canvasSize)
+                        if x >= leftMargin && x <= (canvasSize.width - rightMargin) {
+                            var vline = Path()
+                            vline.move(to: CGPoint(x: x, y: topMargin))
+                            vline.addLine(to: CGPoint(x: x, y: base))
+                            context.stroke(vline, with: .color(Color.primary.opacity(0.05)), lineWidth: 1)
+
+                            let chText = Text(chInfo.label)
+                                .font(.system(size: 9, weight: .bold, design: .monospaced))
+                                .foregroundColor(Color.secondary)
+                            context.draw(chText, at: CGPoint(x: x, y: base + 14))
+                        }
+                    }
+
+                    // 3. Draw Watermark if no APs in band
+                    if aps.isEmpty {
+                        let emptyMsg = Text("No \(band.displayName) BSSIDs detected in range.\nClick 'Scan Spectrum' or switch frequency bands.")
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundColor(Color.secondary.opacity(0.6))
+                        context.draw(emptyMsg, at: CGPoint(x: canvasSize.width / 2, y: canvasSize.height / 2))
+                    }
+
+                    // 4. Draw Parabolic Curves for APs in this band
+                    for ap in aps {
+                        let isConn = ap.isCurrentAssociation
+                        let isHovered = (hoveredAP?.bssid == ap.bssid)
+                        let span = ap.frequencySpanMHz
+                        let xL = xFor(freq: span.lowerBound, size: canvasSize)
+                        let xR = xFor(freq: span.upperBound, size: canvasSize)
+                        let xC = xFor(freq: ap.centerFrequencyMHz, size: canvasSize)
+                        guard xR > xL + 2 else { continue }
+
+                        let sig = Double(isConn ? (currentLink?.rssi ?? ap.rssi ?? -50) : (ap.rssi ?? -85))
+                        let yPeak = yFor(signal: sig, size: canvasSize)
+
+                        var curve = Path()
+                        curve.move(to: CGPoint(x: xL, y: base))
+                        // Ascending cubic bezier
+                        curve.addCurve(
+                            to: CGPoint(x: xC, y: yPeak),
+                            control1: CGPoint(x: xL + (xC - xL) * 0.35, y: base),
+                            control2: CGPoint(x: xC - (xC - xL) * 0.25, y: yPeak)
                         )
-                    } else {
-                        apsInBand.append(
-                            NearbyAP(
-                                ssid: link.ssid,
-                                bssid: link.bssid,
-                                vendorName: link.vendorName,
-                                channel: link.channel,
-                                band: link.band,
-                                channelWidth: link.channelWidth,
-                                rssi: link.rssi,
-                                noise: link.noise,
-                                security: link.security,
-                                phyMode: link.phyMode.displayName,
-                                isCurrentAssociation: true
+                        // Descending cubic bezier
+                        curve.addCurve(
+                            to: CGPoint(x: xR, y: base),
+                            control1: CGPoint(x: xC + (xR - xC) * 0.25, y: yPeak),
+                            control2: CGPoint(x: xR - (xR - xC) * 0.35, y: base)
+                        )
+                        curve.closeSubpath()
+
+                        let curveColor = isConn ? Theme.cyanPulse : Color(hex: ap.band.badgeColor)
+
+                        // Fill gradient
+                        context.fill(
+                            curve,
+                            with: .linearGradient(
+                                Gradient(colors: [
+                                    curveColor.opacity(isConn ? 0.45 : (isHovered ? 0.35 : 0.18)),
+                                    curveColor.opacity(0.03)
+                                ]),
+                                startPoint: CGPoint(x: xC, y: yPeak),
+                                endPoint: CGPoint(x: xC, y: base)
                             )
                         )
+
+                        // Hover plumb line & highlight
+                        if isHovered {
+                            var plumbLine = Path()
+                            plumbLine.move(to: CGPoint(x: xC, y: yPeak))
+                            plumbLine.addLine(to: CGPoint(x: xC, y: base))
+                            context.stroke(plumbLine, with: .color(Theme.solarAmber.opacity(0.8)), style: StrokeStyle(lineWidth: 1, dash: [3, 3]))
+
+                            context.stroke(curve, with: .color(Theme.solarAmber), lineWidth: 2.2)
+                        }
+
+                        // Stroke
+                        if isConn {
+                            // Outer glow
+                            context.stroke(curve, with: .color(Theme.cyanPulse.opacity(0.35)), lineWidth: 5)
+                            context.stroke(curve, with: .color(Theme.neonCyan), lineWidth: 2.5)
+
+                            // Peak indicator diamond
+                            var diamond = Path()
+                            diamond.move(to: CGPoint(x: xC, y: yPeak - 5))
+                            diamond.addLine(to: CGPoint(x: xC + 4, y: yPeak))
+                            diamond.addLine(to: CGPoint(x: xC, y: yPeak + 5))
+                            diamond.addLine(to: CGPoint(x: xC - 4, y: yPeak))
+                            diamond.closeSubpath()
+                            context.fill(diamond, with: .color(Theme.neonCyan))
+
+                            // Peak text label
+                            let labelText = Text("CONNECTED • \(ap.ssid) (\(Int(sig)) dBm)")
+                                .font(.system(size: 9, weight: .heavy, design: .monospaced))
+                                .foregroundColor(Theme.neonCyan)
+                            context.draw(labelText, at: CGPoint(x: xC, y: max(14, yPeak - 12)))
+                        } else {
+                            if !isHovered {
+                                context.stroke(curve, with: .color(curveColor.opacity(0.85)), lineWidth: 1.5)
+                            }
+
+                            // Peak label for distinct networks
+                            let apLabel = Text("\(ap.ssid) (\(Int(sig)))")
+                                .font(.system(size: 8, weight: .semibold, design: .monospaced))
+                                .foregroundColor(isHovered ? Theme.solarAmber : Color.primary.opacity(0.8))
+                            context.draw(apLabel, at: CGPoint(x: xC, y: max(12, yPeak - 10)))
+                        }
                     }
                 }
 
-                // Sort: non-connected first, connected AP last so it renders on top
-                let sortedAPs = apsInBand.sorted { a, _ in !a.isCurrentAssociation }
+                // 5. Floating Interactive Hover Tooltip Card
+                if let ap = hoveredAP, isHovering {
+                    let cardW: CGFloat = 220
+                    let cardH: CGFloat = 85
+                    let posX = min(max(cardW / 2 + 10, hoverLocation.x), size.width - cardW / 2 - 10)
+                    let posY = hoverLocation.y > 105 ? (hoverLocation.y - cardH / 2 - 20) : (hoverLocation.y + cardH / 2 + 25)
 
-                for ap in sortedAPs {
-                    let isConn = ap.isCurrentAssociation
-                    let span = ap.frequencySpanMHz
-                    let xL = xFor(freq: span.lowerBound)
-                    let xR = xFor(freq: span.upperBound)
-                    let xC = xFor(freq: ap.centerFrequencyMHz)
-                    let sig = Double(isConn ? (currentLink?.rssi ?? ap.rssi ?? -50) : (ap.rssi ?? -85))
-                    let yPeak = yFor(signal: sig)
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack(spacing: 6) {
+                            Circle()
+                                .fill(ap.isCurrentAssociation ? Theme.signalEmerald : Color(hex: ap.band.badgeColor))
+                                .frame(width: 8, height: 8)
+                            Text(ap.ssid)
+                                .font(.system(size: 11, weight: .bold))
+                                .foregroundColor(.white)
+                                .lineLimit(1)
+                            if ap.isCurrentAssociation {
+                                Text("CONNECTED")
+                                    .font(.system(size: 7.5, weight: .black))
+                                    .foregroundColor(Theme.neonCyan)
+                                    .padding(.horizontal, 4)
+                                    .padding(.vertical, 1)
+                                    .background(Theme.neonCyan.opacity(0.18))
+                                    .cornerRadius(3)
+                            }
+                            Spacer(minLength: 0)
+                        }
 
-                    var curve = Path()
-                    curve.move(to: CGPoint(x: xL, y: baseLineY))
-                    // Ascending cubic bezier
-                    curve.addCurve(
-                        to: CGPoint(x: xC, y: yPeak),
-                        control1: CGPoint(x: xL + (xC - xL) * 0.35, y: baseLineY),
-                        control2: CGPoint(x: xC - (xC - xL) * 0.25, y: yPeak)
-                    )
-                    // Descending cubic bezier
-                    curve.addCurve(
-                        to: CGPoint(x: xR, y: baseLineY),
-                        control1: CGPoint(x: xC + (xR - xC) * 0.25, y: yPeak),
-                        control2: CGPoint(x: xR - (xR - xC) * 0.35, y: baseLineY)
-                    )
-                    curve.closeSubpath()
+                        HStack(spacing: 8) {
+                            Label("\(ap.rssi ?? -85) dBm", systemImage: "antenna.radiowaves.left.and.right")
+                            Label("Ch \(ap.channel) • \(ap.channelWidth.rawValue)", systemImage: "waveform.path")
+                        }
+                        .font(.system(size: 9.5, weight: .semibold, design: .monospaced))
+                        .foregroundColor(.secondary)
 
-                    let curveColor = isConn ? Theme.cyanPulse : Color(hex: ap.band.badgeColor)
-
-                    // Fill gradient
-                    context.fill(
-                        curve,
-                        with: .linearGradient(
-                            Gradient(colors: [
-                                curveColor.opacity(isConn ? 0.45 : 0.18),
-                                curveColor.opacity(0.03)
-                            ]),
-                            startPoint: CGPoint(x: xC, y: yPeak),
-                            endPoint: CGPoint(x: xC, y: baseLineY)
-                        )
-                    )
-
-                    // Stroke
-                    if isConn {
-                        // Outer glow
-                        context.stroke(curve, with: .color(Theme.cyanPulse.opacity(0.35)), lineWidth: 5)
-                        context.stroke(curve, with: .color(Theme.neonCyan), lineWidth: 2.5)
-
-                        // Peak indicator diamond
-                        var diamond = Path()
-                        diamond.move(to: CGPoint(x: xC, y: yPeak - 5))
-                        diamond.addLine(to: CGPoint(x: xC + 4, y: yPeak))
-                        diamond.addLine(to: CGPoint(x: xC, y: yPeak + 5))
-                        diamond.addLine(to: CGPoint(x: xC - 4, y: yPeak))
-                        diamond.closeSubpath()
-                        context.fill(diamond, with: .color(Theme.neonCyan))
-
-                        // Peak text label
-                        let labelText = Text("CONNECTED • \(ap.ssid) (\(Int(sig)) dBm)")
-                            .font(.system(size: 9, weight: .heavy, design: .monospaced))
-                            .foregroundColor(Theme.neonCyan)
-                        context.draw(labelText, at: CGPoint(x: xC, y: max(14, yPeak - 12)))
-                    } else {
-                        context.stroke(curve, with: .color(curveColor.opacity(0.85)), lineWidth: 1.5)
-
-                        // Peak label for distinct networks
-                        let apLabel = Text("\(ap.ssid) (\(Int(sig)))")
-                            .font(.system(size: 8, weight: .semibold, design: .monospaced))
-                            .foregroundColor(Color.primary.opacity(0.8))
-                        context.draw(apLabel, at: CGPoint(x: xC, y: max(12, yPeak - 10)))
+                        HStack(spacing: 6) {
+                            Text(ap.vendorName ?? "Unknown Vendor")
+                                .font(.system(size: 9))
+                                .foregroundColor(.secondary.opacity(0.9))
+                                .lineLimit(1)
+                            Spacer(minLength: 0)
+                            Text("Click to Inspect ↗")
+                                .font(.system(size: 9, weight: .bold))
+                                .foregroundColor(Theme.neonCyan)
+                        }
                     }
+                    .padding(10)
+                    .frame(width: cardW)
+                    .background(.ultraThinMaterial)
+                    .background(Theme.cardBackground.opacity(0.92))
+                    .cornerRadius(8)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8)
+                            .stroke(ap.isCurrentAssociation ? Theme.neonCyan.opacity(0.6) : Theme.solarAmber.opacity(0.5), lineWidth: 1)
+                    )
+                    .shadow(color: .black.opacity(0.4), radius: 10, x: 0, y: 5)
+                    .position(x: posX, y: posY)
+                    .allowsHitTesting(false)
+                }
+            }
+            .contentShape(Rectangle())
+            .onContinuousHover { phase in
+                switch phase {
+                case .active(let loc):
+                    hoverLocation = loc
+                    isHovering = true
+                    hoveredAP = findAP(at: loc, in: aps, size: size)
+                case .ended:
+                    isHovering = false
+                    hoveredAP = nil
+                }
+            }
+            .onTapGesture {
+                if let ap = hoveredAP {
+                    selectedAP = ap
                 }
             }
         }

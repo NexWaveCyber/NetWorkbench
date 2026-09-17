@@ -6,6 +6,15 @@ public enum WiFiBand: String, Sendable, Codable, CaseIterable {
     case ghz6 = "6 GHz (Wi-Fi 6E/7)"
     case unknown = "Unknown"
 
+    public var displayName: String {
+        switch self {
+        case .ghz2_4: return "2.4 GHz"
+        case .ghz5:   return "5 GHz"
+        case .ghz6:   return "6 GHz"
+        case .unknown: return "Unknown"
+        }
+    }
+
     public var badgeColor: String {
         switch self {
         case .ghz2_4: return "#F59E0B" // Amber
