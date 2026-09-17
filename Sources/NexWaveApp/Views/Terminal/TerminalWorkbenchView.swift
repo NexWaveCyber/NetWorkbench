@@ -229,7 +229,7 @@ public struct TerminalWorkbenchView: View {
             // Collapsible MobaXterm Session Tree & Quick Connect Sidebar
             if state.terminalManager.isSidebarExpanded {
                 sessionTreeSidebar
-                    .frame(width: 260)
+                    .frame(width: 275)
                 Divider().overlay(Theme.borderLight)
             }
 
@@ -2918,27 +2918,59 @@ public struct TerminalWorkbenchView: View {
             .overlay(RoundedRectangle(cornerRadius: 6).stroke(Theme.borderLight, lineWidth: 1))
 
             // Protocol Chips
-            HStack(spacing: 4) {
+            HStack(spacing: 3) {
                 ForEach(["ALL", "SSH", "TELNET", "SERIAL", "LOCAL"], id: \.self) { proto in
                     let isSelected = selectedProtocolFilter == proto
-                    Button(action: { selectedProtocolFilter = proto }) {
+                    Button(action: {
+                        withAnimation(.easeInOut(duration: 0.15)) {
+                            selectedProtocolFilter = proto
+                        }
+                    }) {
                         Text(proto)
-                            .font(.system(size: 8, weight: isSelected ? .bold : .medium))
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 2)
+                            .font(.system(size: 8, weight: isSelected ? .bold : .semibold))
+                            .lineLimit(1)
+                            .fixedSize(horizontal: true, vertical: false)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 3)
                             .background(isSelected ? Theme.neonCyan.opacity(0.2) : Theme.cardBackground.opacity(0.5))
                             .foregroundStyle(isSelected ? Theme.neonCyan : .secondary)
                             .clipShape(Capsule())
-                            .overlay(Capsule().stroke(isSelected ? Theme.neonCyan.opacity(0.5) : Theme.borderLight, lineWidth: 0.5))
+                            .overlay(Capsule().stroke(isSelected ? Theme.neonCyan.opacity(0.6) : Theme.borderLight, lineWidth: 0.5))
                     }
                     .buttonStyle(.plain)
                 }
-                Spacer()
-                if !sessionSearchQuery.isEmpty || selectedProtocolFilter != "ALL" {
-                    Text("\(filteredProfiles.count) found")
-                        .font(.system(size: 9))
+            }
+
+            // Filter Active / Match Count Indicator
+            if !sessionSearchQuery.isEmpty || selectedProtocolFilter != "ALL" {
+                HStack(spacing: 4) {
+                    Image(systemName: "line.3.horizontal.decrease.circle.fill")
+                        .font(.system(size: 8.5))
+                        .foregroundStyle(Theme.neonCyan)
+                    Text("\(filteredProfiles.count) \(filteredProfiles.count == 1 ? "session" : "sessions") found")
+                        .font(.system(size: 8.5, weight: .medium))
                         .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                    Spacer()
+                    Button(action: {
+                        withAnimation(.easeInOut(duration: 0.15)) {
+                            sessionSearchQuery = ""
+                            selectedProtocolFilter = "ALL"
+                        }
+                    }) {
+                        HStack(spacing: 2) {
+                            Text("Clear")
+                            Image(systemName: "xmark")
+                                .font(.system(size: 7, weight: .bold))
+                        }
+                        .font(.system(size: 8.5, weight: .semibold))
+                        .foregroundStyle(Theme.neonCyan)
+                    }
+                    .buttonStyle(.plain)
                 }
+                .padding(.horizontal, 2)
+                .padding(.top, 1)
+                .transition(.opacity)
             }
         }
         .padding(8)
