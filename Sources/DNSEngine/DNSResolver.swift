@@ -14,9 +14,10 @@ public final class DNSResolver: Sendable {
         let startTime = DispatchTime.now()
 
         let isIPLiteral = IPAddress.IPv4(hostname) != nil || IPAddress.IPv6(hostname) != nil
-        let isLocal = hostname.lowercased() == "localhost" || hostname.hasSuffix(".local") || isIPLiteral
+        let localSuffixes = [".local", ".internal", ".corp", ".lan", ".home.arpa", ".home", ".test", ".example", ".invalid"]
+        let isLocal = hostname.lowercased() == "localhost" || isIPLiteral || localSuffixes.contains { hostname.lowercased().hasSuffix($0) }
 
-        // Local or IP addresses: POSIX lookup only
+        // Local, intranet, or IP addresses: POSIX system lookup only
         if isLocal {
             return await resolvePOSIX(hostname: hostname, profile: profile, startTime: startTime)
         }
@@ -40,8 +41,14 @@ public final class DNSResolver: Sendable {
 
         let (posixResult, aRes, aaaaRes, mxRes, txtRes) = await (posixTask, aTask, aaaaTask, mxTask, txtTask)
 
-        // If DoH succeeded, merge rich DNS records
-        var combinedRecords: [DNSRecord] = []
+        // Check if POSIX resolved internal RFC 1918 private addresses (Split-Horizon DNS)
+        let isSplitHorizonPrivate = !posixResult.ipv4Addresses.isEmpty && posixResult.ipv4Addresses.allSatisfy { ip in
+            let s = ip.description
+            return s.starts(with: "10.") || s.starts(with: "192.168.") || s.starts(with: "172.16.") || s.starts(with: "172.31.") || s.starts(with: "127.")
+        }
+
+        // Merge rich DNS records
+        var combinedRecords: [DNSRecord] = posixResult.records
         var v4List = posixResult.ipv4Addresses
         var v6List = posixResult.ipv6Addresses
         var isDNSSEC = aRes.isDNSSECValidated || aaaaRes.isDNSSECValidated
@@ -73,15 +80,16 @@ public final class DNSResolver: Sendable {
                 combinedRecords.append(rec)
             }
 
-            // Extract IPs if not yet present
-            if recordType == .a, let v4 = IPAddress.IPv4(ans.data), !v4List.contains(v4) {
-                v4List.append(v4)
-            } else if recordType == .aaaa, let v6 = IPAddress.IPv6(ans.data), !v6List.contains(v6) {
-                v6List.append(v6)
+            // Extract IPs only if NOT a split-horizon private domain
+            if !isSplitHorizonPrivate {
+                if recordType == .a, let v4 = IPAddress.IPv4(ans.data), !v4List.contains(v4) {
+                    v4List.append(v4)
+                } else if recordType == .aaaa, let v6 = IPAddress.IPv6(ans.data), !v6List.contains(v6) {
+                    v6List.append(v6)
+                }
             }
         }
 
-        // If DoH had answers, return enriched result
         let elapsedMs = Double(DispatchTime.now().uptimeNanoseconds - startTime.uptimeNanoseconds) / 1_000_000.0
         if !combinedRecords.isEmpty {
             return DNSResolutionResult(

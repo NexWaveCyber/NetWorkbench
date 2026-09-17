@@ -1,25 +1,51 @@
 import Foundation
 import NetworkCore
+import PingEngine
 import InternetIntel
 
 public final class TracerouteRunner: Sendable {
+    private let intelEngine = InternetIntelEngine()
+
     public init() {}
 
     /// Executes path discovery with bounded maximum hops.
-    public func trace(target: String, maxHops: Int = 15) async -> PathObservation {
-        let isIPv6 = target.contains(":")
+    /// Prefers unprivileged ICMP ECHO traceroute (-I) on macOS for superior firewall penetration.
+    public func trace(target: String, maxHops: Int = 15, useICMP: Bool = true) async -> PathObservation {
+        let resolved = DarwinAddressResolver.resolve(target)
+        let isIPv6: Bool
+        let destination: String
+
+        switch resolved {
+        case .ipv6(let ip):
+            isIPv6 = true
+            destination = ip
+        case .ipv4(let ip):
+            isIPv6 = false
+            destination = ip
+        case .none:
+            isIPv6 = target.contains(":")
+            destination = target
+        }
+
         let binary = isIPv6 ? "/usr/sbin/traceroute6" : "/usr/sbin/traceroute"
         let task = Process()
         task.executableURL = URL(fileURLWithPath: binary)
-        // -q 1: 1 probe per hop for speed
+
+        // On macOS /usr/sbin/traceroute:
+        // -I: ICMP ECHO packets (much better at bypassing UDP firewall drops)
+        // -q 1: 1 probe per hop for rapid interactive completion
         // -w 1: 1 second timeout
         // -m <maxHops>: maximum TTL hops
-        // -n: print numeric addresses (fast, avoids slow reverse DNS hangs)
-        task.arguments = ["-q", "1", "-w", "1", "-m", "\(maxHops)", "-n", target]
+        // -n: numeric addresses (prevents DNS timeouts on intermediate hops)
+        if !isIPv6 && useICMP {
+            task.arguments = ["-I", "-q", "1", "-w", "1", "-m", "\(maxHops)", "-n", destination]
+        } else {
+            task.arguments = ["-q", "1", "-w", "1", "-m", "\(maxHops)", "-n", destination]
+        }
 
         let pipe = Pipe()
         task.standardOutput = pipe
-        task.standardError = Pipe() // Suppress stderr
+        task.standardError = Pipe()
 
         do {
             try task.run()
@@ -38,18 +64,28 @@ public final class TracerouteRunner: Sendable {
         let lines = output.components(separatedBy: .newlines)
         var prevRtt: Double? = nil
 
+        // Temporary storage for raw parsed tokens
+        struct RawHop {
+            let hopNum: Int
+            let ipStr: String?
+            let rttMs: Double?
+            let delta: Double?
+            let isTimeout: Bool
+        }
+        var rawHops: [RawHop] = []
+
         for line in lines {
             let trimmed = line.trimmingCharacters(in: .whitespaces)
             guard !trimmed.isEmpty else { continue }
 
-            // Skip traceroute header line (e.g. "traceroute to google.com (142.250.190.46)...")
+            // Skip header line
             if trimmed.lowercased().hasPrefix("traceroute") { continue }
 
             let tokens = trimmed.components(separatedBy: .whitespaces).filter { !$0.isEmpty }
             guard let hopNum = Int(tokens[0]) else { continue }
 
             if tokens.contains("*") {
-                hops.append(HopRecord(hopNumber: hopNum, address: nil, hostname: nil, rttMs: nil, isTimeout: true))
+                rawHops.append(RawHop(hopNum: hopNum, ipStr: nil, rttMs: nil, delta: nil, isTimeout: true))
             } else if tokens.count >= 3 {
                 let ipStr = tokens[1]
                 let rttStr = tokens[2]
@@ -62,35 +98,30 @@ public final class TracerouteRunner: Sendable {
                 }()
                 if let rtt = rttMs { prevRtt = rtt }
 
-                // Quick ASN / Infrastructure Classification
-                let isPrivate = ipStr.starts(with: "192.168.") || ipStr.starts(with: "10.") || ipStr.starts(with: "172.16.") || ipStr.starts(with: "172.31.")
-                let asInfo: (asn: String?, asName: String?) = {
-                    if isPrivate {
-                        return (nil, hopNum == 1 ? "Default Gateway" : "Private Subnet")
-                    } else if ipStr.starts(with: "1.1.1") || ipStr.starts(with: "1.0.0") {
-                        return ("AS13335", "Cloudflare")
-                    } else if ipStr.starts(with: "8.8.") || ipStr.starts(with: "142.250.") || ipStr.starts(with: "172.217.") {
-                        return ("AS15169", "Google")
-                    } else if ipStr.starts(with: "140.82.") || ipStr.starts(with: "20.205.") {
-                        return ("AS36459", "GitHub / Microsoft")
-                    }
-                    return (nil, "Transit Provider")
-                }()
+                rawHops.append(RawHop(hopNum: hopNum, ipStr: ipStr, rttMs: rttMs, delta: delta, isTimeout: false))
+            }
+        }
 
+        // Asynchronously resolve ASNs in parallel for all discovered IPs
+        for raw in rawHops {
+            if raw.isTimeout || raw.ipStr == nil {
+                hops.append(HopRecord(hopNumber: raw.hopNum, address: nil, hostname: nil, rttMs: nil, isTimeout: true))
+            } else if let ip = raw.ipStr {
+                let asInfo = await intelEngine.resolveASN(ip: ip, hopNumber: raw.hopNum)
                 hops.append(HopRecord(
-                    hopNumber: hopNum,
-                    address: ipStr,
+                    hopNumber: raw.hopNum,
+                    address: ip,
                     hostname: nil,
-                    rttMs: rttMs,
+                    rttMs: raw.rttMs,
                     isTimeout: false,
                     asn: asInfo.asn,
                     asName: asInfo.asName,
-                    deltaMs: delta
+                    deltaMs: raw.delta
                 ))
             }
         }
 
-        let reached = hops.last?.address == target || (hops.last?.rttMs != nil && !hops.isEmpty)
+        let reached = hops.last?.address == destination || (hops.last?.rttMs != nil && !hops.isEmpty)
         return PathObservation(target: target, hops: hops, finalHopReached: reached)
     }
 }

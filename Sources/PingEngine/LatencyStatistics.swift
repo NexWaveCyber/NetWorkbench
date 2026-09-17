@@ -15,12 +15,27 @@ public struct LatencyStatistics: Sendable, Hashable {
     public let jitterMs: Double
     public let rawSamples: [Double]
 
-    public init(samples: [Double], sentCount: Int) {
+    public enum ProbeProtocol: String, Sendable, Hashable, Codable {
+        case icmp = "ICMP"
+        case tcp = "TCP"
+    }
+
+    public let probeProtocol: ProbeProtocol
+    public let isFallback: Bool
+
+    public init(
+        samples: [Double],
+        sentCount: Int,
+        probeProtocol: ProbeProtocol = .icmp,
+        isFallback: Bool = false
+    ) {
         self.rawSamples = samples
         self.sent = sentCount
         self.received = samples.count
         self.lost = max(0, sentCount - samples.count)
         self.lossPercentage = sentCount > 0 ? (Double(self.lost) / Double(sentCount)) * 100.0 : 0.0
+        self.probeProtocol = probeProtocol
+        self.isFallback = isFallback
 
         guard !samples.isEmpty else {
             self.minMs = 0

@@ -190,14 +190,28 @@ public struct DiagnoseWorkspaceView: View {
                         .padding(12)
                     }
 
-                    // Recent History Recall Menu
-                    if !state.recentHistory.isEmpty {
+                    // Recent History & Fleet Device Recall Menu
+                    if !state.recentHistory.isEmpty || !state.managedDevices.isEmpty {
                         Menu {
-                            Text("Recent Targets").font(.caption)
-                            ForEach(state.recentHistory.prefix(8), id: \.id) { record in
-                                Button(record.target) {
-                                    state.updateTargetClassification(record.target)
-                                    triggerDiagnosis()
+                            if !state.managedDevices.isEmpty {
+                                Section("Managed Fleet Inventory") {
+                                    ForEach(state.managedDevices.prefix(6), id: \.id) { dev in
+                                        Button("\(dev.name) (\(dev.managementIP))") {
+                                            state.updateTargetClassification(dev.managementIP)
+                                            triggerDiagnosis()
+                                        }
+                                    }
+                                }
+                            }
+
+                            if !state.recentHistory.isEmpty {
+                                Section("Recent Targets") {
+                                    ForEach(state.recentHistory.prefix(8), id: \.id) { record in
+                                        Button(record.target) {
+                                            state.updateTargetClassification(record.target)
+                                            triggerDiagnosis()
+                                        }
+                                    }
                                 }
                             }
                         } label: {
@@ -206,7 +220,7 @@ public struct DiagnoseWorkspaceView: View {
                                 .foregroundStyle(.secondary)
                         }
                         .menuStyle(.borderlessButton)
-                        .help("Recall recent target")
+                        .help("Recall recent target or managed inventory device")
                     }
                 }
                 .padding(.horizontal, 12)
@@ -618,10 +632,35 @@ public struct DiagnoseWorkspaceView: View {
                 observationCard(title: "Layer 4: Transport & Latency", icon: "waveform.path.ecg", tint: Theme.neonCyan) {
                     if let lat = result.latency {
                         VStack(alignment: .leading, spacing: 6) {
-                            metricRow(label: "Median RTT (P50)", value: String(format: "%.1f ms", lat.medianMs))
-                            metricRow(label: "Min / Max / P95", value: "\(String(format: "%.1f", lat.minMs)) / \(String(format: "%.1f", lat.maxMs)) / \(String(format: "%.1f", lat.p95Ms)) ms")
-                            metricRow(label: "RFC 3550 Jitter", value: String(format: "%.1f ms", lat.jitterMs))
-                            metricRow(label: "Packet Loss", value: String(format: "%.0f%% (%d/%d)", lat.lossPercentage, lat.lost, lat.sent), isSuccess: lat.lossPercentage == 0)
+                            HStack {
+                                Text("Probe Protocol")
+                                    .font(.system(size: 12))
+                                    .foregroundStyle(.secondary)
+                                Spacer()
+                                HStack(spacing: 4) {
+                                    Circle()
+                                        .fill(lat.lossPercentage < 100 ? Theme.signalEmerald : Theme.solarAmber)
+                                        .frame(width: 5, height: 5)
+                                    Text(lat.probeProtocol == .icmp ? "ICMP Echo" : "TCP Syn")
+                                        .font(Theme.monoText(10.5, weight: .bold))
+                                }
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background(Color.primary.opacity(0.06))
+                                .clipShape(Capsule())
+                            }
+
+                            if lat.received > 0 {
+                                metricRow(label: "Median RTT (P50)", value: String(format: "%.1f ms", lat.medianMs))
+                                metricRow(label: "Min / Max / P95", value: "\(String(format: "%.1f", lat.minMs)) / \(String(format: "%.1f", lat.maxMs)) / \(String(format: "%.1f", lat.p95Ms)) ms")
+                                metricRow(label: "RFC 3550 Jitter", value: String(format: "%.1f ms", lat.jitterMs))
+                                metricRow(label: "Packet Loss", value: String(format: "%.0f%% (%d/%d)", lat.lossPercentage, lat.lost, lat.sent), isSuccess: lat.lossPercentage == 0)
+                            } else {
+                                metricRow(label: "ICMP Status", value: "100% Filtered / Dropped", isSuccess: false)
+                                if let tcp = result.tcp, tcp.isSuccess {
+                                    metricRow(label: "TCP Handshake", value: "\(String(format: "%.1f", tcp.latencyMs ?? 0)) ms (Service Open)", isSuccess: true)
+                                }
+                            }
                         }
                     } else {
                         Text("No latency samples available").font(.system(size: 12)).foregroundStyle(.secondary)
@@ -652,7 +691,27 @@ public struct DiagnoseWorkspaceView: View {
                             metricRow(label: "HTTP Status", value: "\(http.statusCode)", isSuccess: (200...399).contains(http.statusCode))
                             metricRow(label: "TTFB", value: http.ttfbMs != nil ? String(format: "%.1f ms", http.ttfbMs!) : "N/A")
                             if let cert = http.certificateInfo {
-                                metricRow(label: "Certificate Expiry", value: cert.daysUntilExpiry != nil ? "\(cert.daysUntilExpiry!) days" : "Valid", isSuccess: !cert.isExpired)
+                                if cert.isSelfSigned || cert.isUntrusted {
+                                    HStack {
+                                        Text("Certificate Trust")
+                                            .font(.system(size: 12))
+                                            .foregroundStyle(.secondary)
+                                        Spacer()
+                                        HStack(spacing: 3) {
+                                            Image(systemName: "exclamationmark.triangle.fill")
+                                                .font(.system(size: 8))
+                                            Text("Self-Signed / Untrusted")
+                                                .font(Theme.monoText(10, weight: .bold))
+                                        }
+                                        .padding(.horizontal, 6)
+                                        .padding(.vertical, 2)
+                                        .background(Theme.solarAmber.opacity(0.15))
+                                        .foregroundStyle(Theme.solarAmber)
+                                        .clipShape(Capsule())
+                                    }
+                                } else {
+                                    metricRow(label: "Certificate Expiry", value: cert.daysUntilExpiry != nil ? "\(cert.daysUntilExpiry!) days" : "Valid", isSuccess: !cert.isExpired)
+                                }
                             } else {
                                 metricRow(label: "Security", value: "Plaintext HTTP / None")
                             }
@@ -893,6 +952,18 @@ public struct DiagnoseWorkspaceView: View {
                                 .font(.system(size: 10, weight: .bold, design: .monospaced))
                                 .foregroundStyle(.secondary)
                             Spacer()
+                            if cert.isSelfSigned || cert.isUntrusted {
+                                HStack(spacing: 3) {
+                                    Image(systemName: "exclamationmark.shield.fill")
+                                    Text("Self-Signed / Untrusted")
+                                }
+                                .font(Theme.monoText(9.5, weight: .bold))
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background(Theme.solarAmber.opacity(0.15))
+                                .foregroundStyle(Theme.solarAmber)
+                                .clipShape(Capsule())
+                            }
                             if let proto = cert.protocolVersion {
                                 Text(proto)
                                     .font(Theme.monoText(9.5, weight: .bold))

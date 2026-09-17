@@ -82,17 +82,92 @@ public final class TCPPingProber: Sendable {
     }
 }
 
+public enum DarwinAddressResolver {
+    public enum TargetFamily: Sendable {
+        case ipv4(String)
+        case ipv6(String)
+    }
+
+    /// Resolves any host string (IPv4 literal, IPv6 literal, or FQDN) to its specific IP address and family.
+    public static func resolve(_ host: String) -> TargetFamily? {
+        let clean = host.trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: "[", with: "")
+            .replacingOccurrences(of: "]", with: "")
+
+        // Check if literal IPv6
+        if clean.contains(":") {
+            return .ipv6(clean)
+        }
+        // Check if literal IPv4
+        if IPAddress.IPv4(clean) != nil {
+            return .ipv4(clean)
+        }
+
+        // Hostname: resolve via POSIX getaddrinfo
+        var hints = addrinfo()
+        hints.ai_family = AF_UNSPEC
+        hints.ai_socktype = SOCK_STREAM
+        var res: UnsafeMutablePointer<addrinfo>?
+        guard getaddrinfo(clean, nil, &hints, &res) == 0, let head = res else {
+            return nil
+        }
+        defer { freeaddrinfo(head) }
+
+        var curr: UnsafeMutablePointer<addrinfo>? = head
+        var v6Fallback: String? = nil
+
+        while let c = curr {
+            if c.pointee.ai_family == AF_INET {
+                var buf = [CChar](repeating: 0, count: Int(INET_ADDRSTRLEN))
+                let sin = c.pointee.ai_addr.withMemoryRebound(to: sockaddr_in.self, capacity: 1) { $0.pointee }
+                var addr = sin.sin_addr
+                if inet_ntop(AF_INET, &addr, &buf, socklen_t(INET_ADDRSTRLEN)) != nil {
+                    return .ipv4(String(cString: buf))
+                }
+            } else if c.pointee.ai_family == AF_INET6 && v6Fallback == nil {
+                var buf = [CChar](repeating: 0, count: Int(INET6_ADDRSTRLEN))
+                let sin6 = c.pointee.ai_addr.withMemoryRebound(to: sockaddr_in6.self, capacity: 1) { $0.pointee }
+                var addr6 = sin6.sin6_addr
+                if inet_ntop(AF_INET6, &addr6, &buf, socklen_t(INET6_ADDRSTRLEN)) != nil {
+                    v6Fallback = String(cString: buf)
+                }
+            }
+            curr = c.pointee.ai_next
+        }
+
+        if let v6 = v6Fallback {
+            return .ipv6(v6)
+        }
+        return nil
+    }
+}
+
 /// Performs standard ICMP Echo probes using Darwin native ping or TCP fallback.
 public final class ICMPPingProber: Sendable {
     public init() {}
 
-    public func probe(host: String, timeoutSeconds: Double = 1.5) async -> ProbeResult {
-        let isIPv6 = host.contains(":")
+    public func probe(host: String, timeoutSeconds: Double = 1.5, allowTCPFallback: Bool = false) async -> ProbeResult {
+        let resolved = DarwinAddressResolver.resolve(host)
+        let isIPv6: Bool
+        let destination: String
+
+        switch resolved {
+        case .ipv6(let ip):
+            isIPv6 = true
+            destination = ip
+        case .ipv4(let ip):
+            isIPv6 = false
+            destination = ip
+        case .none:
+            isIPv6 = host.contains(":")
+            destination = host
+        }
+
         let binary = isIPv6 ? "/sbin/ping6" : "/sbin/ping"
         let task = Process()
         task.executableURL = URL(fileURLWithPath: binary)
         let timeoutMs = Int(timeoutSeconds * 1000)
-        task.arguments = isIPv6 ? ["-c", "1", "-q", host] : ["-c", "1", "-W", "\(timeoutMs)", "-q", host]
+        task.arguments = isIPv6 ? ["-c", "1", "-q", destination] : ["-c", "1", "-W", "\(timeoutMs)", "-q", destination]
 
         let pipe = Pipe()
         task.standardOutput = pipe
@@ -116,21 +191,44 @@ public final class ICMPPingProber: Sendable {
                 return .success(latencyMs: 1.0)
             }
         } catch {
-            // Fallback to TCP if ping fails to execute
+            // Process launch failure
         }
 
-        // Fallback to TCP reachability probe
-        let tcpProbe = TCPPingProber()
-        return await tcpProbe.probe(host: host, port: .https, timeoutSeconds: timeoutSeconds)
+        if allowTCPFallback {
+            let tcpProbe = TCPPingProber()
+            return await tcpProbe.probe(host: host, port: .https, timeoutSeconds: timeoutSeconds)
+        }
+
+        return .timeout
     }
 
     /// Runs a batch of latency probes and computes comprehensive statistics.
-    public func runSeries(host: String, count: Int = 5, port: NetworkPort = .https) async -> LatencyStatistics {
-        let isIPv6 = host.contains(":")
+    public func runSeries(
+        host: String,
+        count: Int = 5,
+        port: NetworkPort = .https,
+        allowTCPFallback: Bool = false
+    ) async -> LatencyStatistics {
+        let resolved = DarwinAddressResolver.resolve(host)
+        let isIPv6: Bool
+        let destination: String
+
+        switch resolved {
+        case .ipv6(let ip):
+            isIPv6 = true
+            destination = ip
+        case .ipv4(let ip):
+            isIPv6 = false
+            destination = ip
+        case .none:
+            isIPv6 = host.contains(":")
+            destination = host
+        }
+
         let binary = isIPv6 ? "/sbin/ping6" : "/sbin/ping"
         let task = Process()
         task.executableURL = URL(fileURLWithPath: binary)
-        task.arguments = isIPv6 ? ["-c", "\(count)", "-i", "0.1", host] : ["-c", "\(count)", "-i", "0.1", "-W", "1000", host]
+        task.arguments = isIPv6 ? ["-c", "\(count)", "-i", "0.1", destination] : ["-c", "\(count)", "-i", "0.1", "-W", "1000", destination]
 
         let pipe = Pipe()
         task.standardOutput = pipe
@@ -158,23 +256,29 @@ public final class ICMPPingProber: Sendable {
                 }
             }
         } catch {
-            // Fallback to TCP if process execution fails
+            // Process execution error
         }
 
         if !samples.isEmpty {
-            return LatencyStatistics(samples: samples, sentCount: count)
+            return LatencyStatistics(samples: samples, sentCount: count, probeProtocol: .icmp, isFallback: false)
         }
 
-        // Fallback to TCPPingProber if ICMP is blocked or failed
-        let prober = TCPPingProber()
-        for _ in 0..<count {
-            let res = await prober.probe(host: host, port: port, timeoutSeconds: 1.5)
-            if case .success(let ms) = res {
-                samples.append(ms)
+        if allowTCPFallback {
+            let prober = TCPPingProber()
+            var tcpSamples: [Double] = []
+            for _ in 0..<count {
+                let res = await prober.probe(host: host, port: port, timeoutSeconds: 1.5)
+                if case .success(let ms) = res {
+                    tcpSamples.append(ms)
+                }
+                try? await Task.sleep(nanoseconds: 50_000_000)
             }
-            try? await Task.sleep(nanoseconds: 50_000_000)
+            if !tcpSamples.isEmpty {
+                return LatencyStatistics(samples: tcpSamples, sentCount: count, probeProtocol: .tcp, isFallback: true)
+            }
         }
 
-        return LatencyStatistics(samples: samples, sentCount: count)
+        // Return honest ICMP packet loss (0 samples received = 100% loss)
+        return LatencyStatistics(samples: [], sentCount: count, probeProtocol: .icmp, isFallback: false)
     }
 }

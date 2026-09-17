@@ -315,5 +315,74 @@ struct CorrelationEngineTests {
         #expect(deprecatedFinding?.severity == .warning)
         #expect(deprecatedFinding?.statement.contains("RFC 8996") == true)
     }
+
+    @Test("Rule: Self-Signed or Untrusted Internal Certificate")
+    func testSelfSignedCertificateRule() {
+        let target = TargetClassifier.classify("https://192.168.1.1")!
+        let cert = TLSCertificateInfo(
+            subjectSummary: "router.asus.com",
+            issuerSummary: "router.asus.com",
+            expirationDate: Date().addingTimeInterval(365 * 86400),
+            daysUntilExpiry: 365,
+            isExpired: false,
+            isSelfSigned: true,
+            isUntrusted: true,
+            cipherSuite: "TLS_AES_128_GCM_SHA256",
+            protocolVersion: "TLS 1.3"
+        )
+        let http = HTTPObservation(
+            url: URL(string: "https://192.168.1.1")!,
+            statusCode: 200,
+            httpVersion: "HTTP/1.1",
+            redirectURL: nil,
+            headers: ["Server": "httpd"],
+            dnsTimeMs: nil,
+            connectTimeMs: 2.0,
+            tlsTimeMs: 8.0,
+            ttfbMs: 12.0,
+            totalTimeMs: 15.0,
+            certificateInfo: cert,
+            isHealthy: true
+        )
+
+        let findings = CorrelationEngine.correlate(
+            target: target,
+            dns: nil,
+            latency: nil,
+            tcp: nil,
+            path: nil,
+            http: http
+        )
+
+        let selfSignedFinding = findings.first(where: { $0.title.contains("Self-Signed") })
+        #expect(selfSignedFinding != nil)
+        #expect(selfSignedFinding?.severity == .warning)
+        #expect(selfSignedFinding?.faultDomain == "TLS / PKI Infrastructure")
+    }
+
+    @Test("Rule: Path Latency Anomaly with Carrier Attribution")
+    func testCarrierPathAnomalyRule() {
+        let target = TargetClassifier.classify("target.com")!
+        let hops = [
+            HopRecord(hopNumber: 1, address: "192.168.10.1", hostname: nil, rttMs: 2.0, isTimeout: false, asName: "Default Gateway"),
+            HopRecord(hopNumber: 2, address: "64.59.151.85", hostname: nil, rttMs: 14.0, isTimeout: false, asn: "AS6327", asName: "Shaw Communications", deltaMs: 12.0),
+            HopRecord(hopNumber: 3, address: "1.1.1.1", hostname: nil, rttMs: 75.0, isTimeout: false, asn: "AS13335", asName: "Cloudflare", deltaMs: 61.0)
+        ]
+        let path = PathObservation(target: "target.com", hops: hops, finalHopReached: true)
+
+        let findings = CorrelationEngine.correlate(
+            target: target,
+            dns: nil,
+            latency: nil,
+            tcp: nil,
+            path: path,
+            http: nil
+        )
+
+        let pathAnomaly = findings.first(where: { $0.title.contains("Path Latency Anomaly") })
+        #expect(pathAnomaly != nil)
+        #expect(pathAnomaly?.statement.contains("Cloudflare") == true)
+        #expect(pathAnomaly?.statement.contains("AS13335") == true)
+    }
 }
 

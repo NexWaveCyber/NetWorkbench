@@ -112,6 +112,19 @@ public struct PathTopologyView: View {
                         .clipShape(Capsule())
                         .foregroundStyle(.secondary)
 
+                    HStack(spacing: 4) {
+                        Image(systemName: "shield.lefthalf.filled")
+                            .font(.system(size: 8.5))
+                        Text("ICMP Mode")
+                            .font(Theme.monoText(9.5, weight: .bold))
+                    }
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2.5)
+                    .background(Theme.signalEmerald.opacity(0.12))
+                    .foregroundStyle(Theme.signalEmerald)
+                    .clipShape(Capsule())
+                    .help("Using unprivileged Darwin ICMP echo traceroute for reliable firewall penetration")
+
                     // Layout Mode Switcher
                     Picker("Layout Mode", selection: Binding(
                         get: { effectiveLayoutMode },

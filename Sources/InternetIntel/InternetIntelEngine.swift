@@ -95,6 +95,35 @@ public final class InternetIntelEngine: Sendable {
         )
     }
 
+    /// Fast BGP ASN resolution for a route hop IP address via Team Cymru DNS.
+    public func resolveASN(ip: String, hopNumber: Int = 0) async -> (asn: String?, asName: String?) {
+        let isPrivate = ip.starts(with: "192.168.") || ip.starts(with: "10.") || ip.starts(with: "172.16.") || ip.starts(with: "172.31.") || ip == "127.0.0.1" || ip == "::1"
+        if isPrivate {
+            return (nil, hopNumber == 1 ? "Default Gateway" : "Private Subnet")
+        }
+
+        // Fast static prefixes for high-frequency cloud roots
+        if ip.starts(with: "1.1.1") || ip.starts(with: "1.0.0") {
+            return ("AS13335", "Cloudflare")
+        } else if ip.starts(with: "8.8.") || ip.starts(with: "142.250.") || ip.starts(with: "172.217.") {
+            return ("AS15169", "Google")
+        } else if ip.starts(with: "140.82.") || ip.starts(with: "20.205.") {
+            return ("AS36459", "GitHub / Microsoft")
+        } else if ip.starts(with: "9.9.9") || ip.starts(with: "149.112.") {
+            return ("AS19281", "Quad9")
+        }
+
+        if let bgp = await queryOriginASN(ip: ip) {
+            let formattedASN = "AS\(bgp.originASN)"
+            if let asRec = await queryASNRecord(asn: bgp.originASN) {
+                return (formattedASN, asRec.asName)
+            }
+            return (formattedASN, bgp.registry)
+        }
+
+        return (nil, "Transit Provider")
+    }
+
     // MARK: - DNS Helpers (Team Cymru)
 
     private func resolveHostToIPv4(_ host: String) async -> String? {

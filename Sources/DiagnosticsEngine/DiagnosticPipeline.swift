@@ -57,7 +57,7 @@ public final class DiagnosticPipeline: Sendable {
         onProgress?(PipelineProgress(stage: .probingTCP, percentage: 0.40, message: "Probing TCP port \(port.rawValue), ICMP, route hops, and HTTP/TLS in parallel..."))
 
         async let tcpTask = tcpProber.probe(host: host, port: port)
-        async let latencyTask = icmpProber.runSeries(host: host, count: 5, port: port)
+        async let latencyTask = icmpProber.runSeries(host: host, count: 5, port: port, allowTCPFallback: false)
         async let pathTask = tracerouteRunner.trace(target: host, maxHops: 12)
         async let httpTask: HTTPObservation? = {
             if target.targetType == .hostname || target.targetType == .url {

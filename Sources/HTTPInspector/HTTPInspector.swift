@@ -63,6 +63,8 @@ private final class MetricsCollector: NSObject, URLSessionTaskDelegate, @uncheck
                 expirationDate: current.expirationDate,
                 daysUntilExpiry: current.daysUntilExpiry,
                 isExpired: current.isExpired,
+                isSelfSigned: current.isSelfSigned,
+                isUntrusted: current.isUntrusted,
                 cipherSuite: cipher,
                 protocolVersion: proto
             )
@@ -104,17 +106,27 @@ private final class MetricsCollector: NSObject, URLSessionTaskDelegate, @uncheck
                     isExpired = expiry < Date()
                 }
 
+                let isSelfSigned = (subject == issuer)
+                let isUntrusted = !isValid
+
                 self.lock.lock()
                 self.certInfo = TLSCertificateInfo(
                     subjectSummary: subject,
                     issuerSummary: issuer,
                     expirationDate: expiryDate,
                     daysUntilExpiry: daysRemaining,
-                    isExpired: isExpired || !isValid,
+                    isExpired: isExpired,
+                    isSelfSigned: isSelfSigned,
+                    isUntrusted: isUntrusted,
                     cipherSuite: challenge.protectionSpace.protocol,
                     protocolVersion: challenge.protectionSpace.protocol
                 )
                 self.lock.unlock()
+
+                // Allow trust to proceed so that HTTP metrics (status code, headers, TTFB)
+                // can be collected even for self-signed or enterprise intranet certificates
+                completionHandler(.useCredential, URLCredential(trust: trust))
+                return
             }
         }
         completionHandler(.performDefaultHandling, nil)

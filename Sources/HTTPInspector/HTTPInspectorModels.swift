@@ -8,6 +8,8 @@ public struct TLSCertificateInfo: Sendable, Hashable {
     public let expirationDate: Date?
     public let daysUntilExpiry: Int?
     public let isExpired: Bool
+    public let isSelfSigned: Bool
+    public let isUntrusted: Bool
     public let cipherSuite: String?
     public let protocolVersion: String?
 
@@ -17,6 +19,8 @@ public struct TLSCertificateInfo: Sendable, Hashable {
         expirationDate: Date?,
         daysUntilExpiry: Int?,
         isExpired: Bool,
+        isSelfSigned: Bool = false,
+        isUntrusted: Bool = false,
         cipherSuite: String? = nil,
         protocolVersion: String? = nil
     ) {
@@ -25,6 +29,8 @@ public struct TLSCertificateInfo: Sendable, Hashable {
         self.expirationDate = expirationDate
         self.daysUntilExpiry = daysUntilExpiry
         self.isExpired = isExpired
+        self.isSelfSigned = isSelfSigned
+        self.isUntrusted = isUntrusted
         self.cipherSuite = cipherSuite
         self.protocolVersion = protocolVersion
     }

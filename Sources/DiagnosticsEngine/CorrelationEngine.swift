@@ -169,13 +169,15 @@ public struct CorrelationEngine: Sendable {
             }
 
             if let jumpHop = path.latencyJumpHop, let delta = path.latencyDeltaMs {
+                let jumpRecord = path.hops.first { $0.hopNumber == jumpHop }
+                let carrierInfo = jumpRecord?.asName != nil ? " (\(jumpRecord?.asn ?? "") \(jumpRecord?.asName ?? ""))" : ""
                 findings.append(DiagnosticFinding(
                     classification: .inferred,
                     severity: .warning,
-                    title: "Path Latency Anomaly",
-                    statement: "Observed latency jump of +\(String(format: "%.1f", delta)) ms at hop \(jumpHop). Suggests transit congestion or autonomous system boundary crossing.",
+                    title: "Path Latency Anomaly at Hop \(jumpHop)",
+                    statement: "Observed latency jump of +\(String(format: "%.1f", delta)) ms at hop \(jumpHop)\(carrierInfo). Isolates the delay to upstream transit peering rather than your local gateway.",
                     faultDomain: "Upstream Transit WAN",
-                    confidence: .medium,
+                    confidence: .high,
                     remediation: "Evaluate upstream ISP peering and BGP AS path to determine if geographic route detour or transit congestion is occurring."
                 ))
             }
@@ -193,6 +195,16 @@ public struct CorrelationEngine: Sendable {
                         faultDomain: "TLS / PKI Certificate",
                         confidence: .high,
                         remediation: "Renew X.509 certificate immediately via ACME/Let's Encrypt or deploy renewed certificate to ingress reverse proxy."
+                    ))
+                } else if cert.isSelfSigned || cert.isUntrusted {
+                    findings.append(DiagnosticFinding(
+                        classification: .observed,
+                        severity: .warning,
+                        title: "Self-Signed or Untrusted Certificate",
+                        statement: "Target presented a self-signed or untrusted certificate for '\(cert.subjectSummary)' (Issuer: '\(cert.issuerSummary)'). HTTP diagnostics were completed to preserve visibility.",
+                        faultDomain: "TLS / PKI Infrastructure",
+                        confidence: .high,
+                        remediation: "If this is internal network hardware, install an enterprise root CA certificate or import the device certificate into macOS Keychain."
                     ))
                 } else if let days = cert.daysUntilExpiry, days < 30 {
                     findings.append(DiagnosticFinding(
