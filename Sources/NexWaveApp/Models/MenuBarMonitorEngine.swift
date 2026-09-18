@@ -234,8 +234,19 @@ public final class MenuBarMonitorEngine: @unchecked Sendable {
         let shouldRefreshInterfaces = (cycleCounter == 1 || cycleCounter % 4 == 0) // Every 32s or initial cycle
 
         if shouldRefreshInterfaces {
-            // 1. Detect default gateway and active interface
-            let route = parseDefaultRoute()
+            let activeIf = self.activeInterface
+            let telemetry = await Task.detached(priority: .utility) { [weak self] () -> ((gateway: String, interface: String), String, (mask: String, broadcast: String), String, (primary: String, all: [String])) in
+                guard let self = self else { return (("", "en0"), "", ("", ""), "", ("", [])) }
+                let route = self.parseDefaultRoute()
+                let targetIf = !route.interface.isEmpty ? route.interface : activeIf
+                let ip = self.queryLocalIP(interface: targetIf)
+                let subnet = self.querySubnetInfo(interface: targetIf)
+                let v6 = self.queryLocalIPv6(interface: targetIf)
+                let dns = self.parseSystemDNS()
+                return (route, ip, subnet, v6, dns)
+            }.value
+
+            let route = telemetry.0
             if !route.interface.isEmpty {
                 self.activeInterface = route.interface
             }
@@ -243,22 +254,22 @@ public final class MenuBarMonitorEngine: @unchecked Sendable {
                 self.defaultGateway = route.gateway
             }
 
-            // 2. Query local IP on active interface
-            let ip = queryLocalIP(interface: self.activeInterface)
+            let ip = telemetry.1
             if !ip.isEmpty && ip != "127.0.0.1" {
                 self.localIP = ip
             }
-            let subnet = querySubnetInfo(interface: self.activeInterface)
+
+            let subnet = telemetry.2
             self.subnetMask = subnet.mask
             self.broadcastAddress = subnet.broadcast
-            let v6 = queryLocalIPv6(interface: self.activeInterface)
+
+            let v6 = telemetry.3
             if !v6.isEmpty {
                 self.localIPv6 = v6
                 self.hasIPv6 = true
             }
 
-            // 3. Query system DNS
-            let dns = parseSystemDNS()
+            let dns = telemetry.4
             if !dns.primary.isEmpty {
                 self.dnsServer = dns.primary
                 self.allDnsServers = dns.all
@@ -272,7 +283,7 @@ public final class MenuBarMonitorEngine: @unchecked Sendable {
             self.wifiLink = link
         }
 
-        // 4. Ping local default gateway
+        // 4. Ping local default gateway (runs off MainActor)
         let gwRTT = await pingHost(host: self.defaultGateway, timeoutMs: 800)
         self.gatewayLatencyMs = gwRTT
         if let rtt = gwRTT {
@@ -282,14 +293,17 @@ public final class MenuBarMonitorEngine: @unchecked Sendable {
             }
         }
 
-        // 5. Query & Ping IPv6 Default Gateway
-        let gw6 = parseDefaultRouteIPv6()
+        // 5. Query & Ping IPv6 Default Gateway (runs off MainActor)
+        let gw6 = await Task.detached(priority: .utility) { [weak self] in
+            self?.parseDefaultRouteIPv6() ?? ""
+        }.value
+
         if !gw6.isEmpty {
             self.defaultGatewayIPv6 = gw6
             self.gatewayIPv6LatencyMs = await pingHostIPv6(host: gw6, interface: self.activeInterface)
         }
 
-        // 6. Ping Internet (1.1.1.1)
+        // 6. Ping Internet (1.1.1.1) (runs off MainActor)
         let inetRTT = await pingHost(host: "1.1.1.1", timeoutMs: 900)
         self.internetLatencyMs = inetRTT
 
@@ -302,10 +316,6 @@ public final class MenuBarMonitorEngine: @unchecked Sendable {
             self.healthStatus = .optimal
         }
 
-        // 7. Wi-Fi status if active interface is Wi-Fi
-        let link = await WiFiEngine.shared.fetchCurrentLink(interfaceName: self.activeInterface)
-        self.wifiLink = link
-
         // 8. Refresh Public IP periodically (every 5 minutes)
         if Date().timeIntervalSince(lastPublicIPCheck) > 300 {
             lastPublicIPCheck = Date()
@@ -315,69 +325,73 @@ public final class MenuBarMonitorEngine: @unchecked Sendable {
         }
     }
 
-    /// Performs an instantaneous ping probe using /sbin/ping
+    /// Performs an instantaneous ping probe using /sbin/ping asynchronously off the MainActor
     public func pingHost(host: String, timeoutMs: Int = 800) async -> Double? {
         guard !host.isEmpty && host != "127.0.0.1" else { return 0.5 }
-        let pipe = Pipe()
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/sbin/ping")
-        process.arguments = ["-c", "1", "-W", "\(timeoutMs)", host]
-        process.standardOutput = pipe
-        process.standardError = Pipe()
+        return await Task.detached(priority: .utility) {
+            let pipe = Pipe()
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: "/sbin/ping")
+            process.arguments = ["-c", "1", "-W", "\(timeoutMs)", host]
+            process.standardOutput = pipe
+            process.standardError = Pipe()
 
-        do {
-            try process.run()
-            process.waitUntilExit()
-            guard process.terminationStatus == 0 else { return nil }
+            do {
+                try process.run()
+                process.waitUntilExit()
+                guard process.terminationStatus == 0 else { return nil }
 
-            let data = pipe.fileHandleForReading.readDataToEndOfFile()
-            guard let output = String(data: data, encoding: .utf8) else { return nil }
+                let data = pipe.fileHandleForReading.readDataToEndOfFile()
+                guard let output = String(data: data, encoding: .utf8) else { return nil }
 
-            // Parse "time=1.234 ms"
-            if let timeRange = output.range(of: "time=") {
-                let after = output[timeRange.upperBound...]
-                if let msRange = after.range(of: " ms") {
-                    let numStr = after[..<msRange.lowerBound]
-                    return Double(numStr)
+                // Parse "time=1.234 ms"
+                if let timeRange = output.range(of: "time=") {
+                    let after = output[timeRange.upperBound...]
+                    if let msRange = after.range(of: " ms") {
+                        let numStr = after[..<msRange.lowerBound]
+                        return Double(numStr)
+                    }
                 }
+                return nil
+            } catch {
+                return nil
             }
-            return nil
-        } catch {
-            return nil
-        }
+        }.value
     }
 
-    /// Measures instantaneous round-trip time to an IPv6 address using /sbin/ping6
+    /// Measures instantaneous round-trip time to an IPv6 address using /sbin/ping6 asynchronously off the MainActor
     public func pingHostIPv6(host: String, interface: String = "en0", timeoutMs: Int = 800) async -> Double? {
         guard !host.isEmpty else { return nil }
-        let pipe = Pipe()
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/sbin/ping6")
-        // If link-local (starts with fe80), append interface
-        let targetHost = (host.lowercased().starts(with: "fe80") && !host.contains("%")) ? "\(host)%\(interface)" : host
-        process.arguments = ["-c", "1", "-W", "\(timeoutMs)", targetHost]
-        process.standardOutput = pipe
-        process.standardError = Pipe()
+        return await Task.detached(priority: .utility) {
+            let pipe = Pipe()
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: "/sbin/ping6")
+            // If link-local (starts with fe80), append interface
+            let targetHost = (host.lowercased().starts(with: "fe80") && !host.contains("%")) ? "\(host)%\(interface)" : host
+            process.arguments = ["-c", "1", "-W", "\(timeoutMs)", targetHost]
+            process.standardOutput = pipe
+            process.standardError = Pipe()
 
-        do {
-            try process.run()
-            process.waitUntilExit()
-            guard process.terminationStatus == 0 else { return nil }
+            do {
+                try process.run()
+                process.waitUntilExit()
+                guard process.terminationStatus == 0 else { return nil }
 
-            let data = pipe.fileHandleForReading.readDataToEndOfFile()
-            guard let output = String(data: data, encoding: .utf8) else { return nil }
+                let data = pipe.fileHandleForReading.readDataToEndOfFile()
+                guard let output = String(data: data, encoding: .utf8) else { return nil }
 
-            if let timeRange = output.range(of: "time=") {
-                let after = output[timeRange.upperBound...]
-                if let msRange = after.range(of: " ms") {
-                    let numStr = after[..<msRange.lowerBound]
-                    return Double(numStr)
+                if let timeRange = output.range(of: "time=") {
+                    let after = output[timeRange.upperBound...]
+                    if let msRange = after.range(of: " ms") {
+                        let numStr = after[..<msRange.lowerBound]
+                        return Double(numStr)
+                    }
                 }
+                return nil
+            } catch {
+                return nil
             }
-            return nil
-        } catch {
-            return nil
-        }
+        }.value
     }
 
     /// Flushes the macOS DNS cache

@@ -977,6 +977,37 @@ public struct TimeSeriesStudioView: View {
             }
             .menuStyle(.borderlessButton)
 
+            // Purge / Prune Actions Menu
+            Menu {
+                Button(role: .destructive, action: {
+                    try? repository?.purgeAll()
+                    loadData()
+                    showToast("Historical telemetry data purged.")
+                }) {
+                    Label("Purge All Monitored Samples", systemImage: "trash")
+                }
+                Button(action: {
+                    try? repository?.pruneOldSamples(olderThanDays: 7)
+                    loadData()
+                    showToast("Samples older than 7 days cleaned.")
+                }) {
+                    Label("Prune Samples Older Than 7 Days", systemImage: "clock.arrow.circlepath")
+                }
+            } label: {
+                HStack(spacing: 4) {
+                    Image(systemName: "trash")
+                    Text("Purge Data")
+                    Image(systemName: "chevron.down").font(.system(size: 8))
+                }
+                .font(.caption.bold())
+                .padding(.horizontal, 10)
+                .padding(.vertical, 5)
+                .background(Theme.pulseCrimson.opacity(0.12))
+                .foregroundStyle(Theme.pulseCrimson)
+                .cornerRadius(6)
+            }
+            .menuStyle(.borderlessButton)
+
             Spacer()
 
             // System Notification Status Indicator & Toggle

@@ -14,6 +14,10 @@ public enum SocketExposure: String, Sendable, CaseIterable {
     }
 }
 
+#if canImport(AppKit)
+import AppKit
+#endif
+
 public struct ListeningSocketRecord: Sendable, Identifiable {
     public var id: String { "\(pid)-\(proto)-\(port)-\(localAddress)-\(ipVersion)" }
     public let command: String
@@ -28,6 +32,34 @@ public struct ListeningSocketRecord: Sendable, Identifiable {
 
     public var isPrivilegedPort: Bool {
         return port < 1024
+    }
+
+    public var cleanCommand: String {
+        let unescaped = command.replacingOccurrences(of: "\\x20", with: " ")
+        return unescaped.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    public var displayName: String {
+        #if canImport(AppKit)
+        if let name = NSRunningApplication(processIdentifier: pid_t(pid))?.localizedName, !name.isEmpty {
+            return name
+        }
+        #endif
+        return cleanCommand
+    }
+
+    #if canImport(AppKit)
+    public var appIcon: NSImage? {
+        return NSRunningApplication(processIdentifier: pid_t(pid))?.icon
+    }
+    #endif
+
+    public var exposureBadgeText: String {
+        switch exposure {
+        case .loopback: return "LOOPBACK"
+        case .localNetwork: return "LOCAL IF"
+        case .exposed: return "EXPOSED (*)"
+        }
     }
 
     public init(
@@ -111,6 +143,9 @@ public enum SocketInspector {
         guard lines.count > 1 else { return }
 
         for line in lines.dropFirst() {
+            // Ignore outbound connected flows (e.g. client UDP to remote port 443)
+            if line.contains("->") { continue }
+
             let tokens = line.components(separatedBy: .whitespaces).filter { !$0.isEmpty }
             // Expected columns: COMMAND, PID, USER, FD, TYPE, DEVICE, SIZE/OFF, NODE, NAME, (LISTEN)
             guard tokens.count >= 9 else { continue }
@@ -131,6 +166,8 @@ public enum SocketInspector {
                 addressPortStr = nameCol
                 state = defaultProto == "UDP" ? "BOUND" : "IDLE"
             }
+
+            if addressPortStr.contains("->") { continue }
 
             // Parse address and port from addressPortStr (e.g. "*:7000", "127.0.0.1:7768", "[::1]:8080", "*:60258")
             guard let lastColon = addressPortStr.lastIndex(of: ":") else { continue }

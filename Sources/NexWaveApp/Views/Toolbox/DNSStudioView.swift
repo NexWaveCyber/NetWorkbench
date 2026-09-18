@@ -8,10 +8,33 @@ public enum DNSProtocolMode: String, CaseIterable, Identifiable {
     case classicOnly = "Classic UDP (Do53)"
 
     public var id: String { rawValue }
+
+    public var displayName: String {
+        switch self {
+        case .compareBoth:
+            return "Protocols (Do53 + DoH)"
+        case .dohOnly:
+            return "Encrypted DoH (RFC 8484)"
+        case .classicOnly:
+            return "Classic UDP (Do53)"
+        }
+    }
+
+    public var icon: String {
+        switch self {
+        case .compareBoth:
+            return "arrow.triangle.swap"
+        case .dohOnly:
+            return "lock.shield.fill"
+        case .classicOnly:
+            return "antenna.radiowaves.left.and.right"
+        }
+    }
 }
 
 public struct DNSStudioView: View {
     @State private var queryHost = "cloudflare.com"
+    @State private var selectedRecordType = "A"
     @State private var protocolMode: DNSProtocolMode = .compareBoth
     @State private var isQuerying = false
     @State private var classicResults: [DNSResolutionResult] = []
@@ -61,6 +84,7 @@ public struct DNSStudioView: View {
     // MARK: - Header Query Card
     private var headerQueryCard: some View {
         VStack(alignment: .leading, spacing: 14) {
+            // Title and RFC Telemetry Specs
             HStack {
                 Text("DNS STUDIO & RESOLVER MATRIX")
                     .font(.system(size: 11, weight: .bold, design: .monospaced))
@@ -71,15 +95,45 @@ public struct DNSStudioView: View {
                     .foregroundStyle(.tertiary)
             }
 
+            // Target Input Row
             HStack(spacing: 12) {
                 Image(systemName: "arrow.triangle.branch")
-                    .font(.system(size: 20))
+                    .font(.system(size: 18))
                     .foregroundStyle(Theme.neonCyan)
 
                 TextField("Enter domain name to resolve (e.g. cloudflare.com, apple.com)...", text: $queryHost)
                     .textFieldStyle(.plain)
-                    .font(Theme.monoText(15))
+                    .font(Theme.monoText(14))
                     .onSubmit { runDNSMatrix() }
+
+                // Record Type Dropdown Menu
+                Menu {
+                    ForEach(["A", "AAAA", "MX", "TXT", "CNAME", "NS", "SOA"], id: \.self) { rType in
+                        Button(rType) {
+                            selectedRecordType = rType
+                            runDNSMatrix()
+                        }
+                    }
+                } label: {
+                    HStack(spacing: 4) {
+                        Text(selectedRecordType)
+                            .font(Theme.monoText(12, weight: .bold))
+                            .foregroundStyle(Theme.neonCyan)
+                        Image(systemName: "chevron.down")
+                            .font(.system(size: 8, weight: .bold))
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(Theme.surfaceBackground)
+                    .clipShape(RoundedRectangle(cornerRadius: 6))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 6)
+                            .strokeBorder(Theme.borderLight, lineWidth: 1)
+                    )
+                }
+                .menuStyle(.borderlessButton)
+                .fixedSize()
 
                 Button(action: runDNSMatrix) {
                     HStack(spacing: 6) {
@@ -101,41 +155,78 @@ public struct DNSStudioView: View {
                 .buttonStyle(.plain)
                 .disabled(queryHost.trimmingCharacters(in: .whitespaces).isEmpty || isQuerying)
             }
-            .padding(12)
-            .background(Theme.cardBackground)
-            .clipShape(RoundedRectangle(cornerRadius: 10))
-            .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Theme.cyanPulse.opacity(0.3), lineWidth: 1))
+            .padding(10)
+            .background(Theme.surfaceBackground)
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+            .overlay(
+                RoundedRectangle(cornerRadius: 8)
+                    .strokeBorder(Theme.cyanPulse.opacity(0.25), lineWidth: 1)
+            )
 
-            // Protocol Selector & Quick Domain Chips
-            HStack {
-                Picker("Protocol Mode", selection: $protocolMode) {
-                    ForEach(DNSProtocolMode.allCases) { mode in
-                        Text(mode.rawValue).tag(mode)
-                    }
-                }
-                .pickerStyle(.segmented)
-                .frame(maxWidth: 360)
-                .onChange(of: protocolMode) { _, _ in runDNSMatrix() }
-
-                Spacer()
-
+            // Protocol Selector & Quick Domain Chips Row
+            HStack(spacing: 12) {
+                // Protocol Filter Pills
                 HStack(spacing: 6) {
-                    Text("Presets:").font(.system(size: 11)).foregroundStyle(.secondary)
-                    ForEach(["cloudflare.com", "apple.com", "google.com", "github.com"], id: \.self) { preset in
-                        Button(preset) {
-                            queryHost = preset
+                    Text("Protocols:")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(.secondary)
+
+                    ForEach(DNSProtocolMode.allCases) { mode in
+                        Button(action: {
+                            protocolMode = mode
                             runDNSMatrix()
+                        }) {
+                            HStack(spacing: 5) {
+                                Image(systemName: mode.icon)
+                                    .font(.system(size: 10))
+                                Text(mode.displayName)
+                                    .font(Theme.monoText(11, weight: .semibold))
+                            }
+                            .padding(.horizontal, 9)
+                            .padding(.vertical, 5)
+                            .background(protocolMode == mode ? Theme.neonCyan.opacity(0.18) : Color.primary.opacity(0.04))
+                            .foregroundStyle(protocolMode == mode ? Theme.neonCyan : Color.primary)
+                            .clipShape(RoundedRectangle(cornerRadius: 6))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 6)
+                                    .strokeBorder(protocolMode == mode ? Theme.neonCyan.opacity(0.6) : Theme.borderLight, lineWidth: 1)
+                            )
                         }
                         .buttonStyle(.plain)
-                        .font(Theme.monoText(10))
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 3)
-                        .background(Color.primary.opacity(0.04))
-                        .clipShape(RoundedRectangle(cornerRadius: 4))
+                    }
+                }
+
+                Spacer(minLength: 16)
+
+                // Domain Presets
+                HStack(spacing: 6) {
+                    Text("Presets:")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(.secondary)
+
+                    ForEach(["cloudflare.com", "apple.com", "google.com", "github.com"], id: \.self) { preset in
+                        Button(action: {
+                            queryHost = preset
+                            runDNSMatrix()
+                        }) {
+                            Text(preset)
+                                .font(Theme.monoText(10, weight: .medium))
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 4)
+                                .background(queryHost == preset ? Theme.azurePro.opacity(0.2) : Color.primary.opacity(0.04))
+                                .foregroundStyle(queryHost == preset ? Theme.azurePro : Color.secondary)
+                                .clipShape(RoundedRectangle(cornerRadius: 5))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 5)
+                                        .strokeBorder(queryHost == preset ? Theme.azurePro.opacity(0.5) : Theme.borderLight, lineWidth: 1)
+                                )
+                        }
+                        .buttonStyle(.plain)
                     }
                 }
             }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
         .engineeringCard(padding: 16)
     }
 
@@ -171,6 +262,7 @@ public struct DNSStudioView: View {
 
             HUDStatusBadge(title: "AD=1 SIGNED", color: Theme.signalEmerald, isPulsing: false, icon: "lock.shield.fill")
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
         .engineeringCard(padding: 14)
     }
 
@@ -249,6 +341,7 @@ public struct DNSStudioView: View {
                 }
             }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
         .engineeringCard(padding: 16)
     }
 
@@ -265,7 +358,7 @@ public struct DNSStudioView: View {
                     .foregroundStyle(.tertiary)
             }
 
-            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 14) {
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 340, maximum: .infinity), spacing: 14)], spacing: 14) {
                 ForEach(dohResults, id: \.endpoint.rawValue) { doh in
                     dohResultCard(doh: doh)
                 }
@@ -324,10 +417,8 @@ public struct DNSStudioView: View {
                     .foregroundStyle(Theme.pulseCrimson)
             }
         }
-        .padding(14)
-        .background(Theme.cardBackground)
-        .clipShape(RoundedRectangle(cornerRadius: 10))
-        .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Theme.borderLight, lineWidth: 1))
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .engineeringCard(padding: 14, hasHoverEffect: true)
     }
 
     // MARK: - Classic UDP Do53 Cards Section
@@ -340,7 +431,7 @@ public struct DNSStudioView: View {
                 Spacer()
             }
 
-            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 14) {
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 340, maximum: .infinity), spacing: 14)], spacing: 14) {
                 ForEach(classicResults, id: \.resolverName) { res in
                     classicResultCard(res: res)
                 }
@@ -382,10 +473,8 @@ public struct DNSStudioView: View {
                     .foregroundStyle(Theme.pulseCrimson)
             }
         }
-        .padding(14)
-        .background(Theme.cardBackground)
-        .clipShape(RoundedRectangle(cornerRadius: 10))
-        .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Theme.borderLight, lineWidth: 1))
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .engineeringCard(padding: 14, hasHoverEffect: true)
     }
 
     // MARK: - Execution
@@ -408,9 +497,9 @@ public struct DNSStudioView: View {
             // Run DoH if enabled
             var dResults: [DoHQueryResult] = []
             if protocolMode != .classicOnly {
-                async let cfDoH = dohClient.resolve(name: host, endpoint: .cloudflare)
-                async let googleDoH = dohClient.resolve(name: host, endpoint: .google)
-                async let quad9DoH = dohClient.resolve(name: host, endpoint: .quad9)
+                async let cfDoH = dohClient.resolve(name: host, recordType: selectedRecordType, endpoint: .cloudflare)
+                async let googleDoH = dohClient.resolve(name: host, recordType: selectedRecordType, endpoint: .google)
+                async let quad9DoH = dohClient.resolve(name: host, recordType: selectedRecordType, endpoint: .quad9)
                 dResults = await [cfDoH, googleDoH, quad9DoH]
             }
 

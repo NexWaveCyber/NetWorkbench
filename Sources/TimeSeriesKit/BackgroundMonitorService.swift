@@ -24,6 +24,25 @@ private final class MonitorProbeCompletion: @unchecked Sendable {
     }
 }
 
+private final class ICMPProbeCompletion: @unchecked Sendable {
+    private var hasResumed = false
+    private let lock = NSLock()
+    private let continuation: CheckedContinuation<(String?, Bool), Never>
+
+    init(continuation: CheckedContinuation<(String?, Bool), Never>) {
+        self.continuation = continuation
+    }
+
+    func complete(output: String?, isTimeout: Bool) {
+        lock.lock()
+        defer { lock.unlock() }
+        if !hasResumed {
+            hasResumed = true
+            continuation.resume(returning: (output, isTimeout))
+        }
+    }
+}
+
 public actor BackgroundMonitorService {
     private let repository: TimeSeriesRepository
     private var targetConfigs: [UUID: MonitorTargetConfig] = [:]
@@ -31,6 +50,7 @@ public actor BackgroundMonitorService {
     private var rollingWindows: [UUID: [LatencySample]] = [:]
     private var lastAlertTime: [String: Date] = [:]
     private var onAlertTriggered: (@Sendable (SLAMonitorAlert) -> Void)?
+    private var isMonitoringActive: Bool = false
 
     public init(repository: TimeSeriesRepository) {
         self.repository = repository
@@ -42,12 +62,16 @@ public actor BackgroundMonitorService {
 
     public func updateConfigs(_ configs: [MonitorTargetConfig]) {
         self.targetConfigs = Dictionary(uniqueKeysWithValues: configs.map { ($0.id, $0) })
-        syncTasks()
+        if isMonitoringActive {
+            syncTasks()
+        }
     }
 
     public func addConfig(_ config: MonitorTargetConfig) {
         self.targetConfigs[config.id] = config
-        syncTasks()
+        if isMonitoringActive {
+            syncTasks()
+        }
     }
 
     public func removeConfig(id: UUID) {
@@ -58,17 +82,25 @@ public actor BackgroundMonitorService {
     }
 
     public func startAll() {
+        self.isMonitoringActive = true
         syncTasks()
     }
 
     public func stopAll() {
+        self.isMonitoringActive = false
         for (_, task) in runningTasks {
             task.cancel()
         }
         runningTasks.removeAll()
     }
 
+    public var isActive: Bool {
+        isMonitoringActive
+    }
+
     private func syncTasks() {
+        guard isMonitoringActive else { return }
+
         // Cancel removed tasks
         for (id, task) in runningTasks {
             if targetConfigs[id] == nil || targetConfigs[id]?.isEnabled == false {
@@ -91,10 +123,17 @@ public actor BackgroundMonitorService {
 
     private func runMonitorLoop(for config: MonitorTargetConfig) async {
         var previousLatency: Double? = nil
+        var consecutiveTimeouts: Int = 0
 
         while !Task.isCancelled {
             let sample = await probe(config: config, previousLatency: previousLatency)
             previousLatency = sample.latencyMs
+
+            if sample.isTimeout || sample.latencyMs == nil {
+                consecutiveTimeouts += 1
+            } else {
+                consecutiveTimeouts = 0
+            }
 
             // 1. Store in repository
             try? repository.insert(sample: sample)
@@ -110,8 +149,10 @@ public actor BackgroundMonitorService {
             // 3. Evaluate SLA thresholds
             await evaluateSLA(config: config, window: window, latestSample: sample)
 
-            // 4. Sleep
-            let nanoseconds = UInt64(max(1.0, config.intervalSeconds) * 1_000_000_000)
+            // 4. Adaptive sleep: if target has 3+ consecutive timeouts (e.g. offline workstation), back off to 8s
+            let baseInterval = max(1.0, config.intervalSeconds)
+            let effectiveInterval = consecutiveTimeouts >= 3 ? max(baseInterval, 8.0) : baseInterval
+            let nanoseconds = UInt64(effectiveInterval * 1_000_000_000)
             try? await Task.sleep(nanoseconds: nanoseconds)
         }
     }
@@ -131,44 +172,49 @@ public actor BackgroundMonitorService {
 
         let isIPv6 = isIPv6Address(clean)
 
-        let pipe = Pipe()
-        let process = Process()
-        if isIPv6 {
-            process.executableURL = URL(fileURLWithPath: "/sbin/ping6")
-            process.arguments = ["-c", "1", clean]
-        } else {
-            process.executableURL = URL(fileURLWithPath: "/sbin/ping")
-            process.arguments = ["-c", "1", "-W", "800", clean]
+        let (output, isTimeout): (String?, Bool) = await withCheckedContinuation { continuation in
+            DispatchQueue.global(qos: .utility).async {
+                let pipe = Pipe()
+                let process = Process()
+                if isIPv6 {
+                    process.executableURL = URL(fileURLWithPath: "/sbin/ping6")
+                    process.arguments = ["-c", "1", clean]
+                } else {
+                    process.executableURL = URL(fileURLWithPath: "/sbin/ping")
+                    process.arguments = ["-c", "1", "-W", "800", clean]
+                }
+                process.standardOutput = pipe
+                process.standardError = Pipe()
+
+                let completion = ICMPProbeCompletion(continuation: continuation)
+
+                // 1.2s safety watchdog to terminate process if ARP drops packets completely
+                DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 1.2) {
+                    if process.isRunning {
+                        process.terminate()
+                    }
+                    completion.complete(output: nil, isTimeout: true)
+                }
+
+                do {
+                    try process.run()
+                    let data = pipe.fileHandleForReading.readDataToEndOfFile()
+                    process.waitUntilExit()
+                    if process.terminationStatus == 0 {
+                        let outStr = String(data: data, encoding: .utf8)
+                        completion.complete(output: outStr, isTimeout: false)
+                    } else {
+                        completion.complete(output: nil, isTimeout: true)
+                    }
+                } catch {
+                    completion.complete(output: nil, isTimeout: true)
+                }
+            }
         }
-        process.standardOutput = pipe
-        process.standardError = Pipe()
 
         var latency: Double? = nil
-        var isTimeout = true
-
-        do {
-            try process.run()
-
-            // Safe watchdog task to avoid hanging if the remote network drops packets completely
-            let timeoutTask = Task {
-                try? await Task.sleep(nanoseconds: 1_200_000_000)
-                if process.isRunning {
-                    process.terminate()
-                }
-            }
-
-            process.waitUntilExit()
-            timeoutTask.cancel()
-
-            let data = pipe.fileHandleForReading.readDataToEndOfFile()
-            if let output = String(data: data, encoding: .utf8) {
-                if let parsed = parsePingLatency(output: output) {
-                    latency = parsed
-                    isTimeout = false
-                }
-            }
-        } catch {
-            isTimeout = true
+        if let out = output, let parsed = parsePingLatency(output: out) {
+            latency = parsed
         }
 
         var jitter: Double? = nil
@@ -180,7 +226,7 @@ public actor BackgroundMonitorService {
             target: target,
             timestamp: Date(),
             latencyMs: latency,
-            isTimeout: isTimeout,
+            isTimeout: isTimeout || latency == nil,
             jitterMs: jitter
         )
     }

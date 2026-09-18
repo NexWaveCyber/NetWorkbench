@@ -43,9 +43,9 @@ public final class InternetIntelEngine: Sendable {
             }
         }
 
-        // Resolve target to IPv4 address if given a hostname
+        // Resolve target to IP address (IPv4 or IPv6) if given a hostname
         let ipString: String
-        if IPAddress.IPv4(cleanTarget) != nil {
+        if IPAddress.IPv4(cleanTarget) != nil || IPAddress.IPv6(cleanTarget) != nil {
             ipString = cleanTarget
         } else {
             if let resolved = await resolveHostToIPv4(cleanTarget) {
@@ -61,7 +61,7 @@ public final class InternetIntelEngine: Sendable {
                     rdapOrgName: nil,
                     lookupTimeMs: elapsedMs,
                     isSuccess: false,
-                    errorMessage: "Failed to resolve hostname '\(cleanTarget)' to an IPv4 address."
+                    errorMessage: "Failed to resolve hostname '\(cleanTarget)' to a valid IP address."
                 )
             }
         }
@@ -151,6 +151,10 @@ public final class InternetIntelEngine: Sendable {
     }
 
     private func queryOriginASN(ip: String) async -> BGPAnnouncement? {
+        if ip.contains(":") {
+            return await queryOriginASNv6(ip: ip)
+        }
+
         let octets = ip.split(separator: ".")
         guard octets.count == 4 else { return nil }
         let reversedIP = octets.reversed().joined(separator: ".")
@@ -158,6 +162,35 @@ public final class InternetIntelEngine: Sendable {
 
         guard let txt = await queryTXTRecord(queryHost) else { return nil }
         // Format: "13335 | 1.1.1.0/24 | AU | apnic | 2011-08-11"
+        let parts = txt.split(separator: "|").map { $0.trimmingCharacters(in: .whitespaces) }
+        guard parts.count >= 5, let asn = Int(parts[0]) else { return nil }
+
+        return BGPAnnouncement(
+            prefix: parts[1],
+            originASN: asn,
+            registry: parts[3],
+            countryCode: parts[2],
+            allocationDate: parts[4]
+        )
+    }
+
+    private func queryOriginASNv6(ip: String) async -> BGPAnnouncement? {
+        var sin6 = in6_addr()
+        guard inet_pton(AF_INET6, ip, &sin6) == 1 else { return nil }
+
+        var nibbles: [String] = []
+        withUnsafeBytes(of: &sin6) { buffer in
+            for byte in buffer {
+                let high = (byte >> 4) & 0x0F
+                let low = byte & 0x0F
+                nibbles.append(String(format: "%x", high))
+                nibbles.append(String(format: "%x", low))
+            }
+        }
+        let reversed = nibbles.reversed().joined(separator: ".")
+        let queryHost = "\(reversed).origin6.asn.cymru.com"
+
+        guard let txt = await queryTXTRecord(queryHost) else { return nil }
         let parts = txt.split(separator: "|").map { $0.trimmingCharacters(in: .whitespaces) }
         guard parts.count >= 5, let asn = Int(parts[0]) else { return nil }
 

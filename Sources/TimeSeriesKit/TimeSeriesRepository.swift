@@ -415,4 +415,62 @@ public final class TimeSeriesRepository: Sendable {
             _ = sqlite3_step(stmt)
         }
     }
+
+    public func purgeAll() throws {
+        try database.withLock {
+            try database.execute(sql: "DELETE FROM target_monitor_series;")
+            try database.execute(sql: "DELETE FROM sla_monitor_alerts;")
+            try database.execute(sql: "VACUUM;")
+        }
+    }
+
+    public func exportToCSV(target: String? = nil, from: Date = Date().addingTimeInterval(-86400 * 7), to: Date = Date()) throws -> String {
+        return try database.withLock {
+            let sql: String
+            if target != nil {
+                sql = """
+                SELECT id, target, timestamp, latency_ms, is_timeout, jitter_ms
+                FROM target_monitor_series
+                WHERE target = ? AND timestamp >= ? AND timestamp <= ?
+                ORDER BY timestamp ASC;
+                """
+            } else {
+                sql = """
+                SELECT id, target, timestamp, latency_ms, is_timeout, jitter_ms
+                FROM target_monitor_series
+                WHERE timestamp >= ? AND timestamp <= ?
+                ORDER BY timestamp ASC;
+                """
+            }
+
+            let stmt = try database.prepare(sql: sql)
+            defer { sqlite3_finalize(stmt) }
+
+            let isoFormatter = ISO8601DateFormatter()
+
+            if let tgt = target {
+                sqlite3_bind_text(stmt, 1, tgt, -1, SQLITE_TRANSIENT)
+                sqlite3_bind_double(stmt, 2, from.timeIntervalSince1970)
+                sqlite3_bind_double(stmt, 3, to.timeIntervalSince1970)
+            } else {
+                sqlite3_bind_double(stmt, 1, from.timeIntervalSince1970)
+                sqlite3_bind_double(stmt, 2, to.timeIntervalSince1970)
+            }
+
+            var csv = "id,target,timestamp_iso8601,timestamp_unix,latency_ms,is_timeout,jitter_ms\n"
+            while sqlite3_step(stmt) == SQLITE_ROW {
+                let idStr = String(cString: sqlite3_column_text(stmt, 0))
+                let tgt = String(cString: sqlite3_column_text(stmt, 1))
+                let unixTime = sqlite3_column_double(stmt, 2)
+                let isoTime = isoFormatter.string(from: Date(timeIntervalSince1970: unixTime))
+
+                let latStr = sqlite3_column_type(stmt, 3) != SQLITE_NULL ? String(format: "%.2f", sqlite3_column_double(stmt, 3)) : ""
+                let isTimeout = sqlite3_column_int(stmt, 4) == 1 ? "1" : "0"
+                let jitStr = sqlite3_column_type(stmt, 5) != SQLITE_NULL ? String(format: "%.2f", sqlite3_column_double(stmt, 5)) : ""
+
+                csv += "\(idStr),\(tgt),\(isoTime),\(unixTime),\(latStr),\(isTimeout),\(jitStr)\n"
+            }
+            return csv
+        }
+    }
 }

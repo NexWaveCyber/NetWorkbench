@@ -48,6 +48,10 @@ public struct SubnetCalculatorView: View {
     @State private var wildcardBaseIP = "192.168.1.0"
     @State private var wildcardTestIP = "192.168.1.42"
 
+    // IPv6 EUI-64 state
+    @State private var eui64MacInput = "00:1A:2B:3C:4D:5E"
+    @State private var eui64PrefixInput = "2001:db8:acad:1::/64"
+
     public init() {}
 
     public var body: some View {
@@ -168,6 +172,7 @@ public struct SubnetCalculatorView: View {
                 binaryViewCard(net: net)
                 subnetGrid(net: net)
                 subnetSplitterCard(net: net)
+                eui64Card
             } else {
                 VStack(spacing: 10) {
                     Image(systemName: "exclamationmark.triangle")
@@ -335,6 +340,140 @@ public struct SubnetCalculatorView: View {
         .background(Color.primary.opacity(0.03))
         .clipShape(RoundedRectangle(cornerRadius: 8))
         .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Theme.borderLight, lineWidth: 1))
+    }
+
+    // MARK: - IPv6 EUI-64 SLAAC Card
+    private var eui64Card: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("IPV6 SLAAC EUI-64 INTERFACE IDENTIFIER")
+                    .font(.system(size: 10, weight: .bold, design: .monospaced))
+                    .foregroundStyle(Theme.neonCyan)
+                Spacer()
+                Text("RFC 4291 • Universal/Local Bit Flip • ff:fe Insertion")
+                    .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                    .foregroundStyle(.tertiary)
+            }
+
+            HStack(spacing: 12) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("MAC Address (48-bit):")
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundStyle(.secondary)
+                    TextField("e.g. 00:1A:2B:3C:4D:5E", text: $eui64MacInput)
+                        .textFieldStyle(.plain)
+                        .font(Theme.monoText(12))
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 5)
+                        .background(Theme.surfaceBackground)
+                        .clipShape(RoundedRectangle(cornerRadius: 6))
+                }
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("IPv6 /64 Prefix:")
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundStyle(.secondary)
+                    TextField("e.g. 2001:db8:acad:1::/64", text: $eui64PrefixInput)
+                        .textFieldStyle(.plain)
+                        .font(Theme.monoText(12))
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 5)
+                        .background(Theme.surfaceBackground)
+                        .clipShape(RoundedRectangle(cornerRadius: 6))
+                }
+            }
+
+            if let eui = computedEUI64 {
+                HStack(spacing: 14) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("IPv6 SLAAC Global Unicast:")
+                            .font(.system(size: 10))
+                            .foregroundStyle(.secondary)
+                        Text(eui.global)
+                            .font(Theme.monoText(12, weight: .bold))
+                            .foregroundStyle(Theme.signalEmerald)
+                    }
+                    Spacer()
+                    Button {
+                        NSPasteboard.general.clearContents()
+                        NSPasteboard.general.setString(eui.global, forType: .string)
+                    } label: {
+                        Image(systemName: "doc.on.doc")
+                            .font(.system(size: 11))
+                            .foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
+
+                    Divider().frame(height: 24)
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Link-Local (fe80):")
+                            .font(.system(size: 10))
+                            .foregroundStyle(.secondary)
+                        Text(eui.linkLocal)
+                            .font(Theme.monoText(12, weight: .bold))
+                            .foregroundStyle(Theme.azurePro)
+                    }
+                    Button {
+                        NSPasteboard.general.clearContents()
+                        NSPasteboard.general.setString(eui.linkLocal, forType: .string)
+                    } label: {
+                        Image(systemName: "doc.on.doc")
+                            .font(.system(size: 11))
+                            .foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                }
+                .padding(10)
+                .background(Theme.cardBackground)
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+                .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Theme.borderLight, lineWidth: 1))
+            } else {
+                Text("Enter a valid 12-digit hex MAC address (e.g. 00:1A:2B:3C:4D:5E or 001a.2b3c.4d5e).")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .engineeringCard(padding: 14)
+    }
+
+    private var computedEUI64: (linkLocal: String, global: String)? {
+        let cleanMac = eui64MacInput.replacingOccurrences(of: ":", with: "")
+            .replacingOccurrences(of: "-", with: "")
+            .replacingOccurrences(of: ".", with: "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard cleanMac.count == 12, let _ = UInt64(cleanMac, radix: 16) else { return nil }
+
+        var bytes: [UInt8] = []
+        for i in stride(from: 0, to: 12, by: 2) {
+            let start = cleanMac.index(cleanMac.startIndex, offsetBy: i)
+            let end = cleanMac.index(start, offsetBy: 2)
+            if let b = UInt8(cleanMac[start..<end], radix: 16) {
+                bytes.append(b)
+            }
+        }
+        guard bytes.count == 6 else { return nil }
+
+        // Flip 7th bit of first byte
+        let modifiedFirstByte = bytes[0] ^ 0x02
+
+        // Insert 0xFF, 0xFE in middle
+        let euiBytes: [UInt8] = [
+            modifiedFirstByte, bytes[1], bytes[2],
+            0xFF, 0xFE,
+            bytes[3], bytes[4], bytes[5]
+        ]
+
+        let euiSuffix = String(format: "%02x%02x:%02x%02x:%02x%02x:%02x%02x",
+                               euiBytes[0], euiBytes[1], euiBytes[2], euiBytes[3],
+                               euiBytes[4], euiBytes[5], euiBytes[6], euiBytes[7])
+
+        let linkLocal = "fe80::\(euiSuffix)"
+        let cleanPrefix = eui64PrefixInput.replacingOccurrences(of: "/64", with: "").trimmingCharacters(in: .whitespaces)
+        let normalizedPrefix = cleanPrefix.hasSuffix("::") ? String(cleanPrefix.dropLast(2)) : cleanPrefix
+        let global = "\(normalizedPrefix):\(euiSuffix)"
+
+        return (linkLocal, global)
     }
 
     // MARK: - 2. VLSM Planner Section
@@ -594,6 +733,49 @@ public struct SubnetCalculatorView: View {
                                 .foregroundStyle(Theme.signalEmerald)
                                 .clipShape(Capsule())
                         }
+                    }
+
+                    // Vendor CLI Export Buttons
+                    HStack(spacing: 10) {
+                        Button {
+                            let cisco = res.aggregatedNetworks.enumerated().map { i, net in
+                                "ip prefix-list AGG-ROUTES seq \((i + 1) * 10) permit \(net.description)"
+                            }.joined(separator: "\n")
+                            NSPasteboard.general.clearContents()
+                            NSPasteboard.general.setString(cisco, forType: .string)
+                        } label: {
+                            HStack(spacing: 5) {
+                                Image(systemName: "doc.on.doc")
+                                Text("Copy Cisco IOS Prefix-List")
+                            }
+                            .font(.system(size: 11, weight: .bold))
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 5)
+                            .background(Theme.azurePro.opacity(0.15))
+                            .foregroundStyle(Theme.azurePro)
+                            .clipShape(RoundedRectangle(cornerRadius: 6))
+                        }
+                        .buttonStyle(.plain)
+
+                        Button {
+                            let junos = res.aggregatedNetworks.map { net in
+                                "set policy-options prefix-list AGG-ROUTES \(net.description)"
+                            }.joined(separator: "\n")
+                            NSPasteboard.general.clearContents()
+                            NSPasteboard.general.setString(junos, forType: .string)
+                        } label: {
+                            HStack(spacing: 5) {
+                                Image(systemName: "doc.on.doc")
+                                Text("Copy Junos Prefix-List")
+                            }
+                            .font(.system(size: 11, weight: .bold))
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 5)
+                            .background(Theme.quantumViolet.opacity(0.15))
+                            .foregroundStyle(Theme.quantumViolet)
+                            .clipShape(RoundedRectangle(cornerRadius: 6))
+                        }
+                        .buttonStyle(.plain)
                     }
 
                     VStack(spacing: 8) {

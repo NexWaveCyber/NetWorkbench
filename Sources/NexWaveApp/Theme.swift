@@ -142,8 +142,6 @@ public struct PulsingBeacon: View {
     let color: Color
     var size: CGFloat = 8
     var isLive: Bool = true
-    
-    @State private var isPulsing = false
 
     public init(color: Color, size: CGFloat = 8, isLive: Bool = true) {
         self.color = color
@@ -155,26 +153,16 @@ public struct PulsingBeacon: View {
         ZStack {
             if isLive {
                 Circle()
-                    .fill(color.opacity(0.45))
-                    .frame(width: size, height: size)
-                    .scaleEffect(isPulsing ? 2.2 : 1.0)
-                    .opacity(isPulsing ? 0.0 : 0.8)
-                    .animation(
-                        .easeInOut(duration: 1.6).repeatForever(autoreverses: false),
-                        value: isPulsing
-                    )
+                    .fill(color.opacity(0.25))
+                    .frame(width: size + 4, height: size + 4)
             }
 
             Circle()
                 .fill(color)
                 .frame(width: size, height: size)
-                .shadow(color: color.opacity(0.6), radius: 3, x: 0, y: 0)
+                .shadow(color: color.opacity(0.8), radius: 2.5, x: 0, y: 0)
         }
-        .onAppear {
-            if isLive {
-                isPulsing = true
-            }
-        }
+        .frame(width: size + 6, height: size + 6)
     }
 }
 

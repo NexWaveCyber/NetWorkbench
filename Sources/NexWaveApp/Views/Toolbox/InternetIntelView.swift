@@ -114,7 +114,8 @@ public struct InternetIntelView: View {
                     ("Google", "8.8.8.8"),
                     ("Quad9", "9.9.9.9"),
                     ("Apple", "17.0.0.1"),
-                    ("Fastly", "151.101.1.69")
+                    ("Fastly", "151.101.1.69"),
+                    ("Cloudflare v6", "2606:4700:4700::1111")
                 ], id: \.1) { name, target in
                     Button(action: {
                         targetInput = target
@@ -263,6 +264,59 @@ public struct InternetIntelView: View {
                 intelParam(label: "ASN", val: asRec.formattedASN, icon: "number")
                 intelParam(label: "Organization Name", val: asRec.asName, icon: "building.2.fill")
                 intelParam(label: "Regional Registry", val: asRec.registry, icon: "map.fill")
+            }
+
+            Divider()
+
+            HStack(spacing: 8) {
+                Text("External Registries:")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(.secondary)
+
+                if let u = URL(string: "https://www.peeringdb.com/asn/\(asRec.asn)") {
+                    Link(destination: u) {
+                        HStack(spacing: 3) {
+                            Image(systemName: "arrow.up.right.square")
+                            Text("PeeringDB")
+                        }
+                        .font(Theme.monoText(10, weight: .bold))
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 3)
+                        .background(Theme.azurePro.opacity(0.15))
+                        .foregroundStyle(Theme.azurePro)
+                        .clipShape(RoundedRectangle(cornerRadius: 4))
+                    }
+                }
+
+                if let u = URL(string: "https://bgp.he.net/AS\(asRec.asn)") {
+                    Link(destination: u) {
+                        HStack(spacing: 3) {
+                            Image(systemName: "arrow.up.right.square")
+                            Text("BGP.he.net")
+                        }
+                        .font(Theme.monoText(10, weight: .bold))
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 3)
+                        .background(Theme.quantumViolet.opacity(0.15))
+                        .foregroundStyle(Theme.quantumViolet)
+                        .clipShape(RoundedRectangle(cornerRadius: 4))
+                    }
+                }
+
+                if let u = URL(string: "https://stat.ripe.net/AS\(asRec.asn)") {
+                    Link(destination: u) {
+                        HStack(spacing: 3) {
+                            Image(systemName: "arrow.up.right.square")
+                            Text("RIPE Stat")
+                        }
+                        .font(Theme.monoText(10, weight: .bold))
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 3)
+                        .background(Theme.signalEmerald.opacity(0.15))
+                        .foregroundStyle(Theme.signalEmerald)
+                        .clipShape(RoundedRectangle(cornerRadius: 4))
+                    }
+                }
             }
         }
         .engineeringCard(padding: 16)

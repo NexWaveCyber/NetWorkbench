@@ -8,6 +8,7 @@ public struct MTRStudioView: View {
     @State private var maxHops: Int = 15
     @State private var isRunning: Bool = false
     @State private var mtrReport: MTRReport? = nil
+    @State private var selectedDriftHop: MTRHopSnapshot? = nil
 
     private let runner = MTRContinuousRunner()
 
@@ -95,6 +96,25 @@ public struct MTRStudioView: View {
             .background(Theme.cardBackground)
             .clipShape(RoundedRectangle(cornerRadius: 10))
             .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Theme.cyanPulse.opacity(0.3), lineWidth: 1))
+
+            // Target Quick Presets
+            HStack(spacing: 8) {
+                Text("Presets:").font(.system(size: 11)).foregroundStyle(.secondary)
+                ForEach(["1.1.1.1", "8.8.8.8", "9.9.9.9", "apple.com"], id: \.self) { preset in
+                    Button(preset) {
+                        targetInput = preset
+                        if !isRunning {
+                            toggleMTR()
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .font(Theme.monoText(10))
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(Color.primary.opacity(0.04))
+                    .clipShape(RoundedRectangle(cornerRadius: 4))
+                }
+            }
 
             // Probing Options
             HStack {
@@ -240,10 +260,54 @@ public struct MTRStudioView: View {
                     .lineLimit(1)
 
                 if hop.hasDrift {
-                    Image(systemName: "arrow.triangle.branch")
-                        .font(.system(size: 10))
+                    Button {
+                        selectedDriftHop = hop
+                    } label: {
+                        HStack(spacing: 3) {
+                            Image(systemName: "arrow.triangle.branch")
+                            Text("\(hop.allDiscoveredAddresses.count) IPs")
+                        }
+                        .font(.system(size: 9, weight: .bold, design: .monospaced))
+                        .padding(.horizontal, 5)
+                        .padding(.vertical, 2)
+                        .background(Theme.solarAmber.opacity(0.2))
                         .foregroundStyle(Theme.solarAmber)
-                        .help("Multiple transit IPs discovered for this hop: \(hop.allDiscoveredAddresses.joined(separator: ", "))")
+                        .clipShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
+                    .popover(item: Binding(
+                        get: { selectedDriftHop?.id == hop.id ? selectedDriftHop : nil },
+                        set: { _ in selectedDriftHop = nil }
+                    )) { dHop in
+                        VStack(alignment: .leading, spacing: 8) {
+                            HStack(spacing: 6) {
+                                Image(systemName: "arrow.triangle.branch")
+                                    .foregroundStyle(Theme.solarAmber)
+                                Text("Hop \(dHop.hopNumber) Multi-Path Route Drift")
+                                    .font(.system(size: 12, weight: .bold))
+                            }
+                            Text("Transit routers observed at this hop position:")
+                                .font(.system(size: 11))
+                                .foregroundStyle(.secondary)
+
+                            Divider()
+
+                            ForEach(Array(dHop.allDiscoveredAddresses), id: \.self) { addr in
+                                HStack(spacing: 6) {
+                                    Circle().fill(addr == dHop.primaryAddress ? Theme.signalEmerald : Theme.solarAmber).frame(width: 6, height: 6)
+                                    Text(addr)
+                                        .font(Theme.monoText(11, weight: .semibold))
+                                    if addr == dHop.primaryAddress {
+                                        Text("(Active)")
+                                            .font(.system(size: 9))
+                                            .foregroundStyle(Theme.signalEmerald)
+                                    }
+                                }
+                            }
+                        }
+                        .padding(14)
+                        .frame(minWidth: 240)
+                    }
                 }
             }
             .frame(minWidth: 180, alignment: .leading)
@@ -284,10 +348,17 @@ public struct MTRStudioView: View {
                 .foregroundStyle(.secondary)
                 .frame(width: 60, alignment: .trailing)
 
-            Text(hop.lastJitter > 0 ? String(format: "%.1f", hop.lastJitter) : "-")
-                .font(Theme.monoText(11))
-                .foregroundStyle(hop.lastJitter > 15 ? Theme.solarAmber : .secondary)
-                .frame(width: 60, alignment: .trailing)
+            if hop.received < 2 {
+                Text("calib...")
+                    .font(Theme.monoText(10))
+                    .foregroundStyle(.tertiary)
+                    .frame(width: 60, alignment: .trailing)
+            } else {
+                Text(hop.lastJitter > 0 ? String(format: "%.1f", hop.lastJitter) : "-")
+                    .font(Theme.monoText(11))
+                    .foregroundStyle(hop.lastJitter > 15 ? Theme.solarAmber : .secondary)
+                    .frame(width: 60, alignment: .trailing)
+            }
 
             // Mini sparkline
             miniSparkline(history: hop.history)
