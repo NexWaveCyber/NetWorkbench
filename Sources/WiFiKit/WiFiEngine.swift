@@ -187,8 +187,8 @@ public actor WiFiEngine {
                 let ssidName: String
                 if !rawSSID.isEmpty {
                     ssidName = rawSSID
-                } else if isAssoc && iface.ssid() != nil && !iface.ssid()!.isEmpty {
-                    ssidName = iface.ssid()!
+                } else if isAssoc, let activeSSID = iface.ssid(), !activeSSID.isEmpty {
+                    ssidName = activeSSID
                 } else if rawBSSID.isEmpty {
                     ssidName = "Local AP (Ch \(channelNum))"
                 } else {

@@ -121,4 +121,64 @@ public final class OIDTrie: @unchecked Sendable {
             collect(node: child, currentOID: nextOID, results: &results)
         }
     }
+
+    /// Recursively builds an immutable tree of MIB nodes rooted at the given prefix (default: "1.3.6.1").
+    public func buildTree(fromPrefix prefix: String = "1.3.6.1") -> MIBTreeNode? {
+        lock.lock()
+        defer { lock.unlock() }
+
+        let clean = prefix.hasPrefix(".") ? String(prefix.dropFirst()) : prefix
+        let segments = clean.split(separator: ".").compactMap { UInt32($0) }
+
+        var current = root
+        for seg in segments {
+            guard let next = current.children[seg] else { return nil }
+            current = next
+        }
+
+        return makeTreeNode(node: current, segment: segments.last ?? 0, currentOID: clean)
+    }
+
+    private func makeTreeNode(node: MIBNode, segment: UInt32, currentOID: String) -> MIBTreeNode {
+        let childNodes = node.children.sorted(by: { $0.key < $1.key }).map { (seg, child) in
+            makeTreeNode(node: child, segment: seg, currentOID: "\(currentOID).\(seg)")
+        }
+        return MIBTreeNode(
+            segment: segment,
+            oid: currentOID,
+            name: node.name,
+            syntax: node.syntax,
+            description: node.description,
+            children: childNodes
+        )
+    }
+}
+
+public struct MIBTreeNode: Identifiable, Sendable, Hashable {
+    public var id: String { oid }
+    public let segment: UInt32
+    public let oid: String
+    public let name: String?
+    public let syntax: String?
+    public let description: String?
+    public var children: [MIBTreeNode]
+
+    public var isLeaf: Bool { children.isEmpty }
+    public var displayName: String { name ?? "node.\(segment)" }
+
+    public init(
+        segment: UInt32,
+        oid: String,
+        name: String? = nil,
+        syntax: String? = nil,
+        description: String? = nil,
+        children: [MIBTreeNode] = []
+    ) {
+        self.segment = segment
+        self.oid = oid
+        self.name = name
+        self.syntax = syntax
+        self.description = description
+        self.children = children
+    }
 }

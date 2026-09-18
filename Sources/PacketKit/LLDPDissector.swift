@@ -35,8 +35,14 @@ public struct LLDPInfo: Sendable, Hashable, Identifiable {
 
 public enum LLDPDissector {
 
+    private static func parseID(_ data: Data) -> String {
+        let raw = data.dropFirst()
+        return String(data: raw, encoding: .utf8) ?? raw.map { String(format: "%02X", $0) }.joined(separator: ":")
+    }
+
     /// Dissects an IEEE 802.1AB LLDP frame payload (starting after Ethernet header)
     public static func dissect(data: Data, offset: Int = 0) -> (info: LLDPInfo, summary: String, layers: [DissectedLayer]) {
+        let rawData = Data(data)
         var cursor = offset
         var fields: [LayerField] = []
 
@@ -49,14 +55,14 @@ public enum LLDPDissector {
         var vlanID: Int? = nil
         var ttl = 120
 
-        while cursor + 2 <= data.count {
-            let tlvHeader = UInt16(data[cursor]) << 8 | UInt16(data[cursor + 1])
+        while cursor + 2 <= rawData.count {
+            let tlvHeader = UInt16(rawData[cursor]) << 8 | UInt16(rawData[cursor + 1])
             let type = Int((tlvHeader >> 9) & 0x7F)
             let length = Int(tlvHeader & 0x01FF)
             cursor += 2
 
-            guard cursor + length <= data.count else { break }
-            let tlvData = data.subdata(in: cursor..<(cursor + length))
+            guard cursor + length <= rawData.count else { break }
+            let tlvData = rawData.subdata(in: cursor..<(cursor + length))
             cursor += length
 
             if type == 0 { // End of LLDPDU
@@ -66,16 +72,12 @@ public enum LLDPDissector {
 
             switch type {
             case 1: // Chassis ID
-                let subtype = tlvData.first ?? 0
-                let rawId = tlvData.dropFirst()
-                chassisID = String(data: rawId, encoding: .utf8) ?? rawId.map { String(format: "%02X", $0) }.joined(separator: ":")
-                fields.append(LayerField(name: "Chassis ID (Subtype \(subtype))", value: chassisID))
+                chassisID = parseID(tlvData)
+                fields.append(LayerField(name: "Chassis ID", value: chassisID))
 
             case 2: // Port ID
-                let subtype = tlvData.first ?? 0
-                let rawPort = tlvData.dropFirst()
-                portID = String(data: rawPort, encoding: .utf8) ?? rawPort.map { String(format: "%02X", $0) }.joined(separator: ":")
-                fields.append(LayerField(name: "Port ID (Subtype \(subtype))", value: portID))
+                portID = parseID(tlvData)
+                fields.append(LayerField(name: "Port ID", value: portID))
 
             case 3: // TTL
                 if length >= 2 {
@@ -100,8 +102,9 @@ public enum LLDPDissector {
                     let addrSubtype = tlvData[1]
                     if addrSubtype == 1 && length >= 6 { // IPv4
                         let ipBytes = tlvData[2...5]
-                        mgmtAddr = ipBytes.map(String.init).joined(separator: ".")
-                        fields.append(LayerField(name: "Management Address", value: mgmtAddr!))
+                        let ip = ipBytes.map(String.init).joined(separator: ".")
+                        mgmtAddr = ip
+                        fields.append(LayerField(name: "Management Address", value: ip))
                     }
                 }
 
@@ -110,8 +113,9 @@ public enum LLDPDissector {
                     let oui = (UInt32(tlvData[0]) << 16) | (UInt32(tlvData[1]) << 8) | UInt32(tlvData[2])
                     let subtype = tlvData[3]
                     if oui == 0x0080C2 && subtype == 1 { // 802.1 Port VLAN ID
-                        vlanID = Int(UInt16(tlvData[4]) << 8 | UInt16(tlvData[5]))
-                        fields.append(LayerField(name: "Port VLAN ID", value: "\(vlanID!)"))
+                        let vlan = Int(UInt16(tlvData[4]) << 8 | UInt16(tlvData[5]))
+                        vlanID = vlan
+                        fields.append(LayerField(name: "Port VLAN ID", value: "\(vlan)"))
                     }
                 }
 

@@ -174,6 +174,7 @@ public final class MenuBarMonitorEngine: @unchecked Sendable {
     private var monitorTask: Task<Void, Never>? = nil
     private var lastPublicIPCheck: Date = .distantPast
     private var cycleCounter: Int = 0
+    private var isProbingCycleActive: Bool = false
 
     public init() {
         // Fast synchronous discovery of route, local IP, and DNS resolver
@@ -230,6 +231,10 @@ public final class MenuBarMonitorEngine: @unchecked Sendable {
 
     @MainActor
     public func performMonitorCycle() async {
+        guard !isProbingCycleActive else { return }
+        isProbingCycleActive = true
+        defer { isProbingCycleActive = false }
+
         cycleCounter += 1
         let shouldRefreshInterfaces = (cycleCounter == 1 || cycleCounter % 4 == 0) // Every 32s or initial cycle
 
@@ -336,12 +341,22 @@ public final class MenuBarMonitorEngine: @unchecked Sendable {
             process.standardOutput = pipe
             process.standardError = Pipe()
 
+            let watchdog = DispatchSource.makeTimerSource(queue: DispatchQueue.global(qos: .utility))
+            watchdog.schedule(deadline: .now() + Double(timeoutMs) / 1000.0 + 0.6)
+            watchdog.setEventHandler {
+                if process.isRunning {
+                    process.terminate()
+                }
+            }
+            watchdog.resume()
+            defer { watchdog.cancel() }
+
             do {
                 try process.run()
+                let data = pipe.fileHandleForReading.readDataToEndOfFile()
                 process.waitUntilExit()
                 guard process.terminationStatus == 0 else { return nil }
 
-                let data = pipe.fileHandleForReading.readDataToEndOfFile()
                 guard let output = String(data: data, encoding: .utf8) else { return nil }
 
                 // Parse "time=1.234 ms"
@@ -372,12 +387,22 @@ public final class MenuBarMonitorEngine: @unchecked Sendable {
             process.standardOutput = pipe
             process.standardError = Pipe()
 
+            let watchdog = DispatchSource.makeTimerSource(queue: DispatchQueue.global(qos: .utility))
+            watchdog.schedule(deadline: .now() + Double(timeoutMs) / 1000.0 + 0.6)
+            watchdog.setEventHandler {
+                if process.isRunning {
+                    process.terminate()
+                }
+            }
+            watchdog.resume()
+            defer { watchdog.cancel() }
+
             do {
                 try process.run()
+                let data = pipe.fileHandleForReading.readDataToEndOfFile()
                 process.waitUntilExit()
                 guard process.terminationStatus == 0 else { return nil }
 
-                let data = pipe.fileHandleForReading.readDataToEndOfFile()
                 guard let output = String(data: data, encoding: .utf8) else { return nil }
 
                 if let timeRange = output.range(of: "time=") {
@@ -714,8 +739,8 @@ public final class MenuBarMonitorEngine: @unchecked Sendable {
         process.standardError = Pipe()
 
         if let _ = try? process.run() {
-            process.waitUntilExit()
             let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            process.waitUntilExit()
             if let output = String(data: data, encoding: .utf8) {
                 let details = extractRouteDetails(from: output)
                 if !details.gateway.isEmpty {
@@ -733,8 +758,8 @@ public final class MenuBarMonitorEngine: @unchecked Sendable {
         netstatProc.standardError = Pipe()
 
         if let _ = try? netstatProc.run() {
-            netstatProc.waitUntilExit()
             let data = netstatPipe.fileHandleForReading.readDataToEndOfFile()
+            netstatProc.waitUntilExit()
             if let output = String(data: data, encoding: .utf8) {
                 let lines = output.components(separatedBy: .newlines)
                 for line in lines {
@@ -762,14 +787,14 @@ public final class MenuBarMonitorEngine: @unchecked Sendable {
         process.standardError = Pipe()
 
         if let _ = try? process.run() {
-            process.waitUntilExit()
             let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            process.waitUntilExit()
             if let output = String(data: data, encoding: .utf8) {
                 for line in output.components(separatedBy: .newlines) {
                     let trimmed = line.trimmingCharacters(in: .whitespaces)
                     if trimmed.starts(with: "gateway:") {
                         let gw = trimmed.replacingOccurrences(of: "gateway:", with: "").trimmingCharacters(in: .whitespaces)
-                        return gw.components(separatedBy: "%")[0]
+                        return gw.components(separatedBy: "%").first ?? ""
                     }
                 }
             }
@@ -784,14 +809,14 @@ public final class MenuBarMonitorEngine: @unchecked Sendable {
         netstatProc.standardError = Pipe()
 
         if let _ = try? netstatProc.run() {
-            netstatProc.waitUntilExit()
             let data = netstatPipe.fileHandleForReading.readDataToEndOfFile()
+            netstatProc.waitUntilExit()
             if let output = String(data: data, encoding: .utf8) {
                 for line in output.components(separatedBy: .newlines) {
                     let parts = line.split(separator: " ", omittingEmptySubsequences: true)
                     if parts.count >= 4 && parts[0] == "default" {
                         let gw = String(parts[1])
-                        return gw.components(separatedBy: "%")[0]
+                        return gw.components(separatedBy: "%").first ?? ""
                     }
                 }
             }
@@ -825,8 +850,8 @@ public final class MenuBarMonitorEngine: @unchecked Sendable {
         process.standardError = Pipe()
 
         if let _ = try? process.run() {
-            process.waitUntilExit()
             let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            process.waitUntilExit()
             if let ip = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines), !ip.isEmpty {
                 return ip
             }

@@ -20,19 +20,21 @@ public enum DatabaseError: Error, LocalizedError {
 
 /// Thread-safe SQLite database manager with WAL mode enabled.
 public final class SQLiteDatabase: @unchecked Sendable {
+    public let path: String
     private var db: OpaquePointer?
-    private let lock = NSRecursiveLock()
+    private let internalLock = NSRecursiveLock()
 
     public init(path: String? = nil) throws {
         let dbPath: String
         if let path = path {
             dbPath = path
         } else {
-            let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+            let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first ?? FileManager.default.temporaryDirectory
             let dir = appSupport.appendingPathComponent("NexWave", isDirectory: true)
             try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
             dbPath = dir.appendingPathComponent("network_workbench.sqlite").path
         }
+        self.path = dbPath
 
         var pointer: OpaquePointer?
         if sqlite3_open(dbPath, &pointer) != SQLITE_OK {
@@ -47,7 +49,7 @@ public final class SQLiteDatabase: @unchecked Sendable {
 
     deinit {
         if let db = db {
-            sqlite3_close(db)
+            sqlite3_close_v2(db)
         }
     }
 
@@ -58,8 +60,8 @@ public final class SQLiteDatabase: @unchecked Sendable {
     }
 
     public func execute(sql: String) throws {
-        lock.lock()
-        defer { lock.unlock() }
+        internalLock.lock()
+        defer { internalLock.unlock() }
 
         var errMsg: UnsafeMutablePointer<CChar>?
         if sqlite3_exec(db, sql, nil, nil, &errMsg) != SQLITE_OK {
@@ -75,7 +77,10 @@ public final class SQLiteDatabase: @unchecked Sendable {
             let err = String(cString: sqlite3_errmsg(db))
             throw DatabaseError.prepareFailed(err)
         }
-        return stmt!
+        guard let validStmt = stmt else {
+            throw DatabaseError.prepareFailed("Failed to allocate SQLite statement pointer")
+        }
+        return validStmt
     }
 
     private func runMigrations() throws {
@@ -203,6 +208,86 @@ public final class SQLiteDatabase: @unchecked Sendable {
             y REAL NOT NULL,
             PRIMARY KEY (preset_id, node_id)
         );
+
+        CREATE TABLE IF NOT EXISTS evidence_items (
+            id TEXT PRIMARY KEY,
+            investigation_id TEXT NOT NULL,
+            title TEXT NOT NULL,
+            evidence_type TEXT NOT NULL,
+            filename TEXT NOT NULL,
+            sha256 TEXT NOT NULL,
+            byte_size INTEGER NOT NULL,
+            content TEXT NOT NULL,
+            source_workbench TEXT NOT NULL,
+            created_at REAL NOT NULL,
+            notes TEXT,
+            FOREIGN KEY (investigation_id) REFERENCES investigations(id) ON DELETE CASCADE
+        );
+
+        CREATE TABLE IF NOT EXISTS investigation_hypotheses (
+            id TEXT PRIMARY KEY,
+            investigation_id TEXT NOT NULL,
+            statement TEXT NOT NULL,
+            status TEXT NOT NULL,
+            proposed_test TEXT,
+            findings TEXT,
+            updated_at REAL NOT NULL,
+            FOREIGN KEY (investigation_id) REFERENCES investigations(id) ON DELETE CASCADE
+        );
+
+        CREATE TABLE IF NOT EXISTS investigation_action_items (
+            id TEXT PRIMARY KEY,
+            investigation_id TEXT NOT NULL,
+            title TEXT NOT NULL,
+            phase TEXT NOT NULL,
+            is_completed INTEGER NOT NULL DEFAULT 0,
+            assignee TEXT,
+            completed_at REAL,
+            notes TEXT,
+            FOREIGN KEY (investigation_id) REFERENCES investigations(id) ON DELETE CASCADE
+        );
+
+        CREATE TABLE IF NOT EXISTS investigation_rca (
+            id TEXT PRIMARY KEY,
+            investigation_id TEXT NOT NULL UNIQUE,
+            problem_statement TEXT,
+            why1 TEXT,
+            why2 TEXT,
+            why3 TEXT,
+            why4 TEXT,
+            why5 TEXT,
+            root_cause TEXT,
+            preventative_strategy TEXT,
+            FOREIGN KEY (investigation_id) REFERENCES investigations(id) ON DELETE CASCADE
+        );
+
+        CREATE TABLE IF NOT EXISTS site_environments (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            environment_type TEXT NOT NULL DEFAULT 'campus',
+            gateway_ip TEXT NOT NULL,
+            subnet_cidr TEXT NOT NULL,
+            primary_dns TEXT NOT NULL DEFAULT '1.1.1.1',
+            secondary_dns TEXT,
+            vlan_range TEXT NOT NULL DEFAULT '1 - 100',
+            runbook_notes TEXT,
+            is_active INTEGER NOT NULL DEFAULT 0,
+            created_at REAL NOT NULL,
+            updated_at REAL NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS custom_commands (
+            id TEXT PRIMARY KEY,
+            intent TEXT NOT NULL,
+            category TEXT NOT NULL,
+            vendor TEXT NOT NULL,
+            syntax TEXT NOT NULL,
+            description TEXT,
+            is_favorite INTEGER NOT NULL DEFAULT 0,
+            is_custom INTEGER NOT NULL DEFAULT 1,
+            parameters_json TEXT,
+            created_at REAL NOT NULL
+        );
         """
         try execute(sql: schema)
 
@@ -214,7 +299,15 @@ public final class SQLiteDatabase: @unchecked Sendable {
             "ALTER TABLE devices ADD COLUMN snmp_community TEXT;",
             "ALTER TABLE devices ADD COLUMN snmp_port INTEGER DEFAULT 161;",
             "ALTER TABLE devices ADD COLUMN snmp_version TEXT DEFAULT 'v2c';",
-            "ALTER TABLE devices ADD COLUMN last_seen REAL;"
+            "ALTER TABLE devices ADD COLUMN last_seen REAL;",
+            "ALTER TABLE investigations ADD COLUMN commander TEXT;",
+            "ALTER TABLE investigations ADD COLUMN affected_services TEXT;",
+            "ALTER TABLE investigations ADD COLUMN affected_devices TEXT;",
+            "ALTER TABLE investigations ADD COLUMN blast_radius TEXT;",
+            "ALTER TABLE investigations ADD COLUMN detected_at REAL;",
+            "ALTER TABLE investigations ADD COLUMN mitigated_at REAL;",
+            "ALTER TABLE investigations ADD COLUMN root_cause_category TEXT;",
+            "ALTER TABLE investigations ADD COLUMN root_cause_summary TEXT;"
         ]
         for alter in alterStatements {
             _ = try? execute(sql: alter)
@@ -225,13 +318,63 @@ public final class SQLiteDatabase: @unchecked Sendable {
         db
     }
 
+    public func lock() {
+        internalLock.lock()
+    }
+
+    public func unlock() {
+        internalLock.unlock()
+    }
+
     public func withLock<T>(_ block: () throws -> T) rethrows -> T {
-        lock.lock()
-        defer { lock.unlock() }
+        internalLock.lock()
+        defer { internalLock.unlock() }
         return try block()
     }
 
     public func clearDiagnosticHistory() throws {
         try execute(sql: "DELETE FROM diagnostic_history;")
+    }
+
+    public func databaseFileSize() -> Int64 {
+        let attrs = try? FileManager.default.attributesOfItem(atPath: path)
+        return (attrs?[.size] as? NSNumber)?.int64Value ?? 0
+    }
+
+    public func tableRowCounts() -> [String: Int] {
+        var counts: [String: Int] = [:]
+        let tables = ["investigations", "diagnostic_history", "timeline_events", "forensic_artifacts", "managed_devices", "custom_scripts"]
+        for table in tables {
+            do {
+                let stmt = try prepare(sql: "SELECT COUNT(*) FROM \(table);")
+                defer { sqlite3_finalize(stmt) }
+                if sqlite3_step(stmt) == SQLITE_ROW {
+                    counts[table] = Int(sqlite3_column_int(stmt, 0))
+                }
+            } catch {
+                counts[table] = 0
+            }
+        }
+        return counts
+    }
+
+    public func backupDatabase(to destinationURL: URL) throws {
+        internalLock.lock()
+        defer { internalLock.unlock() }
+
+        var destDb: OpaquePointer?
+        if sqlite3_open(destinationURL.path, &destDb) != SQLITE_OK {
+            let err = destDb != nil ? String(cString: sqlite3_errmsg(destDb)) : "Unknown"
+            throw DatabaseError.connectionFailed(err)
+        }
+        defer { sqlite3_close(destDb) }
+
+        guard let backup = sqlite3_backup_init(destDb, "main", db, "main") else {
+            let err = String(cString: sqlite3_errmsg(destDb))
+            throw DatabaseError.executionFailed("Failed to initialize backup: \(err)")
+        }
+
+        sqlite3_backup_step(backup, -1)
+        sqlite3_backup_finish(backup)
     }
 }

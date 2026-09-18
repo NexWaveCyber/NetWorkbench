@@ -9,6 +9,11 @@ public enum PacketProtocol: Sendable, Codable, Hashable, CustomStringConvertible
     case tls
     case http
     case arp
+    case dhcp
+    case bgp
+    case ospf
+    case ntp
+    case snmp
     case other(String)
 
     public var description: String {
@@ -21,6 +26,11 @@ public enum PacketProtocol: Sendable, Codable, Hashable, CustomStringConvertible
         case .tls: return "TLS"
         case .http: return "HTTP"
         case .arp: return "ARP"
+        case .dhcp: return "DHCP"
+        case .bgp: return "BGP"
+        case .ospf: return "OSPF"
+        case .ntp: return "NTP"
+        case .snmp: return "SNMP"
         case .other(let name): return name
         }
     }
@@ -34,6 +44,11 @@ public enum PacketProtocol: Sendable, Codable, Hashable, CustomStringConvertible
         case .http: return "#F59E0B"     // Amber
         case .icmp, .icmpv6: return "#EC4899" // Pink
         case .arp: return "#8B5CF6"      // Purple
+        case .dhcp: return "#06B6D4"     // Sky Blue
+        case .bgp: return "#F97316"      // Orange
+        case .ospf: return "#84CC16"     // Lime
+        case .ntp: return "#6366F1"      // Indigo
+        case .snmp: return "#EAB308"     // Yellow
         case .other: return "#64748B"    // Slate
         }
     }
@@ -361,4 +376,82 @@ public struct PacketCaptureSummary: Sendable, Codable {
         self.anomalies = anomalies
         self.packets = packets
     }
+}
+
+// MARK: - TCP Stream Reassembly Models
+
+public enum TCPStreamDirection: String, Sendable, Codable {
+    case clientToServer = "Client ➔ Server"
+    case serverToClient = "Server ➔ Client"
+}
+
+public struct TCPStreamSegment: Identifiable, Sendable {
+    public let id: UUID
+    public let direction: TCPStreamDirection
+    public let packetNumber: Int
+    public let seq: UInt32
+    public let payload: Data
+    public let asciiText: String
+    public let hexDump: String
+    public let timestamp: Date
+
+    public init(
+        id: UUID = UUID(),
+        direction: TCPStreamDirection,
+        packetNumber: Int,
+        seq: UInt32,
+        payload: Data,
+        asciiText: String,
+        hexDump: String,
+        timestamp: Date
+    ) {
+        self.id = id
+        self.direction = direction
+        self.packetNumber = packetNumber
+        self.seq = seq
+        self.payload = payload
+        self.asciiText = asciiText
+        self.hexDump = hexDump
+        self.timestamp = timestamp
+    }
+}
+
+public struct TCPStreamReassemblyResult: Sendable {
+    public let streamId: String
+    public let clientEndpoint: String
+    public let serverEndpoint: String
+    public let clientBytes: Int
+    public let serverBytes: Int
+    public let totalBytes: Int
+    public let segments: [TCPStreamSegment]
+    public let combinedAscii: String
+
+    public init(
+        streamId: String,
+        clientEndpoint: String,
+        serverEndpoint: String,
+        clientBytes: Int,
+        serverBytes: Int,
+        totalBytes: Int,
+        segments: [TCPStreamSegment],
+        combinedAscii: String
+    ) {
+        self.streamId = streamId
+        self.clientEndpoint = clientEndpoint
+        self.serverEndpoint = serverEndpoint
+        self.clientBytes = clientBytes
+        self.serverBytes = serverBytes
+        self.totalBytes = totalBytes
+        self.segments = segments
+        self.combinedAscii = combinedAscii
+    }
+}
+
+public enum PacketSortColumn: String, Sendable, CaseIterable {
+    case number = "#"
+    case time = "Time"
+    case source = "Source"
+    case destination = "Destination"
+    case protocolType = "Protocol"
+    case length = "Length"
 }

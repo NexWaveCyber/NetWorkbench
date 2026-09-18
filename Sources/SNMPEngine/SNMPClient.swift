@@ -171,6 +171,106 @@ public actor SNMPClient {
         return results
     }
 
+    /// Executes an SNMP SetRequest for one or more OIDs with target values (SNMPv1/v2c).
+    public func set(
+        host: String,
+        port: Int = 161,
+        community: String = "private",
+        version: SNMPVersion = .v2c,
+        varBinds: [SNMPVarBind],
+        timeout: TimeInterval = 3.0
+    ) async throws -> [SNMPVarBind] {
+        let pdu = SNMPPDU(tag: ASN1Tag.setRequest, varBinds: varBinds)
+        let message = SNMPMessage(version: version, community: community, pdu: pdu)
+
+        let response = try await sendSNMPMessage(host: host, port: port, message: message, timeout: timeout)
+        if response.pdu.errorStatus != .noError {
+            throw SNMPClientError.responseError(response.pdu.errorStatus)
+        }
+        return response.pdu.varBinds
+    }
+
+    /// Executes an RFC 3416 SNMP GetBulkRequest (SNMPv2c/v3).
+    public func getBulk(
+        host: String,
+        port: Int = 161,
+        community: String = "public",
+        version: SNMPVersion = .v2c,
+        nonRepeaters: Int32 = 0,
+        maxRepetitions: Int32 = 10,
+        oids: [String],
+        timeout: TimeInterval = 3.0
+    ) async throws -> [SNMPVarBind] {
+        guard version != .v1 else {
+            throw NSError(domain: "SNMPClient", code: -1, userInfo: [NSLocalizedDescriptionKey: "GetBulkRequest is not supported in SNMPv1 (requires SNMPv2c or SNMPv3)."])
+        }
+        let varBinds = oids.map { SNMPVarBind(oid: $0, value: .null) }
+        let pdu = SNMPPDU(bulkWithRequestId: Int32.random(in: 1...Int32.max), nonRepeaters: nonRepeaters, maxRepetitions: maxRepetitions, varBinds: varBinds)
+        let message = SNMPMessage(version: version, community: community, pdu: pdu)
+
+        let response = try await sendSNMPMessage(host: host, port: port, message: message, timeout: timeout)
+        if response.pdu.errorStatus != .noError {
+            throw SNMPClientError.responseError(response.pdu.errorStatus)
+        }
+        return response.pdu.varBinds
+    }
+
+    /// Ultra-fast table walk utilizing RFC 3416 GetBulkRequest (10x-50x faster than iterative GetNext).
+    public func bulkWalk(
+        host: String,
+        port: Int = 161,
+        community: String = "public",
+        version: SNMPVersion = .v2c,
+        rootOID: String,
+        maxRepetitions: Int32 = 20,
+        maxTotalResults: Int = 500,
+        timeout: TimeInterval = 3.0
+    ) async throws -> [SNMPVarBind] {
+        if version == .v1 {
+            return try await walk(host: host, port: port, community: community, version: version, rootOID: rootOID, maxIterations: maxTotalResults, timeout: timeout)
+        }
+
+        var results: [SNMPVarBind] = []
+        var currentOID = rootOID
+        let prefix = rootOID.hasSuffix(".") ? rootOID : rootOID + "."
+
+        while results.count < maxTotalResults {
+            let chunk = try await getBulk(
+                host: host,
+                port: port,
+                community: community,
+                version: version,
+                nonRepeaters: 0,
+                maxRepetitions: maxRepetitions,
+                oids: [currentOID],
+                timeout: timeout
+            )
+
+            if chunk.isEmpty { break }
+
+            var hasAdvanced = false
+            for vb in chunk {
+                if vb.value == .endOfMibView || vb.value == .noSuchObject || vb.value == .noSuchInstance {
+                    return results
+                }
+                if !vb.oid.hasPrefix(rootOID) && !vb.oid.hasPrefix(prefix) {
+                    return results
+                }
+                if vb.oid != currentOID && !results.contains(where: { $0.oid == vb.oid }) {
+                    results.append(vb)
+                    currentOID = vb.oid
+                    hasAdvanced = true
+                }
+            }
+
+            if !hasAdvanced {
+                break
+            }
+        }
+
+        return results
+    }
+
     /// Calculates interface throughput deltas between two sample snapshots.
     public static func calculateDeltas(
         previous: SNMPInterfaceMetric,
@@ -300,10 +400,47 @@ public actor SNMPClient {
         oids: [String],
         timeout: TimeInterval = 3.0
     ) async throws -> [SNMPVarBind] {
+        let varBinds = oids.map { SNMPVarBind(oid: $0, value: .null) }
+        return try await executeV3PDU(
+            pduTag: ASN1Tag.getRequest,
+            host: host,
+            port: port,
+            config: config,
+            varBinds: varBinds,
+            timeout: timeout
+        )
+    }
+
+    /// Executes an SNMPv3 SetRequest with USM authentication and encryption
+    public func setV3(
+        host: String,
+        port: Int = 161,
+        config: V3Config,
+        varBinds: [SNMPVarBind],
+        timeout: TimeInterval = 3.0
+    ) async throws -> [SNMPVarBind] {
+        return try await executeV3PDU(
+            pduTag: ASN1Tag.setRequest,
+            host: host,
+            port: port,
+            config: config,
+            varBinds: varBinds,
+            timeout: timeout
+        )
+    }
+
+    private func executeV3PDU(
+        pduTag: UInt8,
+        host: String,
+        port: Int,
+        config: V3Config,
+        varBinds: [SNMPVarBind],
+        timeout: TimeInterval
+    ) async throws -> [SNMPVarBind] {
         var activeConfig = config
 
         // 1. Discover authoritative EngineID if not specified
-        if activeConfig.authoritativeEngineID == nil || activeConfig.authoritativeEngineID!.isEmpty {
+        if activeConfig.authoritativeEngineID?.isEmpty != false {
             do {
                 let disc = try await discoverEngine(host: host, port: port, timeout: timeout)
                 activeConfig.authoritativeEngineID = disc.engineID
@@ -330,20 +467,20 @@ public actor SNMPClient {
         )
 
         // 3. Build ScopedPDU
-        let varBinds = oids.map { SNMPVarBind(oid: $0, value: .null) }
-        let pdu = SNMPPDU(tag: ASN1Tag.getRequest, varBinds: varBinds)
+        let pdu = SNMPPDU(tag: pduTag, varBinds: varBinds)
         let scoped = ScopedPDU(contextEngineID: engineID, contextName: activeConfig.contextName, pdu: pdu)
         let rawScopedData = try scoped.serialize()
 
-        // 4. Handle Privacy / Encryption
+        // 4. Handle Privacy / Encryption (AES-128 or AES-256)
         let scopedPayload: Data
         let privParams: Data
         let isEncrypted = (activeConfig.securityLevel == .authPriv && activeConfig.privProtocol != .none)
 
         if isEncrypted {
-            let enc = try SNMPv3Crypto.encryptAES128(
+            let enc = try SNMPv3Crypto.encryptAES(
                 payload: rawScopedData,
                 privKey: privKey,
+                privProtocol: activeConfig.privProtocol,
                 engineBoots: activeConfig.engineBoots,
                 engineTime: activeConfig.engineTime
             )
@@ -383,9 +520,10 @@ public actor SNMPClient {
         // Decrypt response ScopedPDU if response is encrypted
         let respScopedData: Data
         if respMsg.isEncrypted {
-            respScopedData = try SNMPv3Crypto.decryptAES128(
+            respScopedData = try SNMPv3Crypto.decryptAES(
                 ciphertext: respMsg.scopedPDUData,
                 privKey: privKey,
+                privProtocol: activeConfig.privProtocol,
                 engineBoots: respMsg.securityParameters.engineBoots,
                 engineTime: respMsg.securityParameters.engineTime,
                 privParams: respMsg.securityParameters.privParameters
@@ -421,9 +559,12 @@ public actor SNMPClient {
         payload: Data,
         timeout: TimeInterval
     ) async throws -> Data {
+        guard port > 0 && port <= 65535, let nwPort = NWEndpoint.Port(rawValue: UInt16(port)) else {
+            throw SNMPClientError.connectionFailed("Invalid UDP port: \(port)")
+        }
         let nwEndpoint = NWEndpoint.hostPort(
             host: NWEndpoint.Host(host),
-            port: NWEndpoint.Port(rawValue: UInt16(port))!
+            port: nwPort
         )
 
         let params = NWParameters.udp

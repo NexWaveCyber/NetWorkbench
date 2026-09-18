@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import UniformTypeIdentifiers
 import PacketKit
 import ReportingKit
 
@@ -8,11 +9,24 @@ public struct PacketWorkbenchView: View {
 
     @State private var summary: PacketCaptureSummary? = nil
     @State private var selectedPacket: PacketRecord? = nil
+    @State private var selectedLayerField: LayerField? = nil
     @State private var activeTab: PacketTab = .packets
-    @State private var protocolFilter: PacketFilter = .all
-    @State private var searchText: String = ""
     @State private var rawCaptureData: Data? = nil
     @State private var currentFileName: String = "sample_traffic.pcap"
+    @State private var isDropTargeted: Bool = false
+
+    // Sorting State
+    @State private var sortColumn: PacketSortColumn = .number
+    @State private var sortAscending: Bool = true
+
+    // Wireshark Display Filter Engine State
+    @State private var displayFilterText: String = ""
+    @State private var activeFilter: PacketDisplayFilter = PacketDisplayFilter(query: "")
+    @State private var filterValidationStatus: FilterValidationStatus = .empty
+
+    // TCP Stream Reassembly
+    @State private var streamReassemblyResult: TCPStreamReassemblyResult? = nil
+    @State private var isFollowStreamSheetPresented: Bool = false
 
     // Live Capture Session State
     @State private var liveSession = LiveCaptureSession()
@@ -41,19 +55,6 @@ public struct PacketWorkbenchView: View {
             case .anomalies: return "exclamationmark.triangle.fill"
             }
         }
-    }
-
-    public enum PacketFilter: String, CaseIterable, Identifiable {
-        case all = "All"
-        case tcp = "TCP"
-        case udp = "UDP"
-        case dns = "DNS"
-        case tls = "TLS"
-        case http = "HTTP"
-        case icmp = "ICMP"
-        case anomaliesOnly = "Anomalies Only"
-
-        public var id: String { rawValue }
     }
 
     public init(state: AppState) {
@@ -88,8 +89,26 @@ public struct PacketWorkbenchView: View {
             }
         }
         .background(Theme.surfaceBackground)
+        .overlay {
+            if isDropTargeted {
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke(Theme.cyanPulse, lineWidth: 3)
+                    .background(Theme.cyanPulse.opacity(0.12))
+                    .padding(8)
+            }
+        }
+        .onDrop(of: [.fileURL, .data], isTargeted: $isDropTargeted) { providers in
+            handleFileDrop(providers: providers)
+        }
         .sheet(isPresented: $isExportSheetPresented) {
             exportSheetView
+        }
+        .sheet(isPresented: $isFollowStreamSheetPresented) {
+            if let res = streamReassemblyResult {
+                FollowTCPStreamSheet(result: res) {
+                    isFollowStreamSheetPresented = false
+                }
+            }
         }
         .alert("Wireshark Integration", isPresented: $showWiresharkAlert) {
             Button("Download Wireshark") {
@@ -130,7 +149,7 @@ public struct PacketWorkbenchView: View {
                     Text("PACKET WORKBENCH")
                         .font(Theme.monoText(13, weight: .bold))
                         .foregroundStyle(Color.white)
-                    Text("Zero-GPL Native Streaming PCAP/PCAPNG Summary & Anomaly Triage")
+                    Text("Zero-GPL Native Streaming PCAP/PCAPNG Forensics & Deep Dissector")
                         .font(.system(size: 11))
                         .foregroundStyle(.secondary)
                 }
@@ -172,20 +191,35 @@ public struct PacketWorkbenchView: View {
                 .accessibilityLabel("Open PCAP or PCAPNG Capture File")
 
                 Button(action: handleOpenWireshark) {
-                    Label("Open in Wireshark", systemImage: "arrow.up.forward.app")
+                    Label("Wireshark", systemImage: "arrow.up.forward.app")
                         .font(.system(size: 12, weight: .semibold))
                 }
                 .buttonStyle(.borderedProminent)
                 .tint(Theme.quantumViolet)
                 .accessibilityLabel("Open Current Capture in Wireshark")
 
-                Button(action: openExportSheet) {
-                    Label("Export Report", systemImage: "square.and.arrow.up")
+                // Export Menu
+                Menu {
+                    Button(action: openExportSheet) {
+                        Label("Audit Evidence Report...", systemImage: "doc.plaintext")
+                    }
+                    Divider()
+                    Button(action: exportFilteredPCAP) {
+                        Label("Export Filtered Packets as PCAP...", systemImage: "arrow.down.circle")
+                    }
+                    Button(action: exportFilteredCSV) {
+                        Label("Export Packet Table as CSV (RFC 4180)...", systemImage: "tablecells")
+                    }
+                } label: {
+                    Label("Export", systemImage: "square.and.arrow.up")
                         .font(.system(size: 12, weight: .medium))
                 }
-                .buttonStyle(.bordered)
-                .tint(Theme.signalEmerald)
-                .accessibilityLabel("Export Capture Triage Report")
+                .menuStyle(.borderlessButton)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 4)
+                .background(Theme.signalEmerald.opacity(0.15))
+                .foregroundStyle(Theme.signalEmerald)
+                .clipShape(RoundedRectangle(cornerRadius: 6))
             }
         }
         .padding(.horizontal, 16)
@@ -196,6 +230,71 @@ public struct PacketWorkbenchView: View {
     // MARK: - Live Capture Control Drawer
     private var liveCaptureControlDrawer: some View {
         VStack(spacing: 8) {
+            // Elevation Notice Banner if BPF access is restricted
+            if case .requiresElevation = bpfStatus {
+                HStack(spacing: 10) {
+                    Image(systemName: "lock.shield.fill")
+                        .font(.system(size: 14))
+                        .foregroundStyle(Theme.solarAmber)
+
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text("BPF Packet Capture requires macOS authorization")
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundStyle(Color.white)
+                        Text("/dev/bpf* devices require admin group access to capture live traffic on \(selectedInterfaceName).")
+                            .font(.system(size: 10))
+                            .foregroundStyle(.secondary)
+                    }
+
+                    Spacer()
+
+                    Button {
+                        authorizeBPF()
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "key.fill")
+                                .font(.system(size: 10))
+                            Text("Authorize (Touch ID / Admin)")
+                                .font(.system(size: 11, weight: .bold))
+                        }
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(Theme.solarAmber)
+
+                    Button {
+                        installChmodBPF()
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "bolt.shield.fill")
+                                .font(.system(size: 10))
+                            Text("Install Boot Daemon")
+                                .font(.system(size: 11, weight: .medium))
+                        }
+                    }
+                    .buttonStyle(.bordered)
+                    .tint(Theme.quantumViolet)
+                    .help("Installs /Library/LaunchDaemons/com.nexwave.chmodbpf.plist to persist permissions across reboots")
+
+                    Button {
+                        copyTerminalCommand()
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "doc.on.doc")
+                                .font(.system(size: 10))
+                            Text("Copy sudo command")
+                                .font(.system(size: 11))
+                        }
+                    }
+                    .buttonStyle(.bordered)
+                    .tint(Theme.cyanPulse)
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background(Theme.solarAmber.opacity(0.12))
+                .clipShape(RoundedRectangle(cornerRadius: 6))
+                .overlay(RoundedRectangle(cornerRadius: 6).stroke(Theme.solarAmber.opacity(0.3), lineWidth: 1))
+            }
+
             // Row 1: Interface Picker + BPF Filter + Quick Presets
             HStack(spacing: 10) {
                 // Interface selector
@@ -245,8 +344,9 @@ public struct PacketWorkbenchView: View {
                     bpfPresetChip(title: "All", filter: "")
                     bpfPresetChip(title: "DNS", filter: "port 53")
                     bpfPresetChip(title: "Web", filter: "port 80 or port 443")
+                    bpfPresetChip(title: "DHCP", filter: "port 67 or port 68")
+                    bpfPresetChip(title: "BGP", filter: "port 179")
                     bpfPresetChip(title: "ICMP", filter: "icmp")
-                    bpfPresetChip(title: "ARP", filter: "arp")
                 }
             }
 
@@ -316,6 +416,7 @@ public struct PacketWorkbenchView: View {
                 Button(action: {
                     liveSession.clear()
                     selectedPacket = nil
+                    selectedLayerField = nil
                 }) {
                     Label("Clear", systemImage: "trash")
                         .font(.system(size: 11))
@@ -373,7 +474,7 @@ public struct PacketWorkbenchView: View {
                         }
                     }
                 } else if case .error(let msg) = liveSession.status {
-                    HStack(spacing: 6) {
+                    HStack(spacing: 8) {
                         Image(systemName: "exclamationmark.triangle.fill")
                             .font(.system(size: 11))
                             .foregroundStyle(Theme.crimsonCritical)
@@ -381,6 +482,23 @@ public struct PacketWorkbenchView: View {
                             .font(.system(size: 11))
                             .foregroundStyle(Theme.crimsonCritical)
                             .lineLimit(1)
+
+                        if msg.localizedCaseInsensitiveContains("permission") || msg.localizedCaseInsensitiveContains("bpf") {
+                            Button("Authorize BPF") {
+                                authorizeBPF()
+                            }
+                            .font(.system(size: 11, weight: .bold))
+                            .buttonStyle(.borderedProminent)
+                            .tint(Theme.solarAmber)
+
+                            Button("Copy sudo command") {
+                                copyTerminalCommand()
+                            }
+                            .font(.system(size: 11))
+                            .buttonStyle(.bordered)
+                            .tint(Theme.cyanPulse)
+                        }
+
                         Button("Use Simulation") {
                             startSimulationStream()
                         }
@@ -425,8 +543,47 @@ public struct PacketWorkbenchView: View {
     }
 
     private func startLiveCapture() {
+        if case .requiresElevation = LiveCaptureEngine.checkBPFAccess() {
+            let res = LiveCaptureEngine.authorizeBPFAccess()
+            switch res {
+            case .success:
+                bpfStatus = .accessible
+            case .failure(let err):
+                liveSession.status = .error("BPF Permission Required: \(err.localizedDescription)")
+                return
+            }
+        }
+
         currentFileName = "live_\(selectedInterfaceName).pcap"
         liveSession.startLiveCapture(interface: selectedInterfaceName, filter: bpfFilterInput)
+    }
+
+    private func authorizeBPF() {
+        let res = LiveCaptureEngine.authorizeBPFAccess()
+        switch res {
+        case .success:
+            bpfStatus = .accessible
+            startLiveCapture()
+        case .failure(let err):
+            liveSession.status = .error("Authorization not completed: \(err.localizedDescription)")
+        }
+    }
+
+    private func installChmodBPF() {
+        let res = LiveCaptureEngine.installPermanentChmodBPF()
+        switch res {
+        case .success:
+            bpfStatus = .accessible
+            startLiveCapture()
+        case .failure(let err):
+            liveSession.status = .error("Daemon installation failed: \(err.localizedDescription)")
+        }
+    }
+
+    private func copyTerminalCommand() {
+        let cmd = "sudo chgrp admin /dev/bpf* && sudo chmod 660 /dev/bpf*"
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(cmd, forType: .string)
     }
 
     private func startSimulationStream() {
@@ -474,7 +631,7 @@ public struct PacketWorkbenchView: View {
         .padding(.horizontal, 16)
     }
 
-    // MARK: - Tab Selector Bar
+    // MARK: - Tab Selector Bar with Wireshark Display Filter
     private func tabSelectorBar(summary: PacketCaptureSummary) -> some View {
         HStack(spacing: 12) {
             Picker("Workbench View", selection: $activeTab) {
@@ -483,43 +640,69 @@ public struct PacketWorkbenchView: View {
                 }
             }
             .pickerStyle(.segmented)
-            .frame(maxWidth: 480)
+            .frame(maxWidth: 420)
 
             Spacer()
 
             if activeTab == .packets {
-                // Filter Segment
-                Picker("Protocol", selection: $protocolFilter) {
-                    ForEach(PacketFilter.allCases) { f in
-                        Text(f.rawValue).tag(f)
-                    }
-                }
-                .pickerStyle(.menu)
-                .frame(width: 140)
+                // Wireshark-Grade Display Filter Input Bar
+                HStack(spacing: 8) {
+                    HStack(spacing: 6) {
+                        Image(systemName: filterStatusIcon)
+                            .font(.system(size: 12))
+                            .foregroundStyle(filterStatusColor)
 
-                // Search Bar
-                HStack(spacing: 6) {
-                    Image(systemName: "magnifyingglass")
-                        .font(.system(size: 11))
-                        .foregroundStyle(.secondary)
-                    TextField("Filter IP, port, or summary...", text: $searchText)
-                        .font(Theme.monoText(11))
-                        .textFieldStyle(.plain)
-                    if !searchText.isEmpty {
-                        Button(action: { searchText = "" }) {
-                            Image(systemName: "xmark.circle.fill")
-                                .font(.system(size: 11))
-                                .foregroundStyle(.secondary)
+                        TextField("Display filter (e.g. ip.src == 192.168.1.1, tcp.port == 443, dns, dhcp)...", text: $displayFilterText)
+                            .font(Theme.monoText(11))
+                            .textFieldStyle(.plain)
+                            .onChange(of: displayFilterText) { _, newQuery in
+                                updateFilter(query: newQuery)
+                            }
+
+                        if !displayFilterText.isEmpty {
+                            Button(action: {
+                                displayFilterText = ""
+                                updateFilter(query: "")
+                            }) {
+                                Image(systemName: "xmark.circle.fill")
+                                    .font(.system(size: 11))
+                                    .foregroundStyle(.secondary)
+                            }
+                            .buttonStyle(.plain)
                         }
-                        .buttonStyle(.plain)
+
+                        filterStatusBadge
                     }
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(Theme.surfaceBackground)
+                    .clipShape(RoundedRectangle(cornerRadius: 6))
+                    .overlay(RoundedRectangle(cornerRadius: 6).stroke(filterStatusBorderColor, lineWidth: 1))
+                    .frame(minWidth: 320, maxWidth: 440)
+
+                    // Presets Menu
+                    Menu {
+                        Button("Clear Filter") { applyPresetFilter("") }
+                        Divider()
+                        Button("TCP (port 80 / 443)") { applyPresetFilter("tcp") }
+                        Button("UDP") { applyPresetFilter("udp") }
+                        Button("DNS Queries & Answers") { applyPresetFilter("dns") }
+                        Button("TLS Handshakes") { applyPresetFilter("tls") }
+                        Button("HTTP Traffic") { applyPresetFilter("http") }
+                        Button("DHCP Discover / Offer") { applyPresetFilter("dhcp") }
+                        Button("BGP Keepalives") { applyPresetFilter("bgp") }
+                        Button("OSPF Routing") { applyPresetFilter("ospf") }
+                        Button("NTP Time Sync") { applyPresetFilter("ntp") }
+                        Button("SNMP") { applyPresetFilter("snmp") }
+                        Divider()
+                        Button("TCP Anomalies Only") { applyPresetFilter("anomalies") }
+                    } label: {
+                        Label("Presets", systemImage: "slider.horizontal.3")
+                            .font(.system(size: 11, weight: .medium))
+                    }
+                    .menuStyle(.borderlessButton)
+                    .frame(width: 80)
                 }
-                .padding(.horizontal, 8)
-                .padding(.vertical, 4)
-                .background(Theme.cardBackground)
-                .clipShape(RoundedRectangle(cornerRadius: 6))
-                .overlay(RoundedRectangle(cornerRadius: 6).stroke(Theme.borderLight, lineWidth: 1))
-                .frame(width: 220)
             }
         }
         .padding(.horizontal, 16)
@@ -527,22 +710,82 @@ public struct PacketWorkbenchView: View {
         .background(Theme.cardBackground.opacity(0.3))
     }
 
+    private var filterStatusIcon: String {
+        switch filterValidationStatus {
+        case .empty: return "line.3.horizontal.decrease.circle"
+        case .valid: return "checkmark.circle.fill"
+        case .invalid: return "exclamationmark.circle.fill"
+        }
+    }
+
+    private var filterStatusColor: Color {
+        switch filterValidationStatus {
+        case .empty: return .secondary
+        case .valid: return Theme.signalEmerald
+        case .invalid: return Theme.crimsonCritical
+        }
+    }
+
+    private var filterStatusBorderColor: Color {
+        switch filterValidationStatus {
+        case .empty: return Theme.borderLight
+        case .valid: return Theme.signalEmerald.opacity(0.5)
+        case .invalid: return Theme.crimsonCritical.opacity(0.6)
+        }
+    }
+
+    @ViewBuilder
+    private var filterStatusBadge: some View {
+        switch filterValidationStatus {
+        case .empty:
+            EmptyView()
+        case .valid:
+            Text("VALID")
+                .font(Theme.monoText(8, weight: .bold))
+                .foregroundStyle(Theme.signalEmerald)
+                .padding(.horizontal, 4)
+                .padding(.vertical, 1)
+                .background(Theme.signalEmerald.opacity(0.15))
+                .clipShape(RoundedRectangle(cornerRadius: 3))
+        case .invalid(let err):
+            Text("SYNTAX ERROR")
+                .font(Theme.monoText(8, weight: .bold))
+                .foregroundStyle(Theme.crimsonCritical)
+                .padding(.horizontal, 4)
+                .padding(.vertical, 1)
+                .background(Theme.crimsonCritical.opacity(0.15))
+                .clipShape(RoundedRectangle(cornerRadius: 3))
+                .help(err)
+        }
+    }
+
+    private func updateFilter(query: String) {
+        self.filterValidationStatus = PacketDisplayFilter.validate(query: query)
+        self.activeFilter = PacketDisplayFilter(query: query)
+    }
+
+    private func applyPresetFilter(_ query: String) {
+        self.displayFilterText = query
+        updateFilter(query: query)
+    }
+
     // MARK: - Tab 1: Packets & Dissection View
     private func packetsAndDissectionView(summary: PacketCaptureSummary) -> some View {
-        VSplitView {
+        let pkts = filteredPackets(summary.packets)
+        return VSplitView {
             // Upper: Packet List Table
-            packetListTable(packets: filteredPackets(summary.packets))
+            packetListTable(packets: pkts)
                 .frame(minHeight: 220)
 
             // Lower: Dual Inspector (Protocol Tree & Hex Dump)
             if let packet = selectedPacket {
                 HSplitView {
                     dissectionTreeInspector(packet: packet)
-                        .frame(minWidth: 320)
-                    hexDumpInspector(packet: packet)
                         .frame(minWidth: 340)
+                    hexDumpInspector(packet: packet)
+                        .frame(minWidth: 360)
                 }
-                .frame(minHeight: 240)
+                .frame(minHeight: 250)
                 .background(Theme.surfaceBackground)
             } else {
                 HStack {
@@ -564,45 +807,49 @@ public struct PacketWorkbenchView: View {
     }
 
     private func filteredPackets(_ packets: [PacketRecord]) -> [PacketRecord] {
-        packets.filter { p in
-            // Protocol filter
-            switch protocolFilter {
-            case .all: break
-            case .tcp: guard p.protocolType == .tcp else { return false }
-            case .udp: guard p.protocolType == .udp else { return false }
-            case .dns: guard p.protocolType == .dns else { return false }
-            case .tls: guard p.protocolType == .tls else { return false }
-            case .http: guard p.protocolType == .http else { return false }
-            case .icmp: guard p.protocolType == .icmp || p.protocolType == .icmpv6 else { return false }
-            case .anomaliesOnly: guard !p.anomalies.isEmpty else { return false }
-            }
-
-            // Search text filter
-            if !searchText.isEmpty {
-                let term = searchText.lowercased()
-                let match = p.sourceAddress.lowercased().contains(term) ||
-                    p.destinationAddress.lowercased().contains(term) ||
-                    p.summary.lowercased().contains(term) ||
-                    "\(p.number)".contains(term) ||
-                    p.protocolType.description.lowercased().contains(term)
-                if !match { return false }
-            }
-            return true
+        var result = packets.filter { p in
+            activeFilter.matches(packet: p)
         }
+
+        result.sort { p1, p2 in
+            let ascending = sortAscending
+            switch sortColumn {
+            case .number:
+                return ascending ? p1.number < p2.number : p1.number > p2.number
+            case .time:
+                return ascending ? p1.relativeTime < p2.relativeTime : p1.relativeTime > p2.relativeTime
+            case .source:
+                return ascending ? p1.sourceAddress < p2.sourceAddress : p1.sourceAddress > p2.sourceAddress
+            case .destination:
+                return ascending ? p1.destinationAddress < p2.destinationAddress : p1.destinationAddress > p2.destinationAddress
+            case .protocolType:
+                return ascending ? p1.protocolType.description < p2.protocolType.description : p1.protocolType.description > p2.protocolType.description
+            case .length:
+                return ascending ? p1.wireLength < p2.wireLength : p1.wireLength > p2.wireLength
+            }
+        }
+
+        return result
     }
 
     private func packetListTable(packets: [PacketRecord]) -> some View {
         VStack(spacing: 0) {
-            // Table Header
+            // Table Header with Sort Actions
             HStack(spacing: 0) {
-                tableHeaderCell(title: "#", width: 50)
-                tableHeaderCell(title: "Time (+s)", width: 85)
-                tableHeaderCell(title: "Source", width: 170)
-                tableHeaderCell(title: "Destination", width: 170)
-                tableHeaderCell(title: "Proto", width: 70)
-                tableHeaderCell(title: "Len", width: 60)
-                tableHeaderCell(title: "Info / Protocol Summary", width: nil)
-                tableHeaderCell(title: "Status", width: 130)
+                sortableHeaderCell(title: "#", column: .number, width: 50)
+                sortableHeaderCell(title: "Time (+s)", column: .time, width: 85)
+                sortableHeaderCell(title: "Source", column: .source, width: 170)
+                sortableHeaderCell(title: "Destination", column: .destination, width: 170)
+                sortableHeaderCell(title: "Proto", column: .protocolType, width: 70)
+                sortableHeaderCell(title: "Len", column: .length, width: 60)
+                Text("Info / Protocol Summary")
+                    .font(Theme.monoText(10, weight: .bold))
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                Text("Status")
+                    .font(Theme.monoText(10, weight: .bold))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 130, alignment: .leading)
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 6)
@@ -619,8 +866,12 @@ public struct PacketWorkbenchView: View {
                                 .contentShape(Rectangle())
                                 .onTapGesture {
                                     selectedPacket = packet
+                                    selectedLayerField = nil
                                 }
-                            Divider().overlay(Theme.borderLight.opacity(0.5))
+                                .contextMenu {
+                                    packetContextMenu(packet: packet)
+                                }
+                            Divider().overlay(Theme.borderLight.opacity(0.4))
                         }
                     }
                 }
@@ -636,18 +887,28 @@ public struct PacketWorkbenchView: View {
         .background(Theme.surfaceBackground)
     }
 
-    private func tableHeaderCell(title: String, width: CGFloat?) -> some View {
-        Group {
-            if let w = width {
-                Text(title)
-                    .frame(width: w, alignment: .leading)
+    private func sortableHeaderCell(title: String, column: PacketSortColumn, width: CGFloat) -> some View {
+        Button(action: {
+            if sortColumn == column {
+                sortAscending.toggle()
             } else {
+                sortColumn = column
+                sortAscending = true
+            }
+        }) {
+            HStack(spacing: 3) {
                 Text(title)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .font(Theme.monoText(10, weight: .bold))
+                    .foregroundStyle(sortColumn == column ? Theme.cyanPulse : .secondary)
+                if sortColumn == column {
+                    Image(systemName: sortAscending ? "chevron.up" : "chevron.down")
+                        .font(.system(size: 8, weight: .bold))
+                        .foregroundStyle(Theme.cyanPulse)
+                }
             }
         }
-        .font(Theme.monoText(10, weight: .bold))
-        .foregroundStyle(.secondary)
+        .buttonStyle(.plain)
+        .frame(width: width, alignment: .leading)
     }
 
     private func packetRow(packet: PacketRecord) -> some View {
@@ -723,11 +984,94 @@ public struct PacketWorkbenchView: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 5)
-        .background(isSelected ? Theme.cyanPulse.opacity(0.15) : Color.clear)
+        .background(rowBackgroundColor(for: packet, isSelected: isSelected))
         .overlay(alignment: .leading) {
             if isSelected {
                 Rectangle().fill(Theme.cyanPulse).frame(width: 3)
             }
+        }
+    }
+
+    // Wireshark-grade row background tinting
+    private func rowBackgroundColor(for packet: PacketRecord, isSelected: Bool) -> Color {
+        if isSelected {
+            return Theme.cyanPulse.opacity(0.18)
+        }
+        if !packet.anomalies.isEmpty {
+            return Theme.crimsonCritical.opacity(0.10)
+        }
+        switch packet.protocolType {
+        case .tcp: return Theme.cyanPulse.opacity(0.03)
+        case .udp: return Theme.electricAzure.opacity(0.03)
+        case .dns: return Theme.quantumViolet.opacity(0.05)
+        case .tls: return Theme.signalEmerald.opacity(0.04)
+        case .http: return Theme.amberWarning.opacity(0.05)
+        case .dhcp: return Color.cyan.opacity(0.05)
+        case .bgp: return Color.orange.opacity(0.05)
+        case .ospf: return Color.green.opacity(0.05)
+        case .ntp: return Color.indigo.opacity(0.05)
+        case .snmp: return Color.yellow.opacity(0.05)
+        case .icmp, .icmpv6: return Color.pink.opacity(0.05)
+        case .arp: return Color.purple.opacity(0.04)
+        case .other: return Color.clear
+        }
+    }
+
+    @ViewBuilder
+    private func packetContextMenu(packet: PacketRecord) -> some View {
+        if packet.protocolType == .tcp || packet.protocolType == .http || packet.protocolType == .tls {
+            Button {
+                followTCPStream(for: packet)
+            } label: {
+                Label("Follow TCP Stream", systemImage: "arrow.triangle.swap")
+            }
+            Divider()
+        }
+
+        Button {
+            displayFilterText = "ip.src == \(packet.sourceAddress)"
+            updateFilter(query: displayFilterText)
+        } label: {
+            Label("Filter: ip.src == \(packet.sourceAddress)", systemImage: "line.3.horizontal.decrease")
+        }
+
+        Button {
+            displayFilterText = "ip.dst == \(packet.destinationAddress)"
+            updateFilter(query: displayFilterText)
+        } label: {
+            Label("Filter: ip.dst == \(packet.destinationAddress)", systemImage: "line.3.horizontal.decrease")
+        }
+
+        Button {
+            displayFilterText = packet.protocolType.description.lowercased()
+            updateFilter(query: displayFilterText)
+        } label: {
+            Label("Filter: \(packet.protocolType.description.lowercased())", systemImage: "line.3.horizontal.decrease")
+        }
+
+        Divider()
+
+        Button {
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(packet.summary, forType: .string)
+        } label: {
+            Label("Copy Packet Summary", systemImage: "doc.on.doc")
+        }
+
+        Button {
+            let hex = packet.rawBytes.map { String(format: "%02x", $0) }.joined(separator: " ")
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(hex, forType: .string)
+        } label: {
+            Label("Copy Hex Bytes", systemImage: "doc.on.clipboard")
+        }
+    }
+
+    private func followTCPStream(for packet: PacketRecord) {
+        let allPkts = summary?.packets ?? liveSession.packets
+        if let stream = TCPStreamReassembler.reassembleStream(for: packet, from: allPkts) {
+            self.streamReassemblyResult = stream
+            self.isFollowStreamSheetPresented = true
         }
     }
 
@@ -749,6 +1093,11 @@ public struct PacketWorkbenchView: View {
         case .dns: return Theme.quantumViolet
         case .tls: return Theme.signalEmerald
         case .http: return Theme.amberWarning
+        case .dhcp: return Color.cyan
+        case .bgp: return Color.orange
+        case .ospf: return Color.green
+        case .ntp: return Color.indigo
+        case .snmp: return Color.yellow
         case .icmp, .icmpv6: return Color.pink
         case .arp: return Color.purple
         case .other: return Color.gray
@@ -766,6 +1115,19 @@ public struct PacketWorkbenchView: View {
                     .font(Theme.monoText(10, weight: .bold))
                     .foregroundStyle(.secondary)
                 Spacer()
+
+                if packet.protocolType == .tcp || packet.protocolType == .http || packet.protocolType == .tls {
+                    Button(action: { followTCPStream(for: packet) }) {
+                        HStack(spacing: 4) {
+                            Image(systemName: "arrow.triangle.swap")
+                            Text("Follow Stream")
+                        }
+                        .font(Theme.monoText(9, weight: .bold))
+                    }
+                    .buttonStyle(.bordered)
+                    .tint(Theme.cyanPulse)
+                }
+
                 Text("Packet #\(packet.number)")
                     .font(Theme.monoText(10))
                     .foregroundStyle(Theme.cyanPulse)
@@ -781,17 +1143,34 @@ public struct PacketWorkbenchView: View {
                         DisclosureGroup(isExpanded: .constant(true)) {
                             VStack(alignment: .leading, spacing: 4) {
                                 ForEach(layer.fields) { field in
+                                    let isFieldSelected = (selectedLayerField?.id == field.id)
                                     HStack(alignment: .top, spacing: 8) {
                                         Text(field.name + ":")
                                             .font(Theme.monoText(11))
-                                            .foregroundStyle(.secondary)
+                                            .foregroundStyle(isFieldSelected ? Theme.cyanPulse : .secondary)
                                             .frame(width: 170, alignment: .leading)
                                         Text(field.value)
-                                            .font(Theme.monoText(11, weight: .medium))
-                                            .foregroundStyle(Color.white)
+                                            .font(Theme.monoText(11, weight: isFieldSelected ? .bold : .medium))
+                                            .foregroundStyle(isFieldSelected ? Theme.cyanPulse : Color.white)
                                         Spacer()
+                                        if let o = field.hexOffset, let l = field.hexLength {
+                                            Text("[\(o)..<\(o + l)]")
+                                                .font(Theme.monoText(9))
+                                                .foregroundStyle(isFieldSelected ? Theme.cyanPulse : .secondary.opacity(0.6))
+                                        }
                                     }
-                                    .padding(.vertical, 1)
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 2)
+                                    .background(isFieldSelected ? Theme.cyanPulse.opacity(0.18) : Color.clear)
+                                    .clipShape(RoundedRectangle(cornerRadius: 4))
+                                    .contentShape(Rectangle())
+                                    .onTapGesture {
+                                        if selectedLayerField?.id == field.id {
+                                            selectedLayerField = nil
+                                        } else {
+                                            selectedLayerField = field
+                                        }
+                                    }
                                 }
                             }
                             .padding(.leading, 12)
@@ -815,7 +1194,12 @@ public struct PacketWorkbenchView: View {
         .background(Theme.cardBackground.opacity(0.15))
     }
 
-    // MARK: - Lower Right: Hex Dump Inspector
+    // MARK: - Lower Right: Hex Dump Inspector with Synchronized Byte Highlighting
+    private var activeHighlightRange: Range<Int>? {
+        guard let f = selectedLayerField, let o = f.hexOffset, let l = f.hexLength, l > 0 else { return nil }
+        return o..<(o + l)
+    }
+
     private func hexDumpInspector(packet: PacketRecord) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack {
@@ -826,6 +1210,20 @@ public struct PacketWorkbenchView: View {
                     .font(Theme.monoText(10, weight: .bold))
                     .foregroundStyle(.secondary)
                 Spacer()
+
+                if let f = selectedLayerField, let o = f.hexOffset, let l = f.hexLength {
+                    HStack(spacing: 4) {
+                        Circle().fill(Theme.cyanPulse).frame(width: 6, height: 6)
+                        Text("\(f.name): bytes \(o)..<\(o + l) (\(l)B)")
+                            .font(Theme.monoText(10, weight: .bold))
+                            .foregroundStyle(Theme.cyanPulse)
+                    }
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(Theme.cyanPulse.opacity(0.12))
+                    .clipShape(Capsule())
+                }
+
                 Text("\(packet.rawBytes.count) bytes")
                     .font(Theme.monoText(10))
                     .foregroundStyle(Theme.electricAzure)
@@ -839,8 +1237,9 @@ public struct PacketWorkbenchView: View {
                 VStack(alignment: .leading, spacing: 2) {
                     ForEach(0..<(packet.rawBytes.count + 15) / 16, id: \.self) { row in
                         let offset = row * 16
-                        let chunk = packet.rawBytes.subdata(in: offset..<min(packet.rawBytes.count, offset + 16))
-                        hexDumpLine(offset: offset, chunk: chunk)
+                        let countInRow = min(16, packet.rawBytes.count - offset)
+                        let chunk = packet.rawBytes.subdata(in: offset..<(offset + countInRow))
+                        hexDumpLine(offset: offset, chunk: chunk, highlightRange: activeHighlightRange)
                     }
                 }
                 .padding(12)
@@ -850,41 +1249,64 @@ public struct PacketWorkbenchView: View {
         .background(Theme.cardBackground.opacity(0.15))
     }
 
-    private func hexDumpLine(offset: Int, chunk: Data) -> some View {
+    private func hexDumpLine(offset: Int, chunk: Data, highlightRange: Range<Int>?) -> some View {
         HStack(spacing: 12) {
             // Offset: 0000
             Text(String(format: "%04x", offset))
                 .foregroundStyle(.secondary)
+                .frame(width: 42, alignment: .leading)
 
-            // Hex Bytes (split in two 8-byte halves)
-            HStack(spacing: 8) {
-                Text(hexString(chunk.prefix(8)))
-                    .frame(width: 175, alignment: .leading)
-                    .foregroundStyle(Theme.cyanPulse)
-                Text(hexString(chunk.dropFirst(8)))
-                    .frame(width: 175, alignment: .leading)
-                    .foregroundStyle(Theme.cyanPulse)
+            // Hex Bytes 0..<8
+            HStack(spacing: 4) {
+                ForEach(0..<8, id: \.self) { i in
+                    if i < chunk.count {
+                        let byteOffset = offset + i
+                        let isHighlighted = highlightRange?.contains(byteOffset) == true
+                        Text(String(format: "%02x", chunk[i]))
+                            .foregroundStyle(isHighlighted ? Color.white : Theme.cyanPulse)
+                            .padding(.horizontal, 2)
+                            .background(isHighlighted ? Theme.cyanPulse.opacity(0.5) : Color.clear)
+                            .clipShape(RoundedRectangle(cornerRadius: 2))
+                    } else {
+                        Text("  ")
+                            .padding(.horizontal, 2)
+                    }
+                }
+            }
+
+            // Hex Bytes 8..<16
+            HStack(spacing: 4) {
+                ForEach(8..<16, id: \.self) { i in
+                    if i < chunk.count {
+                        let byteOffset = offset + i
+                        let isHighlighted = highlightRange?.contains(byteOffset) == true
+                        Text(String(format: "%02x", chunk[i]))
+                            .foregroundStyle(isHighlighted ? Color.white : Theme.cyanPulse)
+                            .padding(.horizontal, 2)
+                            .background(isHighlighted ? Theme.cyanPulse.opacity(0.5) : Color.clear)
+                            .clipShape(RoundedRectangle(cornerRadius: 2))
+                    } else {
+                        Text("  ")
+                            .padding(.horizontal, 2)
+                    }
+                }
             }
 
             // ASCII representation
-            Text(asciiString(chunk))
-                .foregroundStyle(Color.white.opacity(0.85))
-                .frame(width: 140, alignment: .leading)
-        }
-    }
-
-    private func hexString(_ data: Data) -> String {
-        return data.map { String(format: "%02x", $0) }.joined(separator: " ")
-    }
-
-    private func asciiString(_ data: Data) -> String {
-        return data.map { b in
-            if b >= 32 && b <= 126 {
-                return String(UnicodeScalar(b))
-            } else {
-                return "."
+            HStack(spacing: 0) {
+                ForEach(0..<chunk.count, id: \.self) { i in
+                    let byteOffset = offset + i
+                    let isHighlighted = highlightRange?.contains(byteOffset) == true
+                    let b = chunk[i]
+                    let charStr = (b >= 32 && b <= 126) ? String(UnicodeScalar(b)) : "."
+                    Text(charStr)
+                        .foregroundStyle(isHighlighted ? Theme.cyanPulse : Color.white.opacity(0.85))
+                        .bold(isHighlighted)
+                        .background(isHighlighted ? Theme.cyanPulse.opacity(0.3) : Color.clear)
+                }
             }
-        }.joined()
+            .frame(width: 130, alignment: .leading)
+        }
     }
 
     // MARK: - Tab 2: Top Talkers & Flows View
@@ -1125,11 +1547,11 @@ public struct PacketWorkbenchView: View {
                 .foregroundStyle(Theme.cyanPulse)
             Text("No Packet Capture Active")
                 .font(.system(size: 18, weight: .bold))
-            Text("Load the synthetic sample capture or open a .pcap / .pcapng file to begin streaming protocol analysis.")
+            Text("Drop a .pcap/.pcapng file anywhere, load the sample capture, or start a live capture to begin streaming forensics.")
                 .font(.system(size: 13))
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
-                .frame(maxWidth: 400)
+                .frame(maxWidth: 420)
 
             HStack(spacing: 12) {
                 Button("Load Sample Capture") {
@@ -1147,6 +1569,38 @@ public struct PacketWorkbenchView: View {
         }
     }
 
+    // MARK: - Drag & Drop Handler
+    private func handleFileDrop(providers: [NSItemProvider]) -> Bool {
+        guard let provider = providers.first else { return false }
+        provider.loadItem(forTypeIdentifier: UTType.fileURL.identifier, options: nil) { item, _ in
+            var targetURL: URL? = nil
+            if let data = item as? Data {
+                targetURL = URL(dataRepresentation: data, relativeTo: nil)
+            } else if let url = item as? URL {
+                targetURL = url
+            }
+            guard let validURL = targetURL else { return }
+            DispatchQueue.main.async {
+                loadCaptureFromURL(validURL)
+            }
+        }
+        return true
+    }
+
+    private func loadCaptureFromURL(_ url: URL) {
+        do {
+            let data = try Data(contentsOf: url)
+            self.rawCaptureData = data
+            self.currentFileName = url.lastPathComponent
+            let capSummary = try CaptureFileReader.read(data: data, fileName: url.lastPathComponent)
+            self.summary = capSummary
+            self.selectedPacket = capSummary.packets.first
+            self.selectedLayerField = nil
+        } catch {
+            print("Failed to load dropped file: \(error)")
+        }
+    }
+
     // MARK: - Actions
     private func loadSyntheticCapture() {
         let sampleData = SamplePCAPGenerator.generateSampleCapture()
@@ -1156,6 +1610,7 @@ public struct PacketWorkbenchView: View {
             let capSummary = try PCAPReader.parse(data: sampleData, fileName: "synthetic_traffic.pcap")
             self.summary = capSummary
             self.selectedPacket = capSummary.packets.first
+            self.selectedLayerField = nil
         } catch {
             print("Failed to parse synthetic capture: \(error)")
         }
@@ -1166,19 +1621,10 @@ public struct PacketWorkbenchView: View {
         panel.allowsMultipleSelection = false
         panel.canChooseDirectories = false
         panel.canChooseFiles = true
-        panel.allowedContentTypes = [] // allow all pcap/pcapng
+        panel.allowedContentTypes = []
 
         if panel.runModal() == .OK, let url = panel.url {
-            do {
-                let data = try Data(contentsOf: url)
-                self.rawCaptureData = data
-                self.currentFileName = url.lastPathComponent
-                let capSummary = try CaptureFileReader.read(data: data, fileName: url.lastPathComponent)
-                self.summary = capSummary
-                self.selectedPacket = capSummary.packets.first
-            } catch {
-                print("Failed to open capture file: \(error)")
-            }
+            loadCaptureFromURL(url)
         }
     }
 
@@ -1194,6 +1640,29 @@ public struct PacketWorkbenchView: View {
             _ = try? WiresharkBridge.openDataInWireshark(data: validData, suggestedFileName: currentFileName)
         } else {
             showWiresharkAlert = true
+        }
+    }
+
+    private func exportFilteredPCAP() {
+        guard let cap = summary else { return }
+        let pkts = filteredPackets(cap.packets)
+        let pcapData = PacketExporter.exportPCAP(packets: pkts)
+        let savePanel = NSSavePanel()
+        savePanel.nameFieldStringValue = "filtered_\(currentFileName)"
+        if savePanel.runModal() == .OK, let url = savePanel.url {
+            try? pcapData.write(to: url)
+        }
+    }
+
+    private func exportFilteredCSV() {
+        guard let cap = summary else { return }
+        let pkts = filteredPackets(cap.packets)
+        let csvString = PacketExporter.exportCSV(packets: pkts)
+        let savePanel = NSSavePanel()
+        let baseName = currentFileName.replacingOccurrences(of: ".pcapng", with: "").replacingOccurrences(of: ".pcap", with: "")
+        savePanel.nameFieldStringValue = "\(baseName)_packets.csv"
+        if savePanel.runModal() == .OK, let url = savePanel.url {
+            try? csvString.write(to: url, atomically: true, encoding: .utf8)
         }
     }
 

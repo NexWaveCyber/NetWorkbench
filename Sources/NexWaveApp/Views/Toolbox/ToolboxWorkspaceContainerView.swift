@@ -79,7 +79,7 @@ public struct ToolboxWorkspaceContainerView: View {
             case .dns:
                 DNSStudioView()
             case .ports:
-                PortDiagnosticsView(initialHost: (state?.portDiagnosticsTarget.isEmpty == false) ? state!.portDiagnosticsTarget : "1.1.1.1")
+                PortDiagnosticsView(initialHost: (state?.portDiagnosticsTarget.isEmpty == false ? state?.portDiagnosticsTarget : nil) ?? "1.1.1.1")
             case .mtr:
                 MTRStudioView()
             case .internetIntel:

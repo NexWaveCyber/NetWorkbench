@@ -37,17 +37,18 @@ public enum CDPDissector {
 
     /// Dissects a Cisco Discovery Protocol frame payload (starting at CDP Version header)
     public static func dissect(data: Data, offset: Int = 0) -> (info: CDPInfo, summary: String, layers: [DissectedLayer]) {
+        let rawData = Data(data)
         var cursor = offset
         var fields: [LayerField] = []
 
-        guard cursor + 4 <= data.count else {
+        guard cursor + 4 <= rawData.count else {
             let layer = DissectedLayer(name: "Cisco Discovery Protocol", summary: "Malformed / truncated CDP header", fields: [])
             return (CDPInfo(), "Malformed CDP Frame", [layer])
         }
 
-        let version = data[cursor]
-        let ttl = Int(data[cursor + 1])
-        let checksum = UInt16(data[cursor + 2]) << 8 | UInt16(data[cursor + 3])
+        let version = rawData[cursor]
+        let ttl = Int(rawData[cursor + 1])
+        let checksum = UInt16(rawData[cursor + 2]) << 8 | UInt16(rawData[cursor + 3])
         cursor += 4
 
         fields.append(LayerField(name: "CDP Version", value: "\(version)"))
@@ -62,14 +63,14 @@ public enum CDPDissector {
         var nativeVLAN: Int? = nil
         var duplex = "Full"
 
-        while cursor + 4 <= data.count {
-            let type = UInt16(data[cursor]) << 8 | UInt16(data[cursor + 1])
-            let length = Int(UInt16(data[cursor + 2]) << 8 | UInt16(data[cursor + 3]))
+        while cursor + 4 <= rawData.count {
+            let type = UInt16(rawData[cursor]) << 8 | UInt16(rawData[cursor + 1])
+            let length = Int(UInt16(rawData[cursor + 2]) << 8 | UInt16(rawData[cursor + 3]))
             cursor += 4
 
             let valueLength = length - 4
-            guard valueLength >= 0, cursor + valueLength <= data.count else { break }
-            let valData = data.subdata(in: cursor..<(cursor + valueLength))
+            guard valueLength >= 0, cursor + valueLength <= rawData.count else { break }
+            let valData = rawData.subdata(in: cursor..<(cursor + valueLength))
             cursor += valueLength
 
             switch type {
@@ -104,8 +105,9 @@ public enum CDPDissector {
 
             case 0x000A: // Native VLAN
                 if valData.count >= 2 {
-                    nativeVLAN = Int(UInt16(valData[0]) << 8 | UInt16(valData[1]))
-                    fields.append(LayerField(name: "Native VLAN", value: "\(nativeVLAN!)"))
+                    let vlan = Int(UInt16(valData[0]) << 8 | UInt16(valData[1]))
+                    nativeVLAN = vlan
+                    fields.append(LayerField(name: "Native VLAN", value: "\(vlan)"))
                 }
 
             case 0x000B: // Duplex

@@ -21,7 +21,7 @@ public enum DeviceManagerError: Error, LocalizedError {
 /// Actor and thread-safe manager for device inventories and performance baselines.
 public final class DeviceManager: @unchecked Sendable {
     private let database: SQLiteDatabase
-    private let lock = NSLock()
+    private var lock: SQLiteDatabase { database }
 
     public init(database: SQLiteDatabase) {
         self.database = database
@@ -544,7 +544,7 @@ public final class DeviceManager: @unchecked Sendable {
 
             let rawName = nameIdx.flatMap { idx in row.count > idx ? row[idx] : nil }?.trimmingCharacters(in: .whitespacesAndNewlines)
             let hostname = hostIdx.flatMap { idx in row.count > idx ? row[idx] : nil }?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ip
-            let displayName = (rawName?.isEmpty == false) ? rawName! : hostname
+            let displayName = (rawName?.isEmpty == false ? rawName : nil) ?? hostname
             let mac = macIdx.flatMap { idx in row.count > idx ? row[idx] : nil }?.trimmingCharacters(in: .whitespacesAndNewlines)
             let cleanMAC = (mac?.isEmpty == false) ? mac : nil
 

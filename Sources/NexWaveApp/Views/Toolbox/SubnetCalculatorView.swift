@@ -304,12 +304,12 @@ public struct SubnetCalculatorView: View {
             if net.prefixLength < 32, case .v4(let v4) = net.networkAddress {
                 let newPrefix = net.prefixLength + 1
                 let halfHosts = UInt32(1) << (32 - newPrefix)
-                let net1 = IPNetwork(address: .v4(v4), prefixLength: newPrefix)!
-                let net2 = IPNetwork(address: .v4(IPAddress.IPv4(rawValue: v4.rawValue + halfHosts)), prefixLength: newPrefix)!
-
-                HStack(spacing: 14) {
-                    splitPill(net: net1)
-                    splitPill(net: net2)
+                if let net1 = IPNetwork(address: .v4(v4), prefixLength: newPrefix),
+                   let net2 = IPNetwork(address: .v4(IPAddress.IPv4(rawValue: v4.rawValue + halfHosts)), prefixLength: newPrefix) {
+                    HStack(spacing: 14) {
+                        splitPill(net: net1)
+                        splitPill(net: net2)
+                    }
                 }
             }
         }

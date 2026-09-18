@@ -286,7 +286,7 @@ struct NexWaveApp: App {
             lines.append("Internet WAN (1.1.1.1): \(String(format: "%.1f ms", inet))")
         }
         if let wifi = menuBarMonitor.wifiLink {
-            let mcsStr = wifi.mcsIndex != nil ? " • MCS \(wifi.mcsIndex!)" : ""
+            let mcsStr = wifi.mcsIndex.map { " • MCS \($0)" } ?? ""
             lines.append("Wi-Fi: \"\(wifi.ssid)\" (\(wifi.rssi) dBm\(mcsStr) • Ch \(wifi.channel) • \(wifi.phyMode.displayName))")
         } else if menuBarMonitor.healthStatus != .offline {
             lines.append("Ethernet: 1.0 Gbps Full-Duplex (1000BASE-T)")

@@ -195,7 +195,7 @@ public enum SamplePCAPGenerator {
         var sniExt = Data()
         appendNetUInt16(&sniExt, 0x0000) // Extension type server_name
         let sniHost = "api.example.com"
-        let sniHostBytes = sniHost.data(using: .utf8)!
+        let sniHostBytes = Data(sniHost.utf8)
         let extLen = 5 + sniHostBytes.count
         appendNetUInt16(&sniExt, UInt16(extLen))
         appendNetUInt16(&sniExt, UInt16(3 + sniHostBytes.count)) // ServerNameList len
@@ -231,7 +231,7 @@ public enum SamplePCAPGenerator {
         appendPacket(deltaSec: 0, deltaUsec: 520_000, frame: p12)
 
         // --- Packet 13: HTTP GET Request ---
-        let httpReq = "GET /health HTTP/1.1\r\nHost: api.example.com\r\n\r\n".data(using: .utf8)!
+        let httpReq = Data("GET /health HTTP/1.1\r\nHost: api.example.com\r\n\r\n".utf8)
         let tcpHttp = makeTCPPayload(srcPort: 51200, dstPort: 80, seq: 2001, ack: 8001, flags: 0x18, window: 65535, dataBytes: httpReq)
         let p13 = makeIPv4Frame(srcMAC: macHost, dstMAC: macGw, srcIP: ipHost, dstIP: ipServer, proto: 6, payload: tcpHttp)
         appendPacket(deltaSec: 1, deltaUsec: 100_000, frame: p13)
@@ -252,6 +252,84 @@ public enum SamplePCAPGenerator {
         icmpReply.append(Data("abcdefghijklmnopqrstuvwabcdefghi".utf8))
         let p16 = makeIPv4Frame(srcMAC: macGw, dstMAC: macHost, srcIP: ipDNS, dstIP: ipHost, proto: 1, payload: icmpReply)
         appendPacket(deltaSec: 1, deltaUsec: 212_000, frame: p16)
+
+        // --- Packet 17: DHCP Discover ---
+        var dhcpDisc = Data(count: 240)
+        dhcpDisc[0] = 1 // BootRequest
+        dhcpDisc[1] = 1 // Ethernet (10Mb)
+        dhcpDisc[2] = 6 // HW addr length
+        dhcpDisc[3] = 0 // Hops
+        // XID = 0x3903F326
+        dhcpDisc[4] = 0x39; dhcpDisc[5] = 0x03; dhcpDisc[6] = 0xF3; dhcpDisc[7] = 0x26
+        // Client MAC at offset 28
+        for i in 0..<6 { dhcpDisc[28 + i] = macHost[i] }
+        // Magic Cookie at offset 236
+        dhcpDisc[236] = 0x63; dhcpDisc[237] = 0x82; dhcpDisc[238] = 0x53; dhcpDisc[239] = 0x63
+        // Option 53: DHCP Message Type = Discover (1)
+        dhcpDisc.append(contentsOf: [53, 1, 1])
+        // Option 12: Host Name = "MacBookPro"
+        let hostNameBytes = Data("MacBookPro".utf8)
+        dhcpDisc.append(contentsOf: [12, UInt8(hostNameBytes.count)])
+        dhcpDisc.append(hostNameBytes)
+        // Option 255: End
+        dhcpDisc.append(255)
+        let p17 = makeIPv4Frame(srcMAC: macHost, dstMAC: macBcast, srcIP: [0, 0, 0, 0], dstIP: [255, 255, 255, 255], proto: 17, payload: makeUDPPayload(srcPort: 68, dstPort: 67, dataBytes: dhcpDisc))
+        appendPacket(deltaSec: 1, deltaUsec: 300_000, frame: p17)
+
+        // --- Packet 18: DHCP Offer ---
+        var dhcpOffer = Data(count: 240)
+        dhcpOffer[0] = 2 // BootReply
+        dhcpOffer[1] = 1
+        dhcpOffer[2] = 6
+        dhcpOffer[3] = 0
+        dhcpOffer[4] = 0x39; dhcpOffer[5] = 0x03; dhcpOffer[6] = 0xF3; dhcpOffer[7] = 0x26
+        // yiaddr (Your IP) = 192.168.1.100
+        for i in 0..<4 { dhcpOffer[16 + i] = UInt8(ipHost[i]) }
+        // siaddr (Server IP) = 192.168.1.1
+        for i in 0..<4 { dhcpOffer[20 + i] = UInt8(ipGw[i]) }
+        for i in 0..<6 { dhcpOffer[28 + i] = macHost[i] }
+        dhcpOffer[236] = 0x63; dhcpOffer[237] = 0x82; dhcpOffer[238] = 0x53; dhcpOffer[239] = 0x63
+        // Option 53: Offer (2)
+        dhcpOffer.append(contentsOf: [53, 1, 2])
+        // Option 54: Server ID = 192.168.1.1
+        dhcpOffer.append(contentsOf: [54, 4, 192, 168, 1, 1])
+        // Option 51: Lease = 86400s
+        dhcpOffer.append(contentsOf: [51, 4, 0x00, 0x01, 0x51, 0x80])
+        // Option 1: Subnet = 255.255.255.0
+        dhcpOffer.append(contentsOf: [1, 4, 255, 255, 255, 0])
+        // Option 3: Router = 192.168.1.1
+        dhcpOffer.append(contentsOf: [3, 4, 192, 168, 1, 1])
+        // Option 6: DNS = 8.8.8.8
+        dhcpOffer.append(contentsOf: [6, 4, 8, 8, 8, 8])
+        dhcpOffer.append(255)
+        let p18 = makeIPv4Frame(srcMAC: macGw, dstMAC: macHost, srcIP: ipGw, dstIP: ipHost, proto: 17, payload: makeUDPPayload(srcPort: 67, dstPort: 68, dataBytes: dhcpOffer))
+        appendPacket(deltaSec: 1, deltaUsec: 325_000, frame: p18)
+
+        // --- Packet 19: BGP Keepalive ---
+        var bgpKeepalive = Data(repeating: 0xFF, count: 16) // Marker
+        appendNetUInt16(&bgpKeepalive, 19) // Length
+        bgpKeepalive.append(4) // Type 4: KEEPALIVE
+        let tcpBgp = makeTCPPayload(srcPort: 179, dstPort: 54120, seq: 10001, ack: 20001, flags: 0x18, window: 65535, dataBytes: bgpKeepalive)
+        let p19 = makeIPv4Frame(srcMAC: macGw, dstMAC: macHost, srcIP: ipGw, dstIP: ipHost, proto: 6, payload: tcpBgp)
+        appendPacket(deltaSec: 1, deltaUsec: 400_000, frame: p19)
+
+        // --- Packet 20: NTP Client Request ---
+        var ntpReq = Data(count: 48)
+        ntpReq[0] = 0x23 // LI 0, VN 4, Mode 3 (Client)
+        let p20 = makeIPv4Frame(srcMAC: macHost, dstMAC: macGw, srcIP: ipHost, dstIP: [129, 6, 15, 28], proto: 17, payload: makeUDPPayload(srcPort: 51234, dstPort: 123, dataBytes: ntpReq))
+        appendPacket(deltaSec: 1, deltaUsec: 500_000, frame: p20)
+
+        // --- Packet 21: NTP Server Response ---
+        var ntpResp = Data(count: 48)
+        ntpResp[0] = 0x24 // LI 0, VN 4, Mode 4 (Server)
+        ntpResp[1] = 1    // Stratum 1 (Primary reference)
+        ntpResp[2] = 6    // Poll 6
+        ntpResp[3] = 0xEC // Precision -20
+        // RefID = "NIST"
+        let nistBytes = Data("NIST".utf8)
+        for i in 0..<4 { ntpResp[12 + i] = nistBytes[i] }
+        let p21 = makeIPv4Frame(srcMAC: macGw, dstMAC: macHost, srcIP: [129, 6, 15, 28], dstIP: ipHost, proto: 17, payload: makeUDPPayload(srcPort: 123, dstPort: 51234, dataBytes: ntpResp))
+        appendPacket(deltaSec: 1, deltaUsec: 535_000, frame: p21)
 
         return data
     }

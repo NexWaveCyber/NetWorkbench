@@ -2010,7 +2010,7 @@ struct ComplianceAuditorTab: View {
     private let parser = ConfigParser()
 
     var auditReport: ComplianceAuditReport {
-        let text = (currentConfigText?.isEmpty == false) ? currentConfigText! : sampleCiscoCoreConfig
+        let text = (currentConfigText?.isEmpty == false ? currentConfigText : nil) ?? sampleCiscoCoreConfig
         let ast = parser.parse(text: text)
         return auditor.audit(ast: ast, rawConfig: text)
     }

@@ -188,7 +188,9 @@ public struct ConfigRedactor: Sendable {
                 counter = (counter % 250) + 1
             }
 
-            result.replaceSubrange(r, with: ipMap[ip]!)
+            if let masked = ipMap[ip] {
+                result.replaceSubrange(r, with: masked)
+            }
         }
 
         return result

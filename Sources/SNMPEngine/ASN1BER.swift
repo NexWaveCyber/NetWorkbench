@@ -24,6 +24,7 @@ public enum ASN1Tag {
     public static let getNextRequest: UInt8 = 0xA1
     public static let getResponse: UInt8 = 0xA2
     public static let setRequest: UInt8 = 0xA3
+    public static let trapV1: UInt8 = 0xA4
     public static let getBulkRequest: UInt8 = 0xA5
     public static let informRequest: UInt8 = 0xA6
     public static let snmpV2Trap: UInt8 = 0xA7
@@ -79,10 +80,11 @@ public struct ASN1Encoder {
         while true {
             bytes.append(UInt8(v & 0xFF))
             v >>= 8
-            if v == 0 && (bytes.last! & 0x80) == 0 {
+            let lastByte = bytes.last ?? 0
+            if v == 0 && (lastByte & 0x80) == 0 {
                 break
             }
-            if v == -1 && (bytes.last! & 0x80) != 0 {
+            if v == -1 && (lastByte & 0x80) != 0 {
                 break
             }
         }

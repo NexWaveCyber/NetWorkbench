@@ -46,9 +46,12 @@ public final class TCPPingProber: Sendable {
     public init() {}
 
     public func probe(host: String, port: NetworkPort = .https, timeoutSeconds: Double = 2.0) async -> ProbeResult {
+        guard let nwPort = NWEndpoint.Port(rawValue: port.rawValue) else {
+            return .error("Invalid port: \(port.rawValue)")
+        }
         let endpoint = NWEndpoint.hostPort(
             host: NWEndpoint.Host(host),
-            port: NWEndpoint.Port(rawValue: port.rawValue)!
+            port: nwPort
         )
         let parameters = NWParameters.tcp
         parameters.prohibitExpensivePaths = false

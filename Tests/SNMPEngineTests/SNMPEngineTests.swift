@@ -298,6 +298,225 @@ struct SNMPEngineTests {
         let matchingChildren = trie.allChildren(prefix: "1.3.6.1.4.1.9.9.48")
         #expect(matchingChildren.count == 2)
     }
+
+    @Test("RFC 3416 SNMP GetBulkRequest Serialization & Deserialization")
+    func testSNMPGetBulkRequestSerialization() throws {
+        let varBinds = [
+            SNMPVarBind(oid: "1.3.6.1.2.1.2.2.1.1", value: .null),
+            SNMPVarBind(oid: "1.3.6.1.2.1.2.2.1.2", value: .null)
+        ]
+
+        let pdu = SNMPPDU(
+            bulkWithRequestId: 9911,
+            nonRepeaters: 1,
+            maxRepetitions: 25,
+            varBinds: varBinds
+        )
+
+        let msg = SNMPMessage(version: .v2c, community: "public", pdu: pdu)
+        let serialized = try msg.serialize()
+
+        let deserialized = try SNMPMessage.deserialize(data: serialized)
+        #expect(deserialized.pdu.tag == ASN1Tag.getBulkRequest)
+        #expect(deserialized.pdu.requestId == 9911)
+        #expect(deserialized.pdu.nonRepeaters == 1)
+        #expect(deserialized.pdu.maxRepetitions == 25)
+        #expect(deserialized.pdu.varBinds.count == 2)
+    }
+
+    @Test("SNMP SetRequest Serialization & Deserialization")
+    func testSNMPSetRequestSerialization() throws {
+        let varBinds = [
+            SNMPVarBind(oid: "1.3.6.1.2.1.1.4.0", value: .octetString("netops@nexwave.corp")),
+            SNMPVarBind(oid: "1.3.6.1.2.1.2.2.1.7.1", value: .integer(1)) // ifAdminStatus Up
+        ]
+
+        let pdu = SNMPPDU(tag: ASN1Tag.setRequest, requestId: 1044, varBinds: varBinds)
+        let msg = SNMPMessage(version: .v2c, community: "private", pdu: pdu)
+        let serialized = try msg.serialize()
+
+        let deserialized = try SNMPMessage.deserialize(data: serialized)
+        #expect(deserialized.pdu.tag == ASN1Tag.setRequest)
+        #expect(deserialized.pdu.requestId == 1044)
+        #expect(deserialized.community == "private")
+        #expect(deserialized.pdu.varBinds.count == 2)
+        #expect(deserialized.pdu.varBinds[0].value == .octetString("netops@nexwave.corp"))
+        #expect(deserialized.pdu.varBinds[1].value == .integer(1))
+    }
+
+    @Test("RFC 1157 SNMPv1 Trap Serialization and Deserialization")
+    func testSNMPv1TrapRoundtrip() throws {
+        let varBinds = [
+            SNMPVarBind(oid: "1.3.6.1.2.1.2.2.1.1.1", value: .integer(1)),
+            SNMPVarBind(oid: "1.3.6.1.2.1.2.2.1.8.1", value: .integer(2)) // down
+        ]
+
+        let pdu = SNMPPDU(
+            v1TrapWithEnterprise: "1.3.6.1.4.1.9",
+            agentAddress: "192.168.10.1",
+            genericTrap: .linkDown,
+            specificTrap: 0,
+            timeStamp: 998877,
+            varBinds: varBinds
+        )
+
+        let msg = SNMPMessage(version: .v1, community: "public", pdu: pdu)
+        let serialized = try msg.serialize()
+
+        let deserialized = try SNMPMessage.deserialize(data: serialized)
+        #expect(deserialized.version == .v1)
+        #expect(deserialized.pdu.tag == ASN1Tag.trapV1)
+
+        let payload = deserialized.pdu.v1TrapPayload
+        #expect(payload != nil)
+        #expect(payload?.enterprise == "1.3.6.1.4.1.9")
+        #expect(payload?.agentAddress == "192.168.10.1")
+        #expect(payload?.genericTrap == .linkDown)
+        #expect(payload?.specificTrap == 0)
+        #expect(payload?.timeStamp == 998877)
+        #expect(deserialized.pdu.varBinds.count == 2)
+    }
+
+    @Test("RFC 7860 SNMPv3 SHA-384 and SHA-512 Key Localization & HMAC")
+    func testSNMPv3ExtendedCrypto() {
+        let password = "SuperSecretNetworkKey2026"
+        let engineID = Data([0x80, 0x00, 0x00, 0x09, 0x03, 0xAA, 0xBB, 0xCC])
+
+        // SHA-384
+        let sha384Key = SNMPv3Crypto.passwordToKey(password: password, engineID: engineID, protocol: .sha384)
+        #expect(sha384Key.count == 48)
+
+        let sha384HMAC = SNMPv3Crypto.computeAuthHMAC(data: "SamplePayload".data(using: .utf8)!, authKey: sha384Key, protocol: .sha384)
+        #expect(sha384HMAC.count == 24) // Truncated to 24 bytes per RFC 7860
+
+        // SHA-512
+        let sha512Key = SNMPv3Crypto.passwordToKey(password: password, engineID: engineID, protocol: .sha512)
+        #expect(sha512Key.count == 64)
+
+        let sha512HMAC = SNMPv3Crypto.computeAuthHMAC(data: "SamplePayload".data(using: .utf8)!, authKey: sha512Key, protocol: .sha512)
+        #expect(sha512HMAC.count == 32) // Truncated to 32 bytes per RFC 7860
+    }
+
+    @Test("RFC 7860 SNMPv3 AES-256 CFB Encryption and Decryption Roundtrip")
+    func testSNMPv3AES256Roundtrip() throws {
+        let plaintext = "TopSecretConfigurationPayloadWithHighEntropy256Bits!".data(using: .utf8)!
+        let privKey256 = Data(repeating: 0x3C, count: 32) // 32 bytes for AES-256
+        let boots: Int32 = 42
+        let time: Int32 = 8800
+
+        let encrypted = try SNMPv3Crypto.encryptAES(
+            payload: plaintext,
+            privKey: privKey256,
+            privProtocol: .aes256,
+            engineBoots: boots,
+            engineTime: time,
+            salt: 0x1122334455667788
+        )
+
+        #expect(encrypted.privParams.count == 8)
+        #expect(encrypted.ciphertext != plaintext)
+
+        let decrypted = try SNMPv3Crypto.decryptAES(
+            ciphertext: encrypted.ciphertext,
+            privKey: privKey256,
+            privProtocol: .aes256,
+            engineBoots: boots,
+            engineTime: time,
+            privParams: encrypted.privParams
+        )
+
+        #expect(decrypted == plaintext)
+    }
+
+    @Test("MIB Hierarchy Tree Generation and Root Traversal")
+    func testMIBHierarchyTree() {
+        let tree = MIBDictionary.shared.buildHierarchyTree()
+        #expect(tree != nil)
+        #expect(tree?.oid == "1.3.6.1")
+        #expect(tree?.displayName == "internet")
+        #expect(!tree!.children.isEmpty)
+
+        // Find mgmt branch (1.3.6.1.2)
+        let mgmtNode = tree?.children.first(where: { $0.oid == "1.3.6.1.2" })
+        #expect(mgmtNode != nil)
+    }
+
+    @Test("MIBFileParser SMIv2 Text Parsing")
+    func testMIBFileParser() {
+        let sampleSMI = """
+        ciscoEnvMonTemperatureStatusTable OBJECT-TYPE
+            SYNTAX SEQUENCE OF CiscoEnvMonTemperatureStatusEntry
+            MAX-ACCESS not-accessible
+            STATUS current
+            DESCRIPTION "The table of ambient temperature status entries."
+            ::= { cisco 1 }
+
+        1.3.6.1.4.1.99999.1.1, testCustomSensor, Gauge32, read-only, Data Center Ambient Temperature Sensor
+        """
+
+        let parsed = MIBFileParser.parse(content: sampleSMI)
+        #expect(parsed.count >= 2)
+
+        let csvNode = parsed.first(where: { $0.oid == "1.3.6.1.4.1.99999.1.1" })
+        #expect(csvNode != nil)
+        #expect(csvNode?.name == "testCustomSensor")
+        #expect(csvNode?.syntax == "Gauge32")
+    }
+
+    @Test("SNMPTrapReceiver Simulated Trap Injection and Stream Yielding")
+    func testSNMPTrapReceiver() async {
+        let receiver = SNMPTrapReceiver()
+
+        let record = SNMPTrapRecord(
+            sourceAddress: "10.0.0.1",
+            sourcePort: 162,
+            version: .v2c,
+            community: "public",
+            enterpriseOID: "1.3.6.1.4.1.9",
+            trapOID: "1.3.6.1.6.3.1.1.5.3",
+            varBinds: [SNMPVarBind(oid: "1.3.6.1.2.1.2.2.1.1.1", value: .integer(1))],
+            severity: .critical
+        )
+
+        await receiver.injectSimulatedTrap(record)
+        let count = await receiver.trapsReceivedCount
+        #expect(count == 1)
+    }
+
+    @Test("SNMPExporter CSV and JSON Generation")
+    func testSNMPExporter() throws {
+        let varBinds = [
+            SNMPVarBind(oid: "1.3.6.1.2.1.1.1.0", value: .octetString("Core-Switch")),
+            SNMPVarBind(oid: "1.3.6.1.2.1.1.3.0", value: .timeTicks(123456))
+        ]
+
+        let csv = SNMPExporter.exportVarBindsToCSV(varBinds)
+        #expect(csv.contains("OID,Symbolic Name,Syntax Type,Value"))
+        #expect(csv.contains("1.3.6.1.2.1.1.1.0"))
+        #expect(csv.contains("Core-Switch"))
+
+        let json = try SNMPExporter.exportVarBindsToJSON(varBinds)
+        let jsonStr = String(data: json, encoding: .utf8)
+        #expect(jsonStr != nil)
+        #expect(jsonStr!.contains("Core-Switch"))
+
+        let traps = [
+            SNMPTrapRecord(
+                sourceAddress: "10.1.1.1",
+                version: .v2c,
+                community: "public",
+                enterpriseOID: "1.3.6.1.4.1.9",
+                trapOID: "1.3.6.1.6.3.1.1.5.3",
+                varBinds: [],
+                severity: .critical
+            )
+        ]
+
+        let trapCSV = SNMPExporter.exportTrapsToCSV(traps)
+        #expect(trapCSV.contains("Source Address"))
+        #expect(trapCSV.contains("10.1.1.1"))
+        #expect(trapCSV.contains("Critical"))
+    }
 }
 
 

@@ -15,12 +15,12 @@ struct PacketKitTests {
         #expect(magic == 0xa1b2c3d4)
     }
 
-    @Test("PCAP Reader extracts all 16 packets and multi-layer protocols")
+    @Test("PCAP Reader extracts all 21 packets and multi-layer protocols including DHCP, BGP, NTP")
     func pcapReaderParsing() throws {
         let pcapData = SamplePCAPGenerator.generateSampleCapture()
         let summary = try PCAPReader.parse(data: pcapData, fileName: "synthetic_traffic.pcap")
 
-        #expect(summary.totalPackets == 16)
+        #expect(summary.totalPackets == 21)
         #expect(summary.totalBytes > 1000)
         #expect(summary.duration >= 0.0)
 
@@ -32,6 +32,9 @@ struct PacketKitTests {
         #expect(protocols.contains(.tls))
         #expect(protocols.contains(.http))
         #expect(protocols.contains(.icmp))
+        #expect(protocols.contains(.dhcp))
+        #expect(protocols.contains(.bgp))
+        #expect(protocols.contains(.ntp))
     }
 
     @Test("TCP Anomaly Detector flags retransmission, zero window, and connection reset")
@@ -276,6 +279,251 @@ struct PacketKitTests {
 
         session.stop()
         #expect(session.status == .stopped)
+    }
+
+    // MARK: - Enterprise Protocol Dissection Tests
+
+    @Test("DHCP Dissector parses Discover and Offer packets with exact field offsets")
+    func testDHCPDissector() throws {
+        let pcapData = SamplePCAPGenerator.generateSampleCapture()
+        let summary = try PCAPReader.parse(data: pcapData, fileName: "synthetic.pcap")
+
+        let dhcpPackets = summary.packets.filter { $0.protocolType == .dhcp }
+        #expect(dhcpPackets.count == 2)
+
+        // Packet 17: DHCP Discover
+        let disc = dhcpPackets[0]
+        #expect(disc.summary.contains("DHCP Discover"))
+        #expect(disc.summary.contains("0x3903F326"))
+        let discLayer = disc.layers.first(where: { $0.name.contains("Dynamic Host Configuration Protocol") })
+        #expect(discLayer != nil)
+        let msgTypeField = discLayer?.fields.first(where: { $0.name.contains("Option (53)") })
+        #expect(msgTypeField?.value == "DHCP Discover")
+        #expect(msgTypeField?.hexOffset != nil)
+        #expect(msgTypeField?.hexLength == 3)
+
+        // Packet 18: DHCP Offer
+        let offer = dhcpPackets[1]
+        #expect(offer.summary.contains("DHCP Offer"))
+        #expect(offer.summary.contains("192.168.1.100"))
+        let offerLayer = offer.layers.first(where: { $0.name.contains("Dynamic Host Configuration Protocol") })
+        #expect(offerLayer != nil)
+        let serverIdField = offerLayer?.fields.first(where: { $0.name.contains("Option (54)") })
+        #expect(serverIdField?.value == "192.168.1.1")
+        let leaseField = offerLayer?.fields.first(where: { $0.name.contains("Option (51)") })
+        #expect(leaseField?.value == "86400s")
+    }
+
+    @Test("BGP Dissector decodes Keepalive message and Marker")
+    func testBGPDissector() throws {
+        let pcapData = SamplePCAPGenerator.generateSampleCapture()
+        let summary = try PCAPReader.parse(data: pcapData, fileName: "synthetic.pcap")
+
+        let bgpPkt = summary.packets.first(where: { $0.protocolType == .bgp })
+        #expect(bgpPkt != nil)
+        #expect(bgpPkt?.summary.contains("KEEPALIVE") == true)
+
+        let bgpLayer = bgpPkt?.layers.first(where: { $0.name.contains("Border Gateway Protocol") })
+        #expect(bgpLayer != nil)
+        let marker = bgpLayer?.fields.first(where: { $0.name == "Marker" })
+        #expect(marker != nil)
+        #expect(marker?.hexLength == 16)
+        let lenField = bgpLayer?.fields.first(where: { $0.name == "Length" })
+        #expect(lenField?.value == "19 bytes")
+    }
+
+    @Test("OSPF Dissector decodes OSPFv2 Hello packet with DR and BDR routers")
+    func testOSPFDissector() {
+        // Build synthetic OSPFv2 Hello packet
+        var data = Data()
+        // Ethernet Header (14B)
+        data.append(contentsOf: [0x01, 0x00, 0x5E, 0x00, 0x00, 0x05]) // 224.0.0.5 Multicast
+        data.append(contentsOf: [0x00, 0x11, 0x22, 0x33, 0x44, 0x55])
+        data.append(contentsOf: [0x08, 0x00]) // IPv4
+
+        // IPv4 Header (20B, Proto 89 = OSPF)
+        data.append(contentsOf: [0x45, 0x00, 0x00, 0x44, 0x12, 0x34, 0x00, 0x00, 0x01, 89, 0x00, 0x00])
+        data.append(contentsOf: [10, 0, 0, 1]) // Src IP 10.0.0.1
+        data.append(contentsOf: [224, 0, 0, 5]) // Dst IP 224.0.0.5
+
+        // OSPFv2 Header (24B)
+        data.append(2) // Version 2
+        data.append(1) // Type 1: Hello
+        data.append(contentsOf: [0x00, 0x2C]) // Length 44 bytes
+        data.append(contentsOf: [10, 0, 0, 1]) // Router ID 10.0.0.1
+        data.append(contentsOf: [0, 0, 0, 0]) // Area ID 0.0.0.0 (Backbone)
+        data.append(contentsOf: [0x00, 0x00]) // Checksum
+        data.append(contentsOf: [0x00, 0x00]) // Auth Type 0 (None)
+        data.append(contentsOf: [0, 0, 0, 0, 0, 0, 0, 0]) // Auth 8B
+
+        // OSPF Hello Body (20B)
+        data.append(contentsOf: [255, 255, 255, 0]) // Mask 255.255.255.0
+        data.append(contentsOf: [0x00, 0x0A])       // Hello Int 10s
+        data.append(0x02)                           // Options (E-bit)
+        data.append(1)                              // Priority 1
+        data.append(contentsOf: [0x00, 0x00, 0x00, 0x28]) // Dead Int 40s
+        data.append(contentsOf: [10, 0, 0, 1])      // Designated Router
+        data.append(contentsOf: [10, 0, 0, 2])      // Backup DR
+
+        let result = ProtocolDissector.dissect(packetData: data, packetNumber: 1, wireLength: data.count)
+        #expect(result.protocolType == .ospf)
+        #expect(result.summary.contains("OSPFv2 Hello Packet"))
+        #expect(result.summary.contains("10.0.0.1"))
+
+        let ospfLayer = result.layers.first(where: { $0.name.contains("Open Shortest Path First") })
+        #expect(ospfLayer != nil)
+        let drField = ospfLayer?.fields.first(where: { $0.name.contains("Designated Router") })
+        #expect(drField?.value == "10.0.0.1")
+        let bdrField = ospfLayer?.fields.first(where: { $0.name.contains("Backup DR") })
+        #expect(bdrField?.value == "10.0.0.2")
+    }
+
+    @Test("NTP Dissector decodes Stratum, Mode, and Reference ID")
+    func testNTPDissector() throws {
+        let pcapData = SamplePCAPGenerator.generateSampleCapture()
+        let summary = try PCAPReader.parse(data: pcapData, fileName: "synthetic.pcap")
+
+        let ntpPackets = summary.packets.filter { $0.protocolType == .ntp }
+        #expect(ntpPackets.count == 2)
+
+        let serverPkt = ntpPackets.first(where: { $0.summary.contains("Server") })
+        #expect(serverPkt != nil)
+        #expect(serverPkt?.summary.contains("Stratum 1") == true)
+        #expect(serverPkt?.summary.contains("NIST") == true)
+
+        let ntpLayer = serverPkt?.layers.first(where: { $0.name.contains("Network Time Protocol") })
+        #expect(ntpLayer != nil)
+        let modeField = ntpLayer?.fields.first(where: { $0.name == "Mode" })
+        #expect(modeField?.value.contains("Server") == true)
+    }
+
+    @Test("SNMP Dissector parses BER ASN.1 version, community, and PDU type")
+    func testSNMPDissector() {
+        var pdu = Data()
+        pdu.append(0x30) // Sequence
+        pdu.append(27)   // Len
+        // Version 1 (v2c): 0x02 0x01 0x01
+        pdu.append(contentsOf: [0x02, 0x01, 0x01])
+        // Community "public": 0x04 0x06 "public"
+        let comm = "public".data(using: .utf8)!
+        pdu.append(0x04)
+        pdu.append(UInt8(comm.count))
+        pdu.append(comm)
+        // PDU: 0xA2 (GetResponse)
+        pdu.append(0xA2)
+        pdu.append(14)
+        pdu.append(contentsOf: [0x02, 0x04, 0x12, 0x34, 0x56, 0x78]) // Request ID
+        pdu.append(contentsOf: [0x02, 0x01, 0x00]) // Error status 0
+        pdu.append(contentsOf: [0x02, 0x01, 0x00]) // Error index 0
+
+        let res = ProtocolDissector.dissectSNMP(payload: pdu, baseOffset: 42)
+        #expect(res != nil)
+        #expect(res?.summary.contains("SNMPv2c GetResponse") == true)
+        #expect(res?.summary.contains("public") == true)
+
+        let commField = res?.layer.fields.first(where: { $0.name == "Community String" })
+        #expect(commField?.value == "public")
+        #expect(commField?.hexOffset != nil)
+    }
+
+    // MARK: - TCP Stream Reassembly Tests
+
+    @Test("TCP Stream Reassembler reconstructs bidirectional client and server dialogue")
+    func testTCPStreamReassembly() throws {
+        let pcapData = SamplePCAPGenerator.generateSampleCapture()
+        let summary = try PCAPReader.parse(data: pcapData, fileName: "synthetic.pcap")
+
+        let tlsPacket = summary.packets.first(where: { $0.protocolType == .tls })
+        #expect(tlsPacket != nil)
+
+        let streamResult = TCPStreamReassembler.reassembleStream(for: tlsPacket!, from: summary.packets)
+        #expect(streamResult != nil)
+        #expect(streamResult?.clientBytes ?? 0 > 0)
+        #expect(streamResult?.totalBytes ?? 0 > 0)
+        #expect(!streamResult!.segments.isEmpty)
+        #expect(streamResult!.streamId.contains("443") || streamResult!.streamId.contains("49214"))
+
+        // Dialogue segments have direction and ascii representation
+        let clientSeg = streamResult?.segments.first(where: { $0.direction == .clientToServer })
+        #expect(clientSeg != nil)
+        #expect(clientSeg?.packetNumber == 8 || clientSeg?.packetNumber == 10)
+    }
+
+    // MARK: - Display Filter Engine Tests
+
+    @Test("Packet Display Filter compiles and evaluates Wireshark boolean expressions")
+    func testPacketDisplayFilter() throws {
+        let pcapData = SamplePCAPGenerator.generateSampleCapture()
+        let summary = try PCAPReader.parse(data: pcapData, fileName: "synthetic.pcap")
+
+        // 1. Validation checks
+        #expect(PacketDisplayFilter.validate(query: "") == .empty)
+        if case .valid = PacketDisplayFilter.validate(query: "tcp.port == 443") {
+            // Success
+        } else {
+            Issue.record("Expected valid status for 'tcp.port == 443'")
+        }
+
+        if case .invalid = PacketDisplayFilter.validate(query: "tcp.port ==") {
+            // Success
+        } else {
+            Issue.record("Expected invalid status for 'tcp.port =='")
+        }
+
+        // 2. Evaluation: Protocol filter
+        let dnsFilter = PacketDisplayFilter(query: "dns")
+        let dnsMatches = summary.packets.filter { dnsFilter.matches(packet: $0) }
+        #expect(dnsMatches.count == 2)
+
+        // 3. Evaluation: IP source filter
+        let ipSrcFilter = PacketDisplayFilter(query: "ip.src == 192.168.1.100")
+        let ipMatches = summary.packets.filter { ipSrcFilter.matches(packet: $0) }
+        #expect(!ipMatches.isEmpty)
+        for p in ipMatches {
+            #expect(p.sourceAddress == "192.168.1.100")
+        }
+
+        // 4. Evaluation: Compound AND expression
+        let compoundFilter = PacketDisplayFilter(query: "tcp and ip.addr == 192.168.1.100")
+        let compoundMatches = summary.packets.filter { compoundFilter.matches(packet: $0) }
+        #expect(!compoundMatches.isEmpty)
+        for p in compoundMatches {
+            #expect(p.protocolType == .tcp || p.protocolType == .tls || p.protocolType == .http || p.protocolType == .bgp)
+            #expect(p.sourceAddress == "192.168.1.100" || p.destinationAddress == "192.168.1.100")
+        }
+
+        // 5. Evaluation: Anomalies filter
+        let anomalyFilter = PacketDisplayFilter(query: "anomalies")
+        let anomalyMatches = summary.packets.filter { anomalyFilter.matches(packet: $0) }
+        #expect(!anomalyMatches.isEmpty)
+        for p in anomalyMatches {
+            #expect(!p.anomalies.isEmpty)
+        }
+    }
+
+    // MARK: - Packet Exporter Tests
+
+    @Test("Packet Exporter produces valid PCAP byte stream and RFC 4180 CSV")
+    func testPacketExporter() throws {
+        let pcapData = SamplePCAPGenerator.generateSampleCapture()
+        let summary = try PCAPReader.parse(data: pcapData, fileName: "synthetic.pcap")
+
+        // 1. Export PCAP
+        let exportedPCAP = PacketExporter.exportPCAP(packets: summary.packets)
+        #expect(exportedPCAP.count > 500)
+        let magic = exportedPCAP.withUnsafeBytes { $0.load(fromByteOffset: 0, as: UInt32.self) }
+        #expect(magic == 0xa1b2c3d4)
+
+        // Re-read exported PCAP to verify round-trip integrity
+        let reparsed = try PCAPReader.parse(data: exportedPCAP, fileName: "reparsed.pcap")
+        #expect(reparsed.totalPackets == summary.packets.count)
+
+        // 2. Export CSV
+        let csv = PacketExporter.exportCSV(packets: summary.packets)
+        #expect(csv.starts(with: "\"No.\",\"Time (s)\",\"Source\""))
+        #expect(csv.contains("192.168.1.100"))
+        #expect(csv.contains("TCP"))
+        #expect(csv.contains("DNS"))
     }
 }
 

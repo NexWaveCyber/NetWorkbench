@@ -49,8 +49,8 @@ public struct LatencyStatistics: Sendable, Hashable {
         }
 
         let sorted = samples.sorted()
-        self.minMs = sorted.first!
-        self.maxMs = sorted.last!
+        self.minMs = sorted.first ?? 0
+        self.maxMs = sorted.last ?? 0
         self.avgMs = sorted.reduce(0, +) / Double(sorted.count)
         self.medianMs = LatencyStatistics.percentile(sorted: sorted, p: 0.50)
         self.p95Ms = LatencyStatistics.percentile(sorted: sorted, p: 0.95)

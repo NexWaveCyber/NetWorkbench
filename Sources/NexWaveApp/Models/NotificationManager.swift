@@ -27,6 +27,11 @@ public final class NotificationManager: @unchecked Sendable {
 
     /// Requests macOS notification permissions gracefully
     public func requestAuthorization(completion: (@Sendable (Bool) -> Void)? = nil) {
+        guard Bundle.main.bundleIdentifier != nil else {
+            completion?(false)
+            return
+        }
+
         UNUserNotificationCenter.current().getNotificationSettings { settings in
             switch settings.authorizationStatus {
             case .authorized, .provisional:
@@ -53,6 +58,7 @@ public final class NotificationManager: @unchecked Sendable {
     /// Dispatches an immediate desktop notification banner for an SLA breach
     public func postSLAAlert(_ alert: SLAMonitorAlert) {
         guard isNotificationsEnabled else { return }
+        guard Bundle.main.bundleIdentifier != nil else { return }
 
         let content = UNMutableNotificationContent()
         content.title = "⚠️ SLA Breach: \(alert.targetName)"

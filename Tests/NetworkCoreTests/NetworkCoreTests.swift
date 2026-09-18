@@ -94,4 +94,27 @@ struct NetworkCoreTests {
         let t6 = TargetClassifier.classify("core-sw01")
         #expect(t6?.targetType == .device)
     }
+
+    @Test("Subnet IPAM Calculator and Capacity Planning")
+    func testIPAMCalculator() {
+        // /24 subnet with 254 hosts
+        let ipam24 = IPAMCalculator.calculate(cidr: "192.168.1.0/24", allocatedDeviceCount: 48)
+        #expect(ipam24 != nil)
+        #expect(ipam24?.totalCapacity == 254)
+        #expect(ipam24?.networkAddress == "192.168.1.0")
+        #expect(ipam24?.broadcastAddress == "192.168.1.255")
+        #expect(ipam24?.firstUsableHost == "192.168.1.1")
+        #expect(ipam24?.lastUsableHost == "192.168.1.254")
+        #expect(ipam24?.netmask == "255.255.255.0")
+        #expect(ipam24?.allocatedCount == 48)
+        #expect(ipam24?.isWarning == false)
+        #expect(ipam24?.isCritical == false)
+
+        // /28 subnet with 14 hosts and high utilization
+        let ipam28 = IPAMCalculator.calculate(cidr: "10.0.0.0/28", allocatedDeviceCount: 13)
+        #expect(ipam28 != nil)
+        #expect(ipam28?.totalCapacity == 14)
+        #expect(ipam28?.isCritical == true) // 13 / 14 = 92.8% > 90%
+    }
 }
+

@@ -1695,7 +1695,7 @@ struct RFSpectrumCanvasView: View {
 
                 if distFromPeak < 32 || isInsideCurve {
                     let score = distFromPeak - (isConn ? 120 : 0)
-                    if bestMatch == nil || score < bestMatch!.score {
+                    if bestMatch == nil || score < (bestMatch?.score ?? .infinity) {
                         bestMatch = (ap, score)
                     }
                 }

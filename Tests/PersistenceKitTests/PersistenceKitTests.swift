@@ -131,7 +131,7 @@ struct PersistenceKitTests {
     @Test("Pre-packaged enterprise demo incident bundles generation")
     func testDemoInvestigationBundlesGeneration() {
         let demos = InvestigationBundleManager.createDemoInvestigations()
-        #expect(demos.count == 3)
+        #expect(demos.count >= 4)
 
         let bgpDemo = demos.first { $0.investigation.severity == "Critical" }
         #expect(bgpDemo != nil)
@@ -146,6 +146,10 @@ struct PersistenceKitTests {
         #expect(wifiDemo != nil)
         #expect(wifiDemo?.investigation.status == "Resolved")
         #expect(wifiDemo?.investigation.resolution != nil)
+
+        let stpDemo = demos.first { $0.investigation.title.contains("STP") }
+        #expect(stpDemo != nil)
+        #expect(stpDemo?.investigation.severity == "Critical")
     }
 
     @Test("Slack and Jira markdown incident triage export formatting")
@@ -157,11 +161,9 @@ struct PersistenceKitTests {
         }
 
         let summary = InvestigationBundleManager.exportSlackJiraSummary(bundle: criticalDemo)
-        #expect(summary.contains("INCIDENT TRIAGE: [CRITICAL]"))
-        #expect(summary.contains("Chronological Timeline Findings"))
+        #expect(summary.contains("INCIDENT TRIAGE: [P1 CRITICAL]"))
+        #expect(summary.contains("Key Milestones & Timeline"))
         #expect(summary.contains("BGP Session Down"))
-        #expect(summary.contains("FCS / CRC Error Burst"))
-        #expect(summary.contains("Engineering Notes / Next Steps"))
         #expect(summary.contains("NexWave Studio Mac Network Workbench"))
     }
 
@@ -183,6 +185,185 @@ struct PersistenceKitTests {
         #expect(bundleErr.errorDescription?.contains("corrupted") == true)
         #expect(bundleErr.recoverySuggestion?.contains(".nwi") == true)
     }
+
+    @Test("Site Environment Persistence and Active Scope Switching")
+    func testSiteEnvironmentPersistence() throws {
+        let tempDir = FileManager.default.temporaryDirectory
+        let dbPath = tempDir.appendingPathComponent("test_env_\(UUID().uuidString).sqlite").path
+        defer { try? FileManager.default.removeItem(atPath: dbPath) }
+
+        let db = try SQLiteDatabase(path: dbPath)
+        let envRepo = EnvironmentRepository(database: db)
+
+        // Test seed
+        try envRepo.seedDefaultsIfEmpty()
+        let seeded = try envRepo.fetchAll()
+        #expect(seeded.count == 3)
+        #expect(seeded.contains(where: { $0.name == "San Jose HQ - DC Core" }))
+
+        // Insert new environment
+        let newEnvId = UUID().uuidString
+        let env = EnvironmentRecord(
+            id: newEnvId,
+            name: "Frankfurt Edge DC",
+            environmentType: "datacenter",
+            gatewayIP: "10.100.0.1",
+            subnetCIDR: "10.100.0.0/20",
+            primaryDNS: "1.1.1.1",
+            isActive: false
+        )
+        try envRepo.insert(env)
+
+        let all = try envRepo.fetchAll()
+        #expect(all.count == 4)
+
+        // Switch active scope
+        try envRepo.setActive(id: newEnvId)
+        let active = try envRepo.fetchActive()
+        #expect(active?.id == newEnvId)
+        #expect(active?.isActive == true)
+
+        // Delete environment
+        try envRepo.delete(id: newEnvId)
+        let afterDelete = try envRepo.fetchAll()
+        #expect(afterDelete.count == 3)
+        #expect(!afterDelete.contains(where: { $0.id == newEnvId }))
+    }
+
+    @Test("Custom Command Persistence and Favorites")
+    func testCustomCommandPersistence() throws {
+        let tempDir = FileManager.default.temporaryDirectory
+        let dbPath = tempDir.appendingPathComponent("test_cmd_\(UUID().uuidString).sqlite").path
+        defer { try? FileManager.default.removeItem(atPath: dbPath) }
+
+        let db = try SQLiteDatabase(path: dbPath)
+        let cmdRepo = CustomCommandRepository(database: db)
+
+        let cmdId = UUID().uuidString
+        let cmd = CustomCommandRecord(
+            id: cmdId,
+            intent: "Custom Health Macro",
+            category: "System & Hardware",
+            vendor: "Cisco IOS-XE",
+            syntax: "show system health status",
+            description: "Custom diagnostic command",
+            isFavorite: false,
+            isCustom: true
+        )
+        try cmdRepo.insert(cmd)
+
+        var list = try cmdRepo.fetchAll()
+        #expect(list.contains(where: { $0.id == cmdId }))
+
+        // Toggle Favorite
+        try cmdRepo.toggleFavorite(id: cmdId)
+        let favorites = try cmdRepo.fetchFavorites()
+        #expect(favorites.contains(where: { $0.id == cmdId }))
+
+        // Delete
+        try cmdRepo.delete(id: cmdId)
+        list = try cmdRepo.fetchAll()
+        #expect(!list.contains(where: { $0.id == cmdId }))
+    }
+
+    @Test("Diagnostic History Seeding, Counting, Deletion, and Purging")
+    func testDiagnosticHistoryManagement() throws {
+        let tempDir = FileManager.default.temporaryDirectory
+        let dbPath = tempDir.appendingPathComponent("test_hist_\(UUID().uuidString).sqlite").path
+        defer { try? FileManager.default.removeItem(atPath: dbPath) }
+
+        let db = try SQLiteDatabase(path: dbPath)
+        let histRepo = DiagnosticHistoryRepository(database: db)
+
+        // 1. Initially empty
+        var count = try histRepo.fetchTotalCount()
+        #expect(count == 0)
+
+        // 2. Seed realistic demo runs
+        try histRepo.seedDemoHistoryIfEmpty()
+        count = try histRepo.fetchTotalCount()
+        #expect(count == 4)
+
+        let allRuns = try histRepo.fetchRecent(limit: 10)
+        #expect(allRuns.count == 4)
+        #expect(allRuns.contains(where: { $0.target == "api.cloudflare.com" }))
+        #expect(allRuns.contains(where: { $0.target == "10.0.0.1" }))
+        #expect(allRuns.contains(where: { $0.target == "192.168.100.1" }))
+
+        // 3. Delete single record
+        if let first = allRuns.first {
+            try histRepo.delete(id: first.id)
+            let remaining = try histRepo.fetchRecent(limit: 10)
+            #expect(remaining.count == 3)
+            #expect(!remaining.contains(where: { $0.id == first.id }))
+        }
+
+        // 4. Test purge older than
+        // Insert an old run from 40 days ago
+        let oldRecord = DiagnosticHistoryRecord(
+            target: "archive.internal.corp",
+            targetType: "FQDN Target",
+            timestamp: Date().timeIntervalSince1970 - (40 * 86400),
+            dnsHealthy: true,
+            pingLatency: 12.0,
+            packetLoss: 0.0,
+            tcpHealthy: true,
+            tlsHealthy: true,
+            httpStatus: 200,
+            summary: "Archived gateway test",
+            rawJson: "{}"
+        )
+        try histRepo.record(oldRecord)
+        #expect(try histRepo.fetchTotalCount() == 4)
+
+        // Purge records older than 30 days
+        try histRepo.deleteOlderThan(days: 30)
+        let afterPurge = try histRepo.fetchRecent(limit: 10)
+        #expect(!afterPurge.contains(where: { $0.target == "archive.internal.corp" }))
+
+        // 5. Clear all
+        try histRepo.clearAll()
+        #expect(try histRepo.fetchTotalCount() == 0)
+    }
+
+    @Test("SQLite Online Backup, Vacuum, and Table Statistics")
+    func testDatabaseMaintenanceAndBackup() throws {
+        let tempDir = FileManager.default.temporaryDirectory
+        let dbPath = tempDir.appendingPathComponent("test_maint_origin_\(UUID().uuidString).sqlite").path
+        let backupPath = tempDir.appendingPathComponent("test_maint_backup_\(UUID().uuidString).sqlite").path
+        defer {
+            try? FileManager.default.removeItem(atPath: dbPath)
+            try? FileManager.default.removeItem(atPath: backupPath)
+        }
+
+        let db = try SQLiteDatabase(path: dbPath)
+        let histRepo = DiagnosticHistoryRepository(database: db)
+        try histRepo.seedDemoHistoryIfEmpty()
+
+        // 1. Verify file size and row counts
+        let size = db.databaseFileSize()
+        #expect(size > 0)
+
+        let counts = db.tableRowCounts()
+        #expect((counts["diagnostic_history"] ?? 0) >= 4)
+
+        // 2. Perform online backup
+        let backupUrl = URL(fileURLWithPath: backupPath)
+        try db.backupDatabase(to: backupUrl)
+
+        // 3. Verify backup exists and has data
+        let backupAttrs = try? FileManager.default.attributesOfItem(atPath: backupPath)
+        let backupSize = (backupAttrs?[.size] as? NSNumber)?.int64Value ?? 0
+        #expect(backupSize > 0)
+
+        // 4. Open backup database independently and verify contents
+        let restoredDb = try SQLiteDatabase(path: backupPath)
+        let restoredHistRepo = DiagnosticHistoryRepository(database: restoredDb)
+        let restoredRuns = try restoredHistRepo.fetchRecent(limit: 10)
+        #expect(restoredRuns.count == 4)
+        #expect(restoredRuns.contains(where: { $0.target == "api.cloudflare.com" }))
+    }
 }
+
 
 

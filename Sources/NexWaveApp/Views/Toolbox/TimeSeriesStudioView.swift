@@ -1119,7 +1119,7 @@ public struct TimeSeriesStudioView: View {
     private func setupEngine() {
         if state == nil && localRepository == nil {
             do {
-                let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+                let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first ?? FileManager.default.temporaryDirectory
                 let dbPath = appSupport.appendingPathComponent("NexWave/network_workbench.sqlite").path
                 let db = try SQLiteDatabase(path: dbPath)
                 let repo = TimeSeriesRepository(database: db)

@@ -8,7 +8,7 @@ public enum ReportRedactor {
         let tokenPrefix: String
 
         init(pattern: String, prefix: String) {
-            self.regex = try! NSRegularExpression(pattern: pattern, options: [.caseInsensitive])
+            self.regex = (try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive])) ?? (try? NSRegularExpression(pattern: "$^")) ?? NSRegularExpression()
             self.tokenPrefix = prefix
         }
     }

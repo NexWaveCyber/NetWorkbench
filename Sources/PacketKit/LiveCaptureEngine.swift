@@ -129,6 +129,42 @@ public enum LiveCaptureEngine {
         }
         return .unsupported
     }
+
+    /// Prompts the user via native macOS security dialog to grant BPF capture permissions (/dev/bpf*)
+    @MainActor
+    public static func authorizeBPFAccess() -> Result<Void, Error> {
+        let scriptSource = """
+        do shell script "chgrp admin /dev/bpf* && chmod 660 /dev/bpf*" with administrator privileges
+        """
+        if let appleScript = NSAppleScript(source: scriptSource) {
+            var errorInfo: NSDictionary?
+            appleScript.executeAndReturnError(&errorInfo)
+            if let error = errorInfo {
+                let msg = error[NSAppleScript.errorMessage] as? String ?? "Authorization was not completed"
+                return .failure(NSError(domain: "BPFAuthorization", code: -1, userInfo: [NSLocalizedDescriptionKey: msg]))
+            }
+            return .success(())
+        }
+        return .failure(NSError(domain: "BPFAuthorization", code: -2, userInfo: [NSLocalizedDescriptionKey: "Failed to initialize AppleScript engine"]))
+    }
+
+    /// Installs a permanent boot LaunchDaemon so BPF permissions persist across macOS reboots
+    @MainActor
+    public static func installPermanentChmodBPF() -> Result<Void, Error> {
+        let scriptSource = """
+        do shell script "cat << 'EOF' > /Library/LaunchDaemons/com.nexwave.chmodbpf.plist\\n<?xml version=\\\"1.0\\\" encoding=\\\"UTF-8\\\"?>\\n<!DOCTYPE plist PUBLIC \\\"-//Apple//DTD PLIST 1.0//EN\\\" \\\"http://www.apple.com/DTDs/PropertyList-1.0.dtd\\\">\\n<plist version=\\\"1.0\\\">\\n<dict>\\n    <key>Label</key>\\n    <string>com.nexwave.chmodbpf</string>\\n    <key>ProgramArguments</key>\\n    <array>\\n        <string>/bin/sh</string>\\n        <string>-c</string>\\n        <string>/usr/sbin/chown root:admin /dev/bpf* && /bin/chmod 0660 /dev/bpf*</string>\\n    </array>\\n    <key>RunAtLoad</key>\\n    <true/>\\n</dict>\\n</plist>\\nEOF\\nchown root:wheel /Library/LaunchDaemons/com.nexwave.chmodbpf.plist && chmod 644 /Library/LaunchDaemons/com.nexwave.chmodbpf.plist && launchctl load -w /Library/LaunchDaemons/com.nexwave.chmodbpf.plist && chgrp admin /dev/bpf* && chmod 660 /dev/bpf*" with administrator privileges
+        """
+        if let appleScript = NSAppleScript(source: scriptSource) {
+            var errorInfo: NSDictionary?
+            appleScript.executeAndReturnError(&errorInfo)
+            if let error = errorInfo {
+                let msg = error[NSAppleScript.errorMessage] as? String ?? "Failed to install daemon"
+                return .failure(NSError(domain: "BPFAuthorization", code: -1, userInfo: [NSLocalizedDescriptionKey: msg]))
+            }
+            return .success(())
+        }
+        return .failure(NSError(domain: "BPFAuthorization", code: -2, userInfo: [NSLocalizedDescriptionKey: "Failed to initialize AppleScript engine"]))
+    }
 }
 
 // MARK: - Live Capture Session
@@ -498,6 +534,13 @@ public final class LiveCaptureSession: @unchecked Sendable {
             updatedPackets.removeFirst(overflow)
         }
         self.packets = updatedPackets
+
+        // Bound rawPCAPBuffer to prevent runaway memory usage during continuous packet capture (cap at 12MB)
+        if rawPCAPBuffer.count > 12_000_000 {
+            let header = rawPCAPBuffer.prefix(24)
+            let recentTail = rawPCAPBuffer.suffix(6_000_000)
+            rawPCAPBuffer = header + recentTail
+        }
 
         lock.unlock()
     }

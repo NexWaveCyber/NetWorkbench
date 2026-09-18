@@ -746,7 +746,7 @@ public struct DiagnoseWorkspaceView: View {
             Spacer()
             Text(value)
                 .font(Theme.monoText(12, weight: .semibold))
-                .foregroundStyle(isSuccess == nil ? Color.primary : (isSuccess! ? Theme.signalEmerald : Theme.pulseCrimson))
+                .foregroundStyle(isSuccess == true ? Theme.signalEmerald : (isSuccess == false ? Theme.pulseCrimson : Color.primary))
         }
     }
 

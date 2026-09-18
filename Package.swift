@@ -261,6 +261,17 @@ let package = Package(
             name: "TerminalKitTests",
             dependencies: ["TerminalKit", "NetworkCore"],
             path: "Tests/TerminalKitTests"
+        ),
+        .testTarget(
+            name: "InvestigationKitTests",
+            dependencies: ["InvestigationKit", "PersistenceKit", "NetworkCore", "DiagnosticsEngine"],
+            path: "Tests/InvestigationKitTests"
+        ),
+        .testTarget(
+            name: "CommandLibraryTests",
+            dependencies: ["CommandLibrary", "NetworkCore"],
+            path: "Tests/CommandLibraryTests"
         )
     ]
 )
+

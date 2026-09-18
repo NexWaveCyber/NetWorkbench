@@ -130,8 +130,8 @@ public actor LocalDiscoveryEngine {
             guard isEligibleHost(ip: n.ipAddress, interface: n.interface) else { continue }
 
             // If an ARP neighbor already exists for this exact MAC, consolidate IPv4 + unique IPv6!
-            if let existingKey = results.keys.first(where: { results[$0]?.macAddress == n.macAddress }) {
-                var existing = results[existingKey]!
+            if let existingKey = results.keys.first(where: { results[$0]?.macAddress == n.macAddress }),
+               var existing = results[existingKey] {
                 if existing.ipv6Address == nil {
                     existing.ipv6Address = n.ipAddress
                 }
@@ -911,8 +911,8 @@ public actor LocalDiscoveryEngine {
 
         do {
             try process.run()
-            process.waitUntilExit()
             let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            process.waitUntilExit()
             return String(data: data, encoding: .utf8) ?? ""
         } catch {
             return ""
@@ -930,8 +930,8 @@ public actor LocalDiscoveryEngine {
 
         do {
             try process.run()
-            process.waitUntilExit()
             let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            process.waitUntilExit()
             guard let output = String(data: data, encoding: .utf8), !output.isEmpty else { return nil }
 
             guard !output.contains("(incomplete)"),

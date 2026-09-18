@@ -36,8 +36,8 @@ struct LiveCaptureTests {
             offset = end
         }
 
-        #expect(session.packets.count == 16)
-        #expect(session.totalPacketsCaptured == 16)
+        #expect(session.packets.count == 21)
+        #expect(session.totalPacketsCaptured == 21)
         #expect(session.totalBytesCaptured > 1000)
 
         // Verify that protocol dissection occurred on streaming packets
@@ -52,15 +52,15 @@ struct LiveCaptureTests {
         session.maxBufferSize = 5
 
         let sampleData = SamplePCAPGenerator.generateSampleCapture()
-        session.consumeChunk(sampleData) // Contains 16 packets
+        session.consumeChunk(sampleData) // Contains 21 packets
 
         // Ring buffer should clamp to maxBufferSize = 5
         #expect(session.packets.count == 5)
-        #expect(session.totalPacketsCaptured == 16)
+        #expect(session.totalPacketsCaptured == 21)
 
-        // The remaining packets should be the newest packets (e.g. 12, 13, 14, 15, 16)
+        // The remaining packets should be the newest packets (e.g. 17, 18, 19, 20, 21)
         let numbers = session.packets.map(\.number)
-        #expect(numbers == [12, 13, 14, 15, 16])
+        #expect(numbers == [17, 18, 19, 20, 21])
     }
 
     @Test("Live Buffer PCAP export roundtrips with PCAPReader")
@@ -78,7 +78,7 @@ struct LiveCaptureTests {
 
         // Parse through PCAPReader
         let summary = try PCAPReader.parse(data: exportedPCAP, fileName: "exported_live.pcap")
-        #expect(summary.totalPackets == 16)
+        #expect(summary.totalPackets == 21)
     }
 
     @Test("Simulated stream generates multi-protocol packets and anomalies")
