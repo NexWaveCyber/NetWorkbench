@@ -472,6 +472,7 @@ public enum ReportEngine {
             case .removed: md += "- \(line.text)\n"
             case .modified: md += "~ \(line.text)\n"
             case .unchanged: md += "  \(line.text)\n"
+            case .reordered: md += "^ \(line.text)\n"
             }
         }
         md += "```\n"

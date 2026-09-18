@@ -6,6 +6,11 @@ public enum VendorOS: String, Sendable, CaseIterable, Codable {
     case ciscoNXOS = "Cisco NX-OS"
     case aristaEOS = "Arista EOS"
     case juniperJunos = "Juniper Junos"
+    case paloAltoPANOS = "Palo Alto PAN-OS"
+    case fortinetFortiOS = "Fortinet FortiOS"
+    case mikrotikRouterOS = "MikroTik RouterOS"
+    case huaweiVRP = "Huawei VRP"
+    case linuxFRR = "Linux / FRRouting"
 
     public var defaultPrompt: String {
         switch self {
@@ -13,6 +18,11 @@ public enum VendorOS: String, Sendable, CaseIterable, Codable {
         case .ciscoNXOS: return "switch#"
         case .aristaEOS: return "switch#"
         case .juniperJunos: return "user@host> "
+        case .paloAltoPANOS: return "admin@PA> "
+        case .fortinetFortiOS: return "FortiGate # "
+        case .mikrotikRouterOS: return "[admin@MikroTik] > "
+        case .huaweiVRP: return "<Huawei>"
+        case .linuxFRR: return "frr#"
         }
     }
 }
@@ -85,6 +95,24 @@ public struct ConfigBlock: Identifiable, Sendable {
     }
 }
 
+public enum ObjectGroupType: String, Sendable, Codable {
+    case network = "Network"
+    case service = "Service / Port"
+}
+
+public struct ObjectGroup: Identifiable, Sendable {
+    public var id: String { "\(type.rawValue)-\(name)" }
+    public let name: String
+    public let type: ObjectGroupType
+    public let members: [String]
+
+    public init(name: String, type: ObjectGroupType, members: [String]) {
+        self.name = name
+        self.type = type
+        self.members = members
+    }
+}
+
 public struct ConfigAST: Sendable {
     public let vendor: VendorOS
     public let hostname: String?
@@ -92,6 +120,7 @@ public struct ConfigAST: Sendable {
     public let rawContent: String
     public let blocks: [ConfigBlock]
     public let allLines: [ConfigLine]
+    public let objectGroups: [ObjectGroup]
 
     public init(
         vendor: VendorOS,
@@ -99,7 +128,8 @@ public struct ConfigAST: Sendable {
         domainName: String? = nil,
         rawContent: String,
         blocks: [ConfigBlock],
-        allLines: [ConfigLine]
+        allLines: [ConfigLine],
+        objectGroups: [ObjectGroup] = []
     ) {
         self.vendor = vendor
         self.hostname = hostname
@@ -107,6 +137,7 @@ public struct ConfigAST: Sendable {
         self.rawContent = rawContent
         self.blocks = blocks
         self.allLines = allLines
+        self.objectGroups = objectGroups
     }
 }
 
@@ -201,6 +232,7 @@ public enum NetworkMatch: Sendable, Hashable {
     case any
     case host(String)
     case subnet(network: String, wildcard: String)
+    case objectGroup(String)
 
     public var displayString: String {
         switch self {
@@ -210,6 +242,8 @@ public enum NetworkMatch: Sendable, Hashable {
             return "host \(ip)"
         case .subnet(let net, let mask):
             return "\(net) \(mask)"
+        case .objectGroup(let name):
+            return "object-group \(name)"
         }
     }
 }
@@ -290,5 +324,106 @@ public struct ACLConfig: Identifiable, Sendable {
         self.name = name
         self.isExtended = isExtended
         self.rules = rules
+    }
+}
+
+// MARK: - Rollback & Remediation Models
+
+public struct RollbackScript: Sendable {
+    public let targetHostname: String?
+    public let vendor: VendorOS
+    public let forwardMigrationCommands: [String]
+    public let rollbackCommands: [String]
+    public let safetyWarnings: [String]
+
+    public init(
+        targetHostname: String?,
+        vendor: VendorOS,
+        forwardMigrationCommands: [String],
+        rollbackCommands: [String],
+        safetyWarnings: [String]
+    ) {
+        self.targetHostname = targetHostname
+        self.vendor = vendor
+        self.forwardMigrationCommands = forwardMigrationCommands
+        self.rollbackCommands = rollbackCommands
+        self.safetyWarnings = safetyWarnings
+    }
+}
+
+// MARK: - Compliance & Security Hardening Models
+
+public enum ComplianceSeverity: String, Sendable, Codable, Comparable {
+    case critical = "CRITICAL"
+    case high = "HIGH"
+    case medium = "MEDIUM"
+    case low = "LOW"
+    case info = "INFO"
+
+    public static func < (lhs: ComplianceSeverity, rhs: ComplianceSeverity) -> Bool {
+        let order: [ComplianceSeverity] = [.info, .low, .medium, .high, .critical]
+        return (order.firstIndex(of: lhs) ?? 0) < (order.firstIndex(of: rhs) ?? 0)
+    }
+}
+
+public struct ComplianceFinding: Identifiable, Sendable {
+    public let id: String
+    public let ruleId: String
+    public let title: String
+    public let category: String
+    public let severity: ComplianceSeverity
+    public let isCompliant: Bool
+    public let rationale: String
+    public let affectedLines: [Int]
+    public let remediationCLI: String
+
+    public init(
+        id: String = UUID().uuidString,
+        ruleId: String,
+        title: String,
+        category: String,
+        severity: ComplianceSeverity,
+        isCompliant: Bool,
+        rationale: String,
+        affectedLines: [Int] = [],
+        remediationCLI: String
+    ) {
+        self.id = id
+        self.ruleId = ruleId
+        self.title = title
+        self.category = category
+        self.severity = severity
+        self.isCompliant = isCompliant
+        self.rationale = rationale
+        self.affectedLines = affectedLines
+        self.remediationCLI = remediationCLI
+    }
+}
+
+public struct ComplianceAuditReport: Sendable {
+    public let deviceHostname: String?
+    public let vendor: VendorOS
+    public let totalScore: Double // 0.0 to 100.0
+    public let passedRulesCount: Int
+    public let failedRulesCount: Int
+    public let findings: [ComplianceFinding]
+    public let fullRemediationScript: String
+
+    public init(
+        deviceHostname: String?,
+        vendor: VendorOS,
+        totalScore: Double,
+        passedRulesCount: Int,
+        failedRulesCount: Int,
+        findings: [ComplianceFinding],
+        fullRemediationScript: String
+    ) {
+        self.deviceHostname = deviceHostname
+        self.vendor = vendor
+        self.totalScore = totalScore
+        self.passedRulesCount = passedRulesCount
+        self.failedRulesCount = failedRulesCount
+        self.findings = findings
+        self.fullRemediationScript = fullRemediationScript
     }
 }

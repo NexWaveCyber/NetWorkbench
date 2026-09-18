@@ -336,6 +336,29 @@ public final class TerminalSession: Identifiable, @unchecked Sendable {
         appendOutput("\n[Session disconnected]\n")
     }
 
+    /// Whether the session terminated due to an SSH authentication error (e.g. Permission denied)
+    public var hasAuthFailure: Bool {
+        guard case .terminated = status else { return false }
+        let recent = lines.suffix(15).map { $0.text }.joined()
+        return recent.contains("Permission denied") || recent.contains("Authentication failed")
+    }
+
+    /// Update SSH credentials in-place for fast reconnect
+    public func updateSSHAuth(username: String, password: String? = nil, identityFile: String? = nil) {
+        if case .ssh(let host, let port, _, let oldKey, let oldPass, let jump, let legacy) = connectionType {
+            self.connectionType = .ssh(
+                host: host,
+                port: port,
+                username: username,
+                identityFile: identityFile ?? oldKey,
+                password: password ?? oldPass,
+                jumpHost: jump,
+                enableLegacyCiphers: legacy
+            )
+            self.title = "\(username)@\(host)"
+        }
+    }
+
     /// Clear output buffer
     public func clear() {
         lines.removeAll()

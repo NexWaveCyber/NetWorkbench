@@ -8,6 +8,7 @@ public struct PacketFlow: Sendable {
     public let srcPort: UInt16?
     public let dstPort: UInt16?
     public let isEstablished: Bool
+    public let icmpType: UInt8?
 
     public init(
         srcIP: String,
@@ -15,7 +16,8 @@ public struct PacketFlow: Sendable {
         protocolType: ACLProtocol = .tcp,
         srcPort: UInt16? = nil,
         dstPort: UInt16? = nil,
-        isEstablished: Bool = false
+        isEstablished: Bool = false,
+        icmpType: UInt8? = nil
     ) {
         self.srcIP = srcIP
         self.dstIP = dstIP
@@ -23,6 +25,7 @@ public struct PacketFlow: Sendable {
         self.srcPort = srcPort
         self.dstPort = dstPort
         self.isEstablished = isEstablished
+        self.icmpType = icmpType
     }
 }
 
@@ -48,18 +51,19 @@ public struct FlowEvaluationResult: Sendable {
 public enum ShadowKind: String, Sendable, Codable {
     case shadowed = "Shadowed (Dead Rule)"
     case redundant = "Redundant (Duplicate Action)"
+    case securityRisk = "Security Risk (Permit Any Any)"
 }
 
 public struct ShadowedRuleFinding: Identifiable, Sendable {
-    public var id: String { "\(flaggedRule.sequence)-\(shadowedByRule.sequence)" }
+    public var id: String { "\(flaggedRule.sequence)-\(shadowedByRule?.sequence ?? 0)-\(kind.rawValue)" }
     public let flaggedRule: ACLRule
-    public let shadowedByRule: ACLRule
+    public let shadowedByRule: ACLRule?
     public let kind: ShadowKind
     public let explanation: String
 
     public init(
         flaggedRule: ACLRule,
-        shadowedByRule: ACLRule,
+        shadowedByRule: ACLRule?,
         kind: ShadowKind,
         explanation: String
     ) {
@@ -75,13 +79,13 @@ public struct ACLAnalyzer: Sendable {
 
     // MARK: - Flow Simulation
 
-    public func evaluate(flow: PacketFlow, against acl: ACLConfig) -> FlowEvaluationResult {
+    public func evaluate(flow: PacketFlow, against acl: ACLConfig, objectGroups: [ObjectGroup] = []) -> FlowEvaluationResult {
         var evaluatedCount = 0
 
         for rule in acl.rules {
             evaluatedCount += 1
 
-            if matches(flow: flow, rule: rule) {
+            if matches(flow: flow, rule: rule, objectGroups: objectGroups) {
                 return FlowEvaluationResult(
                     action: rule.action,
                     matchedRule: rule,
@@ -95,12 +99,12 @@ public struct ACLAnalyzer: Sendable {
         return FlowEvaluationResult(
             action: .deny,
             matchedRule: nil,
-            reason: "Packet hit implicit 'deny ip any any' at end of ACL",
+            reason: "Packet hit implicit 'deny ip any any' at end of ACL '\(acl.name)'",
             evaluatedRuleCount: evaluatedCount
         )
     }
 
-    private func matches(flow: PacketFlow, rule: ACLRule) -> Bool {
+    private func matches(flow: PacketFlow, rule: ACLRule, objectGroups: [ObjectGroup]) -> Bool {
         // 1. Protocol Match
         if rule.protocolType != .any && rule.protocolType != .ip {
             if rule.protocolType != flow.protocolType {
@@ -113,13 +117,13 @@ public struct ACLAnalyzer: Sendable {
             return false
         }
 
-        // 2. Source Match
-        if !matchNetwork(ipString: flow.srcIP, match: rule.source) {
+        // 2. Source Match (with Object Group resolution)
+        if !matchNetwork(ipString: flow.srcIP, match: rule.source, objectGroups: objectGroups) {
             return false
         }
 
-        // 3. Destination Match
-        if !matchNetwork(ipString: flow.dstIP, match: rule.destination) {
+        // 3. Destination Match (with Object Group resolution)
+        if !matchNetwork(ipString: flow.dstIP, match: rule.destination, objectGroups: objectGroups) {
             return false
         }
 
@@ -134,7 +138,7 @@ public struct ACLAnalyzer: Sendable {
         return true
     }
 
-    private func matchNetwork(ipString: String, match: NetworkMatch) -> Bool {
+    private func matchNetwork(ipString: String, match: NetworkMatch, objectGroups: [ObjectGroup]) -> Bool {
         switch match {
         case .any:
             return true
@@ -148,6 +152,16 @@ public struct ACLAnalyzer: Sendable {
             }
             let mask = ~wildInt
             return (ipInt & mask) == (netInt & mask)
+        case .objectGroup(let grpName):
+            if let grp = objectGroups.first(where: { $0.name.lowercased() == grpName.lowercased() && $0.type == .network }) {
+                for member in grp.members {
+                    let parts = member.components(separatedBy: .whitespaces).filter { !$0.isEmpty }
+                    if parts.contains("any") { return true }
+                    if parts.contains(ipString) { return true }
+                    if parts.count >= 2 && parts[0].lowercased() == "host" && parts[1] == ipString { return true }
+                }
+            }
+            return false
         }
     }
 
@@ -161,10 +175,20 @@ public struct ACLAnalyzer: Sendable {
 
     public func detectShadowedRules(in acl: ACLConfig) -> [ShadowedRuleFinding] {
         var findings: [ShadowedRuleFinding] = []
-
         let rules = acl.rules
+
         for i in 0..<rules.count {
             let earlierRule = rules[i]
+
+            // Flag overly permissive rules
+            if earlierRule.action == .permit && earlierRule.source == .any && earlierRule.destination == .any && earlierRule.portOperator == nil {
+                findings.append(ShadowedRuleFinding(
+                    flaggedRule: earlierRule,
+                    shadowedByRule: nil,
+                    kind: .securityRisk,
+                    explanation: "Rule \(earlierRule.sequence) is overly permissive ('permit ip any any'). This opens all ports to the world."
+                ))
+            }
 
             for j in (i + 1)..<rules.count {
                 let laterRule = rules[j]
@@ -193,29 +217,24 @@ public struct ACLAnalyzer: Sendable {
     }
 
     private func isSuperset(earlier: ACLRule, later: ACLRule) -> Bool {
-        // Protocol superset
         if earlier.protocolType != .any && earlier.protocolType != .ip {
             if earlier.protocolType != later.protocolType {
                 return false
             }
         }
 
-        // Established superset
         if earlier.isEstablished && !later.isEstablished {
             return false
         }
 
-        // Source superset
         if !isNetworkSuperset(earlier: earlier.source, later: later.source) {
             return false
         }
 
-        // Destination superset
         if !isNetworkSuperset(earlier: earlier.destination, later: later.destination) {
             return false
         }
 
-        // Port superset
         if let earlierPort = earlier.portOperator {
             guard let laterPort = later.portOperator else { return false }
             if earlierPort != laterPort { return false }
@@ -232,11 +251,11 @@ public struct ACLAnalyzer: Sendable {
             switch later {
             case .any: return false
             case .host(let h2): return h1 == h2
-            case .subnet: return false
+            case .subnet, .objectGroup: return false
             }
         case .subnet(let net1, let wild1):
             switch later {
-            case .any:
+            case .any, .objectGroup:
                 return false
             case .host(let h2):
                 guard let h2Int = ipv4ToUInt32(h2),
@@ -249,11 +268,15 @@ public struct ACLAnalyzer: Sendable {
                       let n2 = ipv4ToUInt32(net2), let w2 = ipv4ToUInt32(wild2) else { return false }
                 let m1 = ~w1
                 let m2 = ~w2
-                // earlier mask must be less specific or equal (m1 <= m2 in terms of 1-bits)
                 if (m1 & m2) == m1 && (n2 & m1) == (n1 & m1) {
                     return true
                 }
                 return false
+            }
+        case .objectGroup(let g1):
+            switch later {
+            case .objectGroup(let g2): return g1 == g2
+            default: return false
             }
         }
     }

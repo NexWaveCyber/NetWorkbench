@@ -5,6 +5,7 @@ public enum DiffLineKind: String, Sendable, Codable {
     case added = "ADDED"
     case removed = "REMOVED"
     case modified = "MODIFIED"
+    case reordered = "REORDERED"
 }
 
 public struct DiffLine: Identifiable, Sendable {
@@ -60,19 +61,22 @@ public struct StructuralDiffReport: Sendable {
     public let addedCount: Int
     public let removedCount: Int
     public let modifiedCount: Int
+    public let rollbackScript: RollbackScript
 
     public init(
         semanticChanges: [SemanticChange],
         diffLines: [DiffLine],
         addedCount: Int,
         removedCount: Int,
-        modifiedCount: Int
+        modifiedCount: Int,
+        rollbackScript: RollbackScript = RollbackScript(targetHostname: nil, vendor: .ciscoIOS, forwardMigrationCommands: [], rollbackCommands: [], safetyWarnings: [])
     ) {
         self.semanticChanges = semanticChanges
         self.diffLines = diffLines
         self.addedCount = addedCount
         self.removedCount = removedCount
         self.modifiedCount = modifiedCount
+        self.rollbackScript = rollbackScript
     }
 }
 
@@ -106,7 +110,6 @@ public struct StructuralDiffEngine: Sendable {
         for intfB in intfsB {
             let key = intfB.name.lowercased()
             if let intfA = mapA[key] {
-                // Check modifications
                 var diffs: [String] = []
                 if intfA.accessVlan != intfB.accessVlan {
                     diffs.append("Access VLAN: \(intfA.accessVlan.map(String.init) ?? "none") ➔ \(intfB.accessVlan.map(String.init) ?? "none")")
@@ -118,10 +121,7 @@ public struct StructuralDiffEngine: Sendable {
                     diffs.append("IP: \(intfA.ipAddress ?? "unassigned") ➔ \(intfB.ipAddress ?? "unassigned")")
                 }
                 if intfA.isShutdown != intfB.isShutdown {
-                    diffs.append(intfB.isShutdown ? "Administratively shutdown" : "Enabled (no shutdown)")
-                }
-                if intfA.mtu != intfB.mtu {
-                    diffs.append("MTU: \(intfA.mtu.map(String.init) ?? "default") ➔ \(intfB.mtu.map(String.init) ?? "default")")
+                    diffs.append("State: \(intfA.isShutdown ? "SHUTDOWN" : "ENABLED") ➔ \(intfB.isShutdown ? "SHUTDOWN" : "ENABLED")")
                 }
 
                 if !diffs.isEmpty {
@@ -137,7 +137,7 @@ public struct StructuralDiffEngine: Sendable {
                     category: .interface,
                     changeType: .added,
                     title: "Interface \(intfB.name) Added",
-                    detail: "IP: \(intfB.ipAddress ?? "unassigned"), Shutdown: \(intfB.isShutdown)"
+                    detail: intfB.ipAddress.map { "Configured with \($0)" } ?? "Layer 2 / Switchport"
                 ))
             }
         }
@@ -147,52 +147,61 @@ public struct StructuralDiffEngine: Sendable {
                 category: .interface,
                 changeType: .removed,
                 title: "Interface \(intfA.name) Removed",
-                detail: "Interface absent in target configuration"
+                detail: "Interface definition absent in target"
             ))
         }
 
         // 3. Routing
         let routesA = parser.extractRouting(from: astA)
         let routesB = parser.extractRouting(from: astB)
-        let rMapA = Dictionary(uniqueKeysWithValues: routesA.map { ($0.routingProtocol.rawValue, $0) })
-        let rMapB = Dictionary(uniqueKeysWithValues: routesB.map { ($0.routingProtocol.rawValue, $0) })
+        let routeMapA = Dictionary(uniqueKeysWithValues: routesA.map { ($0.id, $0) })
+        let routeMapB = Dictionary(uniqueKeysWithValues: routesB.map { ($0.id, $0) })
 
         for rB in routesB {
-            if let rA = rMapA[rB.routingProtocol.rawValue] {
-                let addedNeighbors = Set(rB.neighbors).subtracting(rA.neighbors)
-                let removedNeighbors = Set(rA.neighbors).subtracting(rB.neighbors)
-                for n in addedNeighbors {
+            if let rA = routeMapA[rB.id] {
+                // Check added neighbors
+                for nB in rB.neighbors where !rA.neighbors.contains(nB) {
                     semanticChanges.append(SemanticChange(
                         category: .routing,
                         changeType: .added,
                         title: "\(rB.routingProtocol.rawValue) Neighbor Added",
-                        detail: n
+                        detail: "Neighbor \(nB) added to \(rB.routingProtocol.rawValue) \(rB.autonomousSystem.map(String.init) ?? "")"
                     ))
                 }
-                for n in removedNeighbors {
+                // Check removed neighbors
+                for nA in rA.neighbors where !rB.neighbors.contains(nA) {
                     semanticChanges.append(SemanticChange(
                         category: .routing,
                         changeType: .removed,
                         title: "\(rB.routingProtocol.rawValue) Neighbor Removed",
-                        detail: n
+                        detail: "Neighbor \(nA) removed from \(rB.routingProtocol.rawValue) \(rB.autonomousSystem.map(String.init) ?? "")"
+                    ))
+                }
+                // Check networks
+                for netB in rB.networks where !rA.networks.contains(netB) {
+                    semanticChanges.append(SemanticChange(
+                        category: .routing,
+                        changeType: .added,
+                        title: "\(rB.routingProtocol.rawValue) Network Added",
+                        detail: "Network \(netB) advertised in \(rB.routingProtocol.rawValue)"
                     ))
                 }
             } else {
                 semanticChanges.append(SemanticChange(
                     category: .routing,
                     changeType: .added,
-                    title: "\(rB.routingProtocol.rawValue) Process Configured",
-                    detail: "AS/Process: \(rB.autonomousSystem.map(String.init) ?? "none")"
+                    title: "\(rB.routingProtocol.rawValue) Instance Added",
+                    detail: "AS/Process: \(rB.autonomousSystem.map(String.init) ?? "none"), \(rB.neighbors.count) peers"
                 ))
             }
         }
 
-        for rA in routesA where rMapB[rA.routingProtocol.rawValue] == nil {
+        for rA in routesA where routeMapB[rA.id] == nil {
             semanticChanges.append(SemanticChange(
                 category: .routing,
                 changeType: .removed,
-                title: "\(rA.routingProtocol.rawValue) Process Removed",
-                detail: "Routing process absent in target configuration"
+                title: "\(rA.routingProtocol.rawValue) Instance Removed",
+                detail: "AS/Process: \(rA.autonomousSystem.map(String.init) ?? "none")"
             ))
         }
 
@@ -203,7 +212,8 @@ public struct StructuralDiffEngine: Sendable {
         let aclMapB = Dictionary(uniqueKeysWithValues: aclsB.map { ($0.name.lowercased(), $0) })
 
         for aB in aclsB {
-            if let aA = aclMapA[aB.name.lowercased()] {
+            let key = aB.name.lowercased()
+            if let aA = aclMapA[key] {
                 if aA.rules.count != aB.rules.count {
                     semanticChanges.append(SemanticChange(
                         category: .acl,
@@ -231,15 +241,19 @@ public struct StructuralDiffEngine: Sendable {
             ))
         }
 
-        // 5. Line-by-Line Diff Calculation
+        // 5. Line-by-Line Diff Calculation (Order-Agnostic Block Aware)
         let (lines, added, removed, modified) = computeLineDiff(oldText: baseline, newText: target)
+
+        // 6. Generate Automated Rollback & Remediation Script
+        let rollback = generateRollbackScript(baselineAST: astA, targetAST: astB, changes: semanticChanges)
 
         return StructuralDiffReport(
             semanticChanges: semanticChanges,
             diffLines: lines,
             addedCount: added,
             removedCount: removed,
-            modifiedCount: modified
+            modifiedCount: modified,
+            rollbackScript: rollback
         )
     }
 
@@ -252,7 +266,6 @@ public struct StructuralDiffEngine: Sendable {
         var removed = 0
         var modified = 0
 
-        // Fast Longest Common Subsequence or Myers approximation for clean diff
         let oldSet = Set(oldLines)
         let newSet = Set(newLines)
 
@@ -298,5 +311,79 @@ public struct StructuralDiffEngine: Sendable {
         }
 
         return (diffs, added, removed, modified)
+    }
+
+    private func generateRollbackScript(baselineAST: ConfigAST, targetAST: ConfigAST, changes: [SemanticChange]) -> RollbackScript {
+        var forward: [String] = ["! === FORWARD MIGRATION SCRIPT ===", "configure terminal"]
+        var rollback: [String] = ["! === ROLLBACK REMEDIATION SCRIPT ===", "configure terminal"]
+        var warnings: [String] = []
+
+        // 1. Hostname Rollback
+        if let oldHost = baselineAST.hostname, let newHost = targetAST.hostname, oldHost != newHost {
+            forward.append("hostname \(newHost)")
+            rollback.append("hostname \(oldHost)")
+        }
+
+        // 2. Interfaces Rollback
+        let intfsA = parser.extractInterfaces(from: baselineAST)
+        let intfsB = parser.extractInterfaces(from: targetAST)
+        let mapA = Dictionary(uniqueKeysWithValues: intfsA.map { ($0.name.lowercased(), $0) })
+
+        for b in intfsB {
+            let key = b.name.lowercased()
+            if let a = mapA[key] {
+                if a.ipAddress != b.ipAddress || a.isShutdown != b.isShutdown || a.accessVlan != b.accessVlan {
+                    rollback.append("interface \(a.name)")
+                    if let oldIP = a.ipAddress, let oldMask = a.subnetMask {
+                        rollback.append(" ip address \(oldIP) \(oldMask)")
+                    } else if b.ipAddress != nil {
+                        rollback.append(" no ip address")
+                    }
+                    if a.isShutdown != b.isShutdown {
+                        rollback.append(a.isShutdown ? " shutdown" : " no shutdown")
+                    }
+                    if let oldVlan = a.accessVlan {
+                        rollback.append(" switchport access vlan \(oldVlan)")
+                    }
+                }
+            } else {
+                rollback.append("default interface \(b.name)")
+                rollback.append("interface \(b.name)")
+                rollback.append(" shutdown")
+            }
+        }
+
+        // 3. Routing Rollback
+        let routesA = parser.extractRouting(from: baselineAST)
+        let routesB = parser.extractRouting(from: targetAST)
+        for rB in routesB where !routesA.contains(where: { $0.id == rB.id }) {
+            if rB.routingProtocol == .bgp, let asNum = rB.autonomousSystem {
+                rollback.append("no router bgp \(asNum)")
+                warnings.append("Caution: 'no router bgp \(asNum)' will tear down active BGP sessions.")
+            } else if rB.routingProtocol == .ospf, let pid = rB.autonomousSystem {
+                rollback.append("no router ospf \(pid)")
+            }
+        }
+
+        // 4. ACL Rollback
+        let aclsA = parser.extractACLs(from: baselineAST)
+        let aclsB = parser.extractACLs(from: targetAST)
+        for aB in aclsB where !aclsA.contains(where: { $0.name == aB.name }) {
+            rollback.append("no ip access-list extended \(aB.name)")
+        }
+
+        forward.append("end")
+        forward.append("! write memory")
+
+        rollback.append("end")
+        rollback.append("! write memory")
+
+        return RollbackScript(
+            targetHostname: targetAST.hostname ?? baselineAST.hostname,
+            vendor: targetAST.vendor,
+            forwardMigrationCommands: forward,
+            rollbackCommands: rollback,
+            safetyWarnings: warnings
+        )
     }
 }

@@ -192,4 +192,139 @@ struct ConfigKitTests {
         #expect(findings.contains(where: { $0.kind == .shadowed }))
         #expect(findings.contains(where: { $0.kind == .redundant }))
     }
+
+    @Test("Multi-Vendor Grammar Parsing for Junos and Fortinet")
+    func testMultiVendorGrammarParsing() {
+        let junosConfig = """
+        system {
+            host-name sfo-core-edge;
+            domain-name corp.internal;
+        }
+        interfaces {
+            ge-0/0/0 {
+                unit 0 {
+                    family inet {
+                        address 10.50.1.1/30;
+                    }
+                }
+            }
+        }
+        """
+        let parser = ConfigParser()
+        let ast = parser.parse(text: junosConfig)
+        #expect(ast.vendor == .juniperJunos)
+        #expect(ast.hostname == "sfo-core-edge")
+        #expect(ast.domainName == "corp.internal")
+
+        let intfs = parser.extractInterfaces(from: ast)
+        #expect(intfs.count >= 1)
+        #expect(intfs.first?.ipAddress == "10.50.1.1")
+        #expect(intfs.first?.subnetMask == "255.255.255.252")
+
+        let fortinetConfig = """
+        config system global
+            set hostname FGT-DATA-CENTER
+        end
+        config system interface
+            edit "port1"
+                set ip 172.16.10.1 255.255.255.0
+            next
+        end
+        """
+        let astFgt = parser.parse(text: fortinetConfig)
+        #expect(astFgt.vendor == .fortinetFortiOS)
+        #expect(astFgt.hostname == "FGT-DATA-CENTER")
+        let intfsFgt = parser.extractInterfaces(from: astFgt)
+        #expect(intfsFgt.count >= 1)
+        #expect(intfsFgt.first?.ipAddress == "172.16.10.1")
+    }
+
+    @Test("CIS Hardening Compliance Auditor computes score and generates remediation playbook")
+    func testComplianceAuditor() {
+        let insecureConfig = """
+        hostname vulnerable-router
+        enable password PlainTextPassword123
+        snmp-server community public RW
+        line vty 0 4
+         transport input telnet
+         exec-timeout 0 0
+        """
+        let parser = ConfigParser()
+        let ast = parser.parse(text: insecureConfig)
+        let auditor = ComplianceAuditor()
+        let report = auditor.audit(ast: ast, rawConfig: insecureConfig)
+
+        #expect(report.totalScore < 60.0)
+        #expect(report.failedRulesCount >= 3)
+        #expect(report.findings.contains(where: { $0.ruleId == "CIS-1.2.1" && !$0.isCompliant })) // Telnet
+        #expect(report.findings.contains(where: { $0.ruleId == "CIS-2.1.1" && !$0.isCompliant })) // SNMP public
+        #expect(report.fullRemediationScript.contains("transport input ssh"))
+        #expect(report.fullRemediationScript.contains("no snmp-server community public"))
+    }
+
+    @Test("Automated Semantic Rollback Generator creates accurate no-commands and warns on BGP teardown")
+    func testRollbackGenerator() {
+        let baseline = """
+        hostname core-sw
+        interface GigabitEthernet0/1
+         description LAN
+         switchport access vlan 10
+         shutdown
+        router bgp 65000
+         neighbor 10.0.0.1 remote-as 65001
+        """
+        let target = """
+        hostname core-sw
+        interface GigabitEthernet0/1
+         description LAN
+         switchport access vlan 20
+         no shutdown
+        router bgp 65000
+         neighbor 10.0.0.1 remote-as 65001
+        router bgp 65999
+         neighbor 172.16.0.1 remote-as 65998
+        """
+        let engine = StructuralDiffEngine()
+        let report = engine.compare(baseline: baseline, target: target)
+
+        let rollback = report.rollbackScript.rollbackCommands
+        #expect(rollback.contains(where: { $0.contains("interface GigabitEthernet0/1") }))
+        #expect(rollback.contains(where: { $0.contains("shutdown") }))
+        #expect(rollback.contains(where: { $0.contains("no router bgp 65999") }))
+        #expect(!report.rollbackScript.safetyWarnings.isEmpty)
+    }
+
+    @Test("Object-Group parsing and ACL resolution")
+    func testObjectGroupResolution() {
+        let configWithOG = """
+        object-group network WEB_SERVERS
+         host 10.0.0.10
+         host 10.0.0.11
+        !
+        ip access-list extended SECURE_WEB
+         10 permit tcp any object-group WEB_SERVERS eq 443
+         20 deny ip any any
+        """
+        let parser = ConfigParser()
+        let ast = parser.parse(text: configWithOG)
+        #expect(ast.objectGroups.count == 1)
+        #expect(ast.objectGroups.first?.name == "WEB_SERVERS")
+        #expect(ast.objectGroups.first?.members.contains("10.0.0.10") == true)
+
+        let acls = parser.extractACLs(from: ast)
+        let acl = acls.first!
+        let analyzer = ACLAnalyzer()
+
+        // Flow to 10.0.0.10 -> Should permit because it matches WEB_SERVERS object-group
+        let flow1 = PacketFlow(srcIP: "192.168.1.5", dstIP: "10.0.0.10", protocolType: .tcp, dstPort: 443)
+        let res1 = analyzer.evaluate(flow: flow1, against: acl, objectGroups: ast.objectGroups)
+        #expect(res1.action == .permit)
+        #expect(res1.matchedRule?.sequence == 10)
+
+        // Flow to 10.0.0.99 -> Should deny because it's not in WEB_SERVERS object-group
+        let flow2 = PacketFlow(srcIP: "192.168.1.5", dstIP: "10.0.0.99", protocolType: .tcp, dstPort: 443)
+        let res2 = analyzer.evaluate(flow: flow2, against: acl, objectGroups: ast.objectGroups)
+        #expect(res2.action == .deny)
+        #expect(res2.matchedRule?.sequence == 20)
+    }
 }

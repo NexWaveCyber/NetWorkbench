@@ -130,6 +130,11 @@ public final class AppState: @unchecked Sendable {
     // Phase 6: Terminal & Console Sessions
     public var terminalManager: TerminalManager = TerminalManager()
 
+    // Config Workbench Cross-Handoff Bridge
+    public var configWorkbenchText: String? = nil
+    public var cliParserInputText: String? = nil
+    public var configWorkbenchTargetTab: Int? = nil // 0: Studio, 1: Diff, 2: ACL, 3: CLI Parser, 4: Compliance
+
     // Phase 7: Time-Series & Continuous Monitoring
     public let timeSeriesRepository: TimeSeriesRepository
     public let monitorService: BackgroundMonitorService

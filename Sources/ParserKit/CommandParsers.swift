@@ -614,6 +614,190 @@ public struct ShowBGPSummaryParser: VendorOutputParser {
     }
 }
 
+// MARK: - Show Version Parser
+
+public struct ShowVersionParser: VendorOutputParser {
+    public let vendor: Vendor = .cisco
+    public let operatingSystem: OperatingSystem = .iosXE
+    public let commandFamily: CommandFamily = .showVersion
+    public let parserVersion: String = "1.0.0"
+
+    public init() {}
+
+    public func canParse(rawOutput: String) -> Double {
+        let lower = rawOutput.lowercased()
+        if lower.contains("cisco ios software") || lower.contains("cisco ios xe software") || lower.contains("uptime is") && lower.contains("processor") {
+            return 0.95
+        }
+        if lower.contains("show version") {
+            return 0.90
+        }
+        return 0.0
+    }
+
+    public func parse(rawOutput: String) throws -> StructuredResult {
+        let lines = rawOutput.components(separatedBy: .newlines)
+        var hardware = "Generic Device"
+        var osVer = "Unknown OS"
+        var uptime = "Unknown"
+        var serial: String?
+        var image: String?
+
+        for line in lines {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            let lower = trimmed.lowercased()
+
+            if lower.contains("cisco ios software") || lower.contains("cisco ios-xe software") || lower.contains("version ") {
+                if osVer == "Unknown OS" {
+                    osVer = trimmed
+                }
+            }
+            if lower.contains("uptime is") {
+                if let range = trimmed.range(of: "uptime is ", options: .caseInsensitive) {
+                    uptime = String(trimmed[range.upperBound...])
+                }
+            }
+            if lower.contains("processor board id") {
+                if let range = trimmed.range(of: "processor board id ", options: .caseInsensitive) {
+                    serial = String(trimmed[range.upperBound...]).components(separatedBy: .whitespaces).first
+                }
+            }
+            if lower.contains("system image file is") {
+                if let range = trimmed.range(of: "system image file is ", options: .caseInsensitive) {
+                    image = String(trimmed[range.upperBound...]).trimmingCharacters(in: CharacterSet(charactersIn: "\" "))
+                }
+            }
+            if (lower.contains("cisco") || lower.contains("catalyst") || lower.contains("asr") || lower.contains("nexus")) && lower.contains("bytes of memory") {
+                hardware = trimmed.components(separatedBy: .whitespaces).prefix(3).joined(separator: " ")
+            }
+        }
+
+        return .version(VersionEntry(
+            hardware: hardware,
+            osVersion: osVer,
+            uptime: uptime,
+            serialNumber: serial,
+            systemImage: image
+        ))
+    }
+}
+
+// MARK: - Show VLAN Brief Parser
+
+public struct ShowVLANParser: VendorOutputParser {
+    public let vendor: Vendor = .cisco
+    public let operatingSystem: OperatingSystem = .iosXE
+    public let commandFamily: CommandFamily = .showVLAN
+    public let parserVersion: String = "1.0.0"
+
+    public init() {}
+
+    public func canParse(rawOutput: String) -> Double {
+        let lower = rawOutput.lowercased()
+        if lower.contains("vlan") && lower.contains("name") && lower.contains("status") && lower.contains("ports") {
+            return 0.95
+        }
+        if lower.contains("show vlan brief") || lower.contains("show vlan") {
+            return 0.90
+        }
+        return 0.0
+    }
+
+    public func parse(rawOutput: String) throws -> StructuredResult {
+        let lines = rawOutput.components(separatedBy: .newlines)
+        var entries: [VlanEntry] = []
+        var headerFound = false
+
+        for line in lines {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            if trimmed.isEmpty || trimmed.starts(with: "----") { continue }
+
+            let lower = trimmed.lowercased()
+            if lower.contains("vlan") && lower.contains("name") && lower.contains("status") {
+                headerFound = true
+                continue
+            }
+            if !headerFound { continue }
+
+            let parts = trimmed.components(separatedBy: .whitespaces).filter { !$0.isEmpty }
+            guard parts.count >= 3, let vid = Int(parts[0]) else { continue }
+
+            let vName = parts[1]
+            let vStatus = parts[2]
+            var ports: [String] = []
+            if parts.count > 3 {
+                let joined = parts[3...].joined(separator: " ")
+                ports = joined.components(separatedBy: ",").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+            }
+
+            entries.append(VlanEntry(vlanId: vid, name: vName, status: vStatus, ports: ports))
+        }
+
+        return .vlans(entries)
+    }
+}
+
+// MARK: - Show IP OSPF Neighbor Parser
+
+public struct ShowOSPFNeighborParser: VendorOutputParser {
+    public let vendor: Vendor = .cisco
+    public let operatingSystem: OperatingSystem = .iosXE
+    public let commandFamily: CommandFamily = .showOSPFNeighbors
+    public let parserVersion: String = "1.0.0"
+
+    public init() {}
+
+    public func canParse(rawOutput: String) -> Double {
+        let lower = rawOutput.lowercased()
+        if lower.contains("neighbor id") && lower.contains("pri") && lower.contains("state") && lower.contains("dead time") {
+            return 0.96
+        }
+        if lower.contains("show ip ospf neighbor") {
+            return 0.92
+        }
+        return 0.0
+    }
+
+    public func parse(rawOutput: String) throws -> StructuredResult {
+        let lines = rawOutput.components(separatedBy: .newlines)
+        var entries: [OSPFNeighborEntry] = []
+        var headerFound = false
+
+        for line in lines {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            if trimmed.isEmpty { continue }
+
+            let lower = trimmed.lowercased()
+            if lower.contains("neighbor id") && lower.contains("pri") && lower.contains("state") {
+                headerFound = true
+                continue
+            }
+            if !headerFound { continue }
+
+            let parts = trimmed.components(separatedBy: .whitespaces).filter { !$0.isEmpty }
+            guard parts.count >= 6 else { continue }
+
+            let nid = parts[0]
+            let pri = Int(parts[1]) ?? 1
+            let state = parts[2]
+            let dead = parts[3]
+            let addr = parts[4]
+            let intf = parts[5]
+
+            entries.append(OSPFNeighborEntry(
+                neighborId: nid,
+                priority: pri,
+                state: state,
+                deadTime: dead,
+                address: addr,
+                interface: intf
+            ))
+        }
+
+        return .ospfNeighbors(entries)
+    }
+}
+
 // MARK: - Parser Registry
 
 public struct ParserRegistry: Sendable {
@@ -626,7 +810,10 @@ public struct ParserRegistry: Sendable {
         ShowMacAddressTableParser(),
         ShowARPParser(),
         ShowNeighborsParser(),
-        ShowBGPSummaryParser()
+        ShowBGPSummaryParser(),
+        ShowVersionParser(),
+        ShowVLANParser(),
+        ShowOSPFNeighborParser()
     ]
 
     public init() {}

@@ -108,7 +108,7 @@ public struct TerminalWorkbenchView: View {
     @State private var newSessionType: Int = 0 // 0: SSH, 1: Telnet / TCP, 2: Serial, 3: Simulation, 4: Local Shell
     @State private var sshHost: String = "170.75.170.64"
     @State private var sshPort: String = "22"
-    @State private var sshUser: String = "ubuntu"
+    @State private var sshUser: String = ""
     @State private var sshPassword: String = ""
     @State private var sshKeyPath: String = ""
     @State private var sshEnableJumpHost: Bool = false
@@ -116,6 +116,19 @@ public struct TerminalWorkbenchView: View {
     @State private var sshJumpPort: String = "22"
     @State private var sshJumpUser: String = "admin"
     @State private var sshEnableLegacyCiphers: Bool = false
+
+    // Quick Connect Prompt States
+    @State private var showQuickConnectUserPrompt: Bool = false
+    @State private var pendingQuickConnectHost: String = ""
+    @State private var pendingQuickConnectPort: Int = 22
+    @State private var pendingQuickConnectUser: String = ""
+    @State private var pendingQuickConnectPass: String = ""
+
+    // Edit Session Credentials States
+    @State private var showEditSessionCredentialsSheet: Bool = false
+    @State private var sessionToEdit: TerminalSession? = nil
+    @State private var editSessionUser: String = ""
+    @State private var editSessionPass: String = ""
 
     // Telnet / Raw TCP Form States
     @State private var telnetHost: String = "192.168.1.100"
@@ -313,6 +326,12 @@ public struct TerminalWorkbenchView: View {
         }
         .sheet(isPresented: $showBookmarkSessionSheet) {
             bookmarkSessionModal
+        }
+        .sheet(isPresented: $showQuickConnectUserPrompt) {
+            quickConnectUserPromptModal
+        }
+        .sheet(isPresented: $showEditSessionCredentialsSheet) {
+            editSessionCredentialsModal
         }
         .overlay(alignment: .top) {
             if let toast = copyToastMessage {
@@ -831,6 +850,26 @@ public struct TerminalWorkbenchView: View {
                         }
                         .keyboardShortcut("c", modifiers: [.command, .shift])
 
+                        Divider()
+
+                        Button(action: {
+                            if let s = activeSession {
+                                sendToConfigStudio(s)
+                            }
+                        }) {
+                            Label("Send Output to Config Studio", systemImage: "doc.text.magnifyingglass")
+                        }
+
+                        Button(action: {
+                            if let s = activeSession {
+                                sendToCLIParser(s)
+                            }
+                        }) {
+                            Label("Send Output to CLI Parser", systemImage: "tablecells.badge.ellipsis")
+                        }
+
+                        Divider()
+
                         Button(action: exportTranscript) {
                             Label("Export Transcript Log...", systemImage: "square.and.arrow.up")
                         }
@@ -1262,6 +1301,47 @@ public struct TerminalWorkbenchView: View {
                                 InlinePasswordBar(inputCommand: $inputCommand) {
                                     submitCommand(to: session)
                                 }
+                            }
+
+                            // Inline Authentication Failure / Permission Denied Action Banner
+                            if session.hasAuthFailure, case .ssh(let h, _, let currentU, _, _, _, _) = session.connectionType {
+                                HStack(spacing: 12) {
+                                    Image(systemName: "exclamationmark.triangle.fill")
+                                        .foregroundStyle(Theme.pulseCrimson)
+                                        .font(.system(size: 14))
+
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text("Authentication Failed for '\(currentU)@\(h)'")
+                                            .font(Theme.monoText(11, weight: .bold))
+                                            .foregroundStyle(Theme.pulseCrimson)
+                                        Text("The remote server rejected username '\(currentU)' (Permission denied). Did you mean to log in with a different user (e.g. root)?")
+                                            .font(Theme.monoText(10))
+                                            .foregroundStyle(.secondary)
+                                    }
+
+                                    Spacer()
+
+                                    Button(action: {
+                                        sessionToEdit = session
+                                        editSessionUser = currentU
+                                        editSessionPass = ""
+                                        showEditSessionCredentialsSheet = true
+                                    }) {
+                                        Label("Change Username & Reconnect", systemImage: "person.crop.circle.badge.exclamationmark")
+                                            .font(Theme.monoText(10, weight: .bold))
+                                    }
+                                    .buttonStyle(.borderedProminent)
+                                    .tint(Theme.cyanPulse)
+                                    .foregroundStyle(Color.black)
+                                }
+                                .padding(10)
+                                .background(Theme.pulseCrimson.opacity(0.12))
+                                .clipShape(RoundedRectangle(cornerRadius: 8))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 8)
+                                        .stroke(Theme.pulseCrimson.opacity(0.35), lineWidth: 1)
+                                )
+                                .padding(.top, 6)
                             }
 
                             Color.clear
@@ -3109,7 +3189,7 @@ public struct TerminalWorkbenchView: View {
             }
 
             HStack(spacing: 4) {
-                TextField("ubuntu@170.75.170.64", text: $quickConnectInput)
+                TextField("[user@]170.75.170.64[:22]", text: $quickConnectInput)
                     .textFieldStyle(.plain)
                     .font(Theme.monoText(11))
                     .onSubmit {
@@ -3748,7 +3828,7 @@ public struct TerminalWorkbenchView: View {
             return
         }
 
-        var user = "ubuntu"
+        var user: String? = nil
         var host = input
         var port = 22
         var pass: String? = nil
@@ -3759,8 +3839,8 @@ public struct TerminalWorkbenchView: View {
             host = parts[1]
         }
 
-        if user.contains(":") {
-            let uParts = user.components(separatedBy: ":")
+        if let u = user, u.contains(":") {
+            let uParts = u.components(separatedBy: ":")
             user = uParts[0]
             pass = uParts[1]
         }
@@ -3773,6 +3853,21 @@ public struct TerminalWorkbenchView: View {
             }
         }
 
+        // If the user did NOT specify a username (e.g. they only entered an IP or hostname),
+        // NEVER silently assume or hardcode "ubuntu". Prompt the user for the username!
+        guard let finalUser = user, !finalUser.isEmpty else {
+            pendingQuickConnectHost = host
+            pendingQuickConnectPort = port
+            pendingQuickConnectUser = ""
+            pendingQuickConnectPass = ""
+            showQuickConnectUserPrompt = true
+            return
+        }
+
+        executeQuickConnect(host: host, port: port, user: finalUser, pass: pass)
+    }
+
+    private func executeQuickConnect(host: String, port: Int, user: String, pass: String?) {
         // Check if there is an existing session with this host and user to preserve credentials
         if let existing = state.terminalManager.sessions.first(where: {
             if case .ssh(let h, _, let u, _, _, _, _) = $0.connectionType {
@@ -3800,6 +3895,243 @@ public struct TerminalWorkbenchView: View {
             )
         }
         quickConnectInput = ""
+    }
+
+    // MARK: - Quick Connect Username Prompt Modal
+
+    private var quickConnectUserPromptModal: some View {
+        VStack(spacing: 16) {
+            HStack {
+                Label("SSH Credentials Required", systemImage: "person.crop.circle.badge.questionmark")
+                    .font(.headline.bold())
+                    .foregroundStyle(Theme.neonCyan)
+                Spacer()
+                Button("Cancel") { showQuickConnectUserPrompt = false }
+                    .buttonStyle(.plain)
+            }
+
+            VStack(alignment: .leading, spacing: 14) {
+                HStack(spacing: 8) {
+                    Image(systemName: "server.rack")
+                        .foregroundStyle(Theme.neonCyan)
+                    Text("Target Server:")
+                        .font(Theme.monoText(11, weight: .bold))
+                        .foregroundStyle(.secondary)
+                    Text("\(pendingQuickConnectHost):\(pendingQuickConnectPort)")
+                        .font(Theme.monoText(11, weight: .bold))
+                        .foregroundStyle(Theme.neonCyan)
+                }
+                .padding(8)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Theme.surfaceBackground)
+                .clipShape(RoundedRectangle(cornerRadius: 6))
+                .overlay(RoundedRectangle(cornerRadius: 6).stroke(Theme.borderLight, lineWidth: 1))
+
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("REMOTE USERNAME")
+                        .font(Theme.monoText(10, weight: .bold))
+                        .foregroundStyle(.secondary)
+                    TextField("e.g. root, admin, ubuntu, debian...", text: $pendingQuickConnectUser)
+                        .textFieldStyle(.roundedBorder)
+                        .autocorrectionDisabled()
+                        .onSubmit {
+                            submitQuickConnectWithUser()
+                        }
+                }
+
+                // Quick common suggestions
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("COMMON USERNAMES")
+                        .font(Theme.monoText(9, weight: .bold))
+                        .foregroundStyle(.secondary.opacity(0.8))
+
+                    HStack(spacing: 6) {
+                        ForEach(["root", "admin", "debian", "ubuntu", "centos", "ec2-user"], id: \.self) { suggested in
+                            Button(suggested) {
+                                pendingQuickConnectUser = suggested
+                            }
+                            .font(Theme.monoText(9, weight: .medium))
+                            .buttonStyle(.borderless)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 3)
+                            .background(pendingQuickConnectUser == suggested ? Theme.neonCyan.opacity(0.2) : Theme.surfaceBackground)
+                            .clipShape(RoundedRectangle(cornerRadius: 4))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 4)
+                                    .stroke(pendingQuickConnectUser == suggested ? Theme.neonCyan : Theme.borderLight, lineWidth: 0.75)
+                            )
+                        }
+                    }
+                }
+
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("PASSWORD / PASSPHRASE (OPTIONAL)")
+                        .font(Theme.monoText(10, weight: .bold))
+                        .foregroundStyle(.secondary)
+                    SecureField("Leave blank if using SSH key authentication", text: $pendingQuickConnectPass)
+                        .textFieldStyle(.roundedBorder)
+                        .onSubmit {
+                            submitQuickConnectWithUser()
+                        }
+                }
+            }
+            .padding(14)
+            .background(Theme.cardBackground)
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+
+            HStack {
+                Button("Cancel") {
+                    showQuickConnectUserPrompt = false
+                }
+                .buttonStyle(.plain)
+
+                Spacer()
+
+                Button("Connect Now") {
+                    submitQuickConnectWithUser()
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(Theme.cyanPulse)
+                .foregroundStyle(Color.black)
+                .disabled(pendingQuickConnectUser.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            }
+        }
+        .padding(20)
+        .frame(width: 440)
+        .background(Theme.surfaceBackground)
+    }
+
+    private func submitQuickConnectWithUser() {
+        let user = pendingQuickConnectUser.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !user.isEmpty else { return }
+        let pass = pendingQuickConnectPass.isEmpty ? nil : pendingQuickConnectPass
+        let host = pendingQuickConnectHost
+        let port = pendingQuickConnectPort
+        showQuickConnectUserPrompt = false
+        executeQuickConnect(host: host, port: port, user: user, pass: pass)
+    }
+
+    // MARK: - Edit Session Credentials Modal
+
+    private var editSessionCredentialsModal: some View {
+        VStack(spacing: 16) {
+            HStack {
+                Label("Update SSH Credentials & Reconnect", systemImage: "person.crop.circle.badge.exclamationmark")
+                    .font(.headline.bold())
+                    .foregroundStyle(Theme.neonCyan)
+                Spacer()
+                Button("Cancel") { showEditSessionCredentialsSheet = false }
+                    .buttonStyle(.plain)
+            }
+
+            if let session = sessionToEdit, case .ssh(let host, let port, let currentU, _, _, _, _) = session.connectionType {
+                VStack(alignment: .leading, spacing: 14) {
+                    HStack(spacing: 8) {
+                        Image(systemName: "server.rack")
+                            .foregroundStyle(Theme.neonCyan)
+                        Text("Server:")
+                            .font(Theme.monoText(11, weight: .bold))
+                            .foregroundStyle(.secondary)
+                        Text("\(host):\(port)")
+                            .font(Theme.monoText(11, weight: .bold))
+                            .foregroundStyle(Theme.neonCyan)
+                        Spacer()
+                        Text("Current user: \(currentU)")
+                            .font(Theme.monoText(10))
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding(8)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Theme.surfaceBackground)
+                    .clipShape(RoundedRectangle(cornerRadius: 6))
+                    .overlay(RoundedRectangle(cornerRadius: 6).stroke(Theme.borderLight, lineWidth: 1))
+
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("NEW REMOTE USERNAME")
+                            .font(Theme.monoText(10, weight: .bold))
+                            .foregroundStyle(.secondary)
+                        TextField("e.g. root, admin, ubuntu, debian...", text: $editSessionUser)
+                            .textFieldStyle(.roundedBorder)
+                            .autocorrectionDisabled()
+                            .onSubmit {
+                                submitEditSessionCredentials()
+                            }
+                    }
+
+                    // Quick common suggestions
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("COMMON USERNAMES")
+                            .font(Theme.monoText(9, weight: .bold))
+                            .foregroundStyle(.secondary.opacity(0.8))
+
+                        HStack(spacing: 6) {
+                            ForEach(["root", "admin", "debian", "ubuntu", "centos", "ec2-user"], id: \.self) { suggested in
+                                Button(suggested) {
+                                    editSessionUser = suggested
+                                }
+                                .font(Theme.monoText(9, weight: .medium))
+                                .buttonStyle(.borderless)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 3)
+                                .background(editSessionUser == suggested ? Theme.neonCyan.opacity(0.2) : Theme.surfaceBackground)
+                                .clipShape(RoundedRectangle(cornerRadius: 4))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 4)
+                                        .stroke(editSessionUser == suggested ? Theme.neonCyan : Theme.borderLight, lineWidth: 0.75)
+                                )
+                            }
+                        }
+                    }
+
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("PASSWORD / PASSPHRASE (OPTIONAL)")
+                            .font(Theme.monoText(10, weight: .bold))
+                            .foregroundStyle(.secondary)
+                        SecureField("Leave blank to keep existing key/password", text: $editSessionPass)
+                            .textFieldStyle(.roundedBorder)
+                            .onSubmit {
+                                submitEditSessionCredentials()
+                            }
+                    }
+                }
+                .padding(14)
+                .background(Theme.cardBackground)
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+
+                HStack {
+                    Button("Cancel") {
+                        showEditSessionCredentialsSheet = false
+                    }
+                    .buttonStyle(.plain)
+
+                    Spacer()
+
+                    Button("Update & Reconnect") {
+                        submitEditSessionCredentials()
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(Theme.cyanPulse)
+                    .foregroundStyle(Color.black)
+                    .disabled(editSessionUser.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                }
+            }
+        }
+        .padding(20)
+        .frame(width: 440)
+        .background(Theme.surfaceBackground)
+    }
+
+    private func submitEditSessionCredentials() {
+        guard let session = sessionToEdit else { return }
+        let newUser = editSessionUser.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !newUser.isEmpty else { return }
+        let newPass = editSessionPass.isEmpty ? nil : editSessionPass
+
+        session.updateSSHAuth(username: newUser, password: newPass)
+        session.disconnect()
+        session.connect()
+        copyToastMessage = "Reconnected as \(newUser)"
+        showEditSessionCredentialsSheet = false
     }
 
     // MARK: - SSH Key Studio Modal (MobaKeyGen)
@@ -4559,6 +4891,18 @@ public struct TerminalWorkbenchView: View {
             Label("Fonts, Theme & Settings...", systemImage: "slider.horizontal.3")
         }
         Divider()
+        if case .ssh = session.connectionType {
+            Button(action: {
+                sessionToEdit = session
+                if case .ssh(_, _, let u, _, _, _, _) = session.connectionType {
+                    editSessionUser = u
+                }
+                editSessionPass = ""
+                showEditSessionCredentialsSheet = true
+            }) {
+                Label("Change Username & Reconnect...", systemImage: "person.crop.circle.badge.exclamationmark")
+            }
+        }
         Button(action: {
             session.disconnect()
             session.connect()
@@ -4592,6 +4936,33 @@ public struct TerminalWorkbenchView: View {
         }
 
         Divider()
+
+        Button(action: {
+            sendToConfigStudio(session)
+        }) {
+            Label("Send Output to Config Studio", systemImage: "doc.text.magnifyingglass")
+        }
+
+        Button(action: {
+            sendToCLIParser(session)
+        }) {
+            Label("Send Output to CLI Parser", systemImage: "tablecells.badge.ellipsis")
+        }
+
+        Divider()
+
+        if case .ssh = session.connectionType {
+            Button(action: {
+                sessionToEdit = session
+                if case .ssh(_, _, let u, _, _, _, _) = session.connectionType {
+                    editSessionUser = u
+                }
+                editSessionPass = ""
+                showEditSessionCredentialsSheet = true
+            }) {
+                Label("Change Username & Reconnect...", systemImage: "person.crop.circle.badge.exclamationmark")
+            }
+        }
 
         Button(action: {
             session.clear()
@@ -4665,6 +5036,22 @@ public struct TerminalWorkbenchView: View {
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(transcript, forType: .string)
         showToast("Transcript copied (\(session.lines.count) lines)")
+    }
+
+    private func sendToConfigStudio(_ session: TerminalSession) {
+        let transcript = session.exportSessionLog()
+        state.configWorkbenchText = transcript
+        state.configWorkbenchTargetTab = 0
+        state.selectedWorkspace = .config
+        showToast("Sent transcript to Config Studio")
+    }
+
+    private func sendToCLIParser(_ session: TerminalSession) {
+        let transcript = session.exportSessionLog()
+        state.cliParserInputText = transcript
+        state.configWorkbenchTargetTab = 3
+        state.selectedWorkspace = .config
+        showToast("Sent transcript to CLI Parser")
     }
 
     private func pasteFromClipboard(to session: TerminalSession) {
