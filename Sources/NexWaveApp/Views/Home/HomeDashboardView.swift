@@ -67,11 +67,11 @@ public struct HomeDashboardView: View {
             HStack(alignment: .center) {
                 VStack(alignment: .leading, spacing: 6) {
                     HStack(spacing: 8) {
-                        PulsingBeacon(color: Theme.neonCyan, size: 7, isLive: true)
+                        PulsingBeacon(color: Theme.primaryAccent, size: 7, isLive: true)
 
                         Text("GLOBAL TELEMETRY ENGINE")
                             .font(.system(size: 10, weight: .bold, design: .monospaced))
-                            .foregroundStyle(Theme.neonCyan)
+                            .foregroundStyle(Theme.primaryAccent)
 
                         Text("•")
                             .foregroundStyle(.secondary)
@@ -83,13 +83,7 @@ public struct HomeDashboardView: View {
 
                     Text("Network Diagnostic Command Center")
                         .font(.system(size: 24, weight: .bold))
-                        .foregroundStyle(
-                            LinearGradient(
-                                colors: [.white, Color.white.opacity(0.85)],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            )
-                        )
+                        .foregroundStyle(Theme.titleGradient)
                 }
 
                 Spacer()
@@ -99,14 +93,14 @@ public struct HomeDashboardView: View {
                     HStack(spacing: 10) {
                         ZStack {
                             Circle()
-                                .stroke(Color.white.opacity(0.08), lineWidth: 3.5)
+                                .stroke(Color.primary.opacity(0.12), lineWidth: 3.5)
                                 .frame(width: 44, height: 44)
 
                             Circle()
                                 .trim(from: 0, to: CGFloat(monitor.healthScorePercentage) / 100.0)
                                 .stroke(
                                     LinearGradient(
-                                        colors: [Color(hex: monitor.healthScoreColorHex), Theme.neonCyan],
+                                        colors: [Color(hex: monitor.healthScoreColorHex), Theme.primaryAccent],
                                         startPoint: .topLeading,
                                         endPoint: .bottomTrailing
                                     ),
@@ -117,7 +111,7 @@ public struct HomeDashboardView: View {
 
                             Text("\(monitor.healthScorePercentage)%")
                                 .font(Theme.monoText(11, weight: .bold))
-                                .foregroundStyle(.white)
+                                .foregroundStyle(.primary)
                         }
 
                         VStack(alignment: .leading, spacing: 2) {
@@ -139,11 +133,11 @@ public struct HomeDashboardView: View {
                     }
                     .padding(.horizontal, 10)
                     .padding(.vertical, 6)
-                    .background(Color.black.opacity(0.25))
+                    .background(Theme.innerChipBackground)
                     .clipShape(RoundedRectangle(cornerRadius: 10))
                     .overlay(
                         RoundedRectangle(cornerRadius: 10)
-                            .strokeBorder(Color(hex: monitor.healthScoreColorHex).opacity(0.25), lineWidth: 1)
+                            .strokeBorder(Color(hex: monitor.healthScoreColorHex).opacity(0.35), lineWidth: 1)
                     )
 
                     // Quick Refresh Button
@@ -155,11 +149,11 @@ public struct HomeDashboardView: View {
                     }) {
                         Image(systemName: "arrow.triangle.2.circlepath")
                             .font(.system(size: 13, weight: .semibold))
-                            .foregroundStyle(Theme.neonCyan)
+                            .foregroundStyle(Theme.primaryAccent)
                             .frame(width: 34, height: 34)
-                            .background(Theme.neonCyan.opacity(0.12))
+                            .background(Theme.primaryAccent.opacity(0.12))
                             .clipShape(Circle())
-                            .overlay(Circle().strokeBorder(Theme.neonCyan.opacity(0.3), lineWidth: 1))
+                            .overlay(Circle().strokeBorder(Theme.primaryAccent.opacity(0.3), lineWidth: 1))
                     }
                     .buttonStyle(.plain)
                     .help("Refresh telemetry & latency metrics")
@@ -172,7 +166,7 @@ public struct HomeDashboardView: View {
                     HStack(spacing: 10) {
                         Image(systemName: "magnifyingglass")
                             .font(.system(size: 15))
-                            .foregroundStyle(Theme.neonCyan)
+                            .foregroundStyle(Theme.primaryAccent)
 
                         TextField("Enter target host, IP, URL, or CIDR (e.g. google.com, 1.1.1.1, 10.20.0.0/24)...", text: $state.targetInput)
                             .textFieldStyle(.plain)
@@ -203,7 +197,7 @@ public struct HomeDashboardView: View {
                     .clipShape(RoundedRectangle(cornerRadius: 10))
                     .overlay(
                         RoundedRectangle(cornerRadius: 10)
-                            .strokeBorder(Theme.cyanPulse.opacity(0.35), lineWidth: 1)
+                            .strokeBorder(Theme.primaryAccent.opacity(0.35), lineWidth: 1)
                     )
 
                     Button(action: startDiagnosisFromHome) {
@@ -216,9 +210,9 @@ public struct HomeDashboardView: View {
                         .padding(.horizontal, 20)
                         .padding(.vertical, 12)
                         .background(state.classifiedTarget == nil ? AnyShapeStyle(Color.gray.opacity(0.3)) : AnyShapeStyle(Theme.cyanGlowGradient))
-                        .foregroundStyle(state.classifiedTarget == nil ? Color.secondary : Color.black)
+                        .foregroundStyle(state.classifiedTarget == nil ? Color.secondary : (ThemeManager.shared.isLight ? Color.white : Color.black))
                         .clipShape(RoundedRectangle(cornerRadius: 10))
-                        .shadow(color: state.classifiedTarget == nil ? .clear : Theme.neonCyan.opacity(0.3), radius: 6, x: 0, y: 2)
+                        .shadow(color: state.classifiedTarget == nil ? .clear : Theme.primaryAccent.opacity(0.3), radius: 6, x: 0, y: 2)
                     }
                     .buttonStyle(.plain)
                     .disabled(state.classifiedTarget == nil)
@@ -236,13 +230,13 @@ public struct HomeDashboardView: View {
                             startDiagnosisFromHome()
                         }) {
                             HStack(spacing: 4) {
-                                Circle().fill(Theme.neonCyan.opacity(0.8)).frame(width: 4, height: 4)
+                                Circle().fill(Theme.primaryAccent.opacity(0.8)).frame(width: 4, height: 4)
                                 Text(sample)
                                     .font(Theme.monoText(11))
                             }
                             .padding(.horizontal, 9)
                             .padding(.vertical, 4)
-                            .background(Color.primary.opacity(0.04))
+                            .background(Theme.innerChipBackground)
                             .clipShape(RoundedRectangle(cornerRadius: 6))
                             .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(Theme.borderLight, lineWidth: 1))
                         }
@@ -273,7 +267,7 @@ public struct HomeDashboardView: View {
                         .frame(height: 20, alignment: .bottom)
                         .padding(.horizontal, 6)
                         .padding(.vertical, 3)
-                        .background(Color.black.opacity(0.35))
+                        .background(ThemeManager.shared.isLight ? Theme.innerChipBackground : Color.black.opacity(0.35))
                         .clipShape(RoundedRectangle(cornerRadius: 5))
 
                         let minVal = monitor.gatewaySamples.min() ?? 0.0
@@ -309,7 +303,7 @@ public struct HomeDashboardView: View {
                 }
             }
         }
-        .engineeringCard(padding: 20, hasHoverEffect: false, accentBorder: Theme.neonCyan.opacity(0.3))
+        .engineeringCard(padding: 20, hasHoverEffect: false, accentBorder: Theme.primaryAccent.opacity(0.3))
     }
 
     private func startDiagnosisFromHome() {
@@ -328,7 +322,7 @@ public struct HomeDashboardView: View {
                 HStack(spacing: 6) {
                     Image(systemName: "point.3.filled.connected.trianglepath.dotted")
                         .font(.system(size: 11))
-                        .foregroundStyle(Theme.neonCyan)
+                        .foregroundStyle(Theme.primaryAccent)
                     Text("END-TO-END VISUAL TOPOLOGY PATH")
                         .font(.system(size: 10, weight: .bold, design: .monospaced))
                         .foregroundStyle(.secondary)
@@ -374,7 +368,7 @@ public struct HomeDashboardView: View {
                     subtitle: "L3 Next-Hop Router",
                     ipv6: monitor.defaultGatewayIPv6,
                     icon: "network",
-                    tint: Theme.neonCyan,
+                    tint: Theme.primaryAccent,
                     copyValue: gwV4
                 )
 
@@ -456,7 +450,7 @@ public struct HomeDashboardView: View {
                     if !ipv6.isEmpty && ipv6 != "None" && !ipv6.starts(with: "Not Configured") && !ipv6.starts(with: "Resolving") {
                         Text("v6: \(ipv6)")
                             .font(Theme.monoText(8))
-                            .foregroundStyle(Theme.neonCyan.opacity(0.85))
+                            .foregroundStyle(Theme.primaryAccent)
                             .lineLimit(1)
                     }
                 }
@@ -567,7 +561,7 @@ public struct HomeDashboardView: View {
                 quickActionButton(
                     title: isRunningSLA ? "Auditing SLA..." : "Run SLA Audit",
                     icon: "waveform.path.ecg",
-                    tint: Theme.neonCyan,
+                    tint: Theme.primaryAccent,
                     help: "Executes 5 rapid probes to gateway and Internet to measure RFC 3550 jitter, loss, and DNS speed",
                     isLoading: isRunningSLA
                 ) {
@@ -647,7 +641,7 @@ public struct HomeDashboardView: View {
                 HStack(spacing: 7) {
                     Image(systemName: "point.3.filled.connected.trianglepath.dotted")
                         .font(.system(size: 11))
-                        .foregroundStyle(Theme.neonCyan)
+                        .foregroundStyle(Theme.primaryAccent)
 
                     Text("ACTIVE INTERFACE & DUAL-STACK TELEMETRY")
                         .font(.system(size: 10, weight: .bold, design: .monospaced))
@@ -668,8 +662,8 @@ public struct HomeDashboardView: View {
                                 .font(.system(size: 10, weight: protocolMode == mode ? .bold : .medium, design: .monospaced))
                                 .padding(.horizontal, 9)
                                 .padding(.vertical, 3)
-                                .background(protocolMode == mode ? Theme.neonCyan.opacity(0.18) : Color.clear)
-                                .foregroundStyle(protocolMode == mode ? Theme.neonCyan : Color.secondary)
+                                .background(protocolMode == mode ? Theme.primaryAccent.opacity(0.18) : Color.clear)
+                                .foregroundStyle(protocolMode == mode ? Theme.primaryAccent : Color.secondary)
                                 .clipShape(RoundedRectangle(cornerRadius: 6))
                         }
                         .buttonStyle(.plain)
@@ -712,7 +706,7 @@ public struct HomeDashboardView: View {
                     HStack(spacing: 4) {
                         Text(monitor.activeInterface)
                             .font(Theme.monoText(12, weight: .bold))
-                            .foregroundStyle(Theme.neonCyan)
+                            .foregroundStyle(Theme.primaryAccent)
                         if let wifi = monitor.wifiLink {
                             Text("• \(wifi.ssid)")
                                 .font(.system(size: 10, weight: .medium))
@@ -797,7 +791,7 @@ public struct HomeDashboardView: View {
             label: "LOCAL ADDRESS",
             icon: "laptopcomputer",
             badge: monitor.hasIPv6 ? "Dual-Stack" : "IPv4",
-            badgeColor: monitor.hasIPv6 ? Theme.neonCyan : Theme.azurePro,
+            badgeColor: monitor.hasIPv6 ? Theme.primaryAccent : Theme.azurePro,
             helpText: "Local IPv4: \(monitor.localIP)/\(monitor.cidrPrefix)\nSubnet Mask: \(monitor.subnetMask)\nBroadcast: \(monitor.broadcastAddress)\nLocal IPv6 (SLAAC): \(monitor.localIPv6)\nRight-click for options"
         ) {
             VStack(alignment: .leading, spacing: 3) {
@@ -805,7 +799,7 @@ public struct HomeDashboardView: View {
                     dualStackAddressRow(tag: "v4", val: "\(monitor.localIP)/\(monitor.cidrPrefix)", tagColor: Theme.azurePro, copyKey: "Local IPv4")
                 }
                 if showV6 {
-                    dualStackAddressRow(tag: "v6", val: monitor.localIPv6.isEmpty ? "None" : monitor.localIPv6, tagColor: Theme.neonCyan, copyKey: "Local IPv6")
+                    dualStackAddressRow(tag: "v6", val: monitor.localIPv6.isEmpty ? "None" : monitor.localIPv6, tagColor: Theme.primaryAccent, copyKey: "Local IPv6")
                 }
                 if !showV4 && !showV6 {
                     dualStackAddressRow(tag: "v6", val: "No IPv6 on \(monitor.activeInterface)", tagColor: .orange, copyKey: "")
@@ -858,7 +852,7 @@ public struct HomeDashboardView: View {
             label: "DEFAULT GATEWAY",
             icon: "network",
             badge: latencyBadge,
-            badgeColor: Theme.neonCyan,
+            badgeColor: Theme.primaryAccent,
             helpText: "IPv4 Gateway: \(monitor.defaultGateway)\nIPv6 Gateway: \(monitor.defaultGatewayIPv6)\nRight-click for options"
         ) {
             VStack(alignment: .leading, spacing: 3) {
@@ -866,7 +860,7 @@ public struct HomeDashboardView: View {
                     dualStackAddressRow(tag: "v4", val: monitor.defaultGateway, tagColor: Theme.azurePro, copyKey: "Default Gateway IPv4")
                 }
                 if showV6 {
-                    dualStackAddressRow(tag: "v6", val: monitor.defaultGatewayIPv6, tagColor: Theme.neonCyan, copyKey: "Default Gateway IPv6")
+                    dualStackAddressRow(tag: "v6", val: monitor.defaultGatewayIPv6, tagColor: Theme.primaryAccent, copyKey: "Default Gateway IPv6")
                 }
                 if !showV4 && !showV6 {
                     dualStackAddressRow(tag: "v6", val: "No IPv6 Gateway", tagColor: .orange, copyKey: "")
@@ -915,7 +909,7 @@ public struct HomeDashboardView: View {
                     dualStackAddressRow(tag: "v4", val: monitor.dnsServer.isEmpty ? "Unassigned" : monitor.dnsServer, tagColor: Theme.azurePro, copyKey: "DNS IPv4")
                 }
                 if showV6 {
-                    dualStackAddressRow(tag: "v6", val: monitor.dnsServerIPv6.isEmpty ? "None Assigned" : monitor.dnsServerIPv6, tagColor: Theme.neonCyan, copyKey: monitor.dnsServerIPv6.isEmpty ? "" : "DNS IPv6")
+                    dualStackAddressRow(tag: "v6", val: monitor.dnsServerIPv6.isEmpty ? "None Assigned" : monitor.dnsServerIPv6, tagColor: Theme.primaryAccent, copyKey: monitor.dnsServerIPv6.isEmpty ? "" : "DNS IPv6")
                 }
                 if !showV4 && !showV6 {
                     dualStackAddressRow(tag: "v6", val: "No IPv6 Nameserver", tagColor: .orange, copyKey: "")
@@ -965,7 +959,7 @@ public struct HomeDashboardView: View {
             label: "PUBLIC WAN",
             icon: "globe",
             badge: monitor.hasIPv6 ? "Dual-Stack" : "IPv4",
-            badgeColor: monitor.hasIPv6 ? Theme.neonCyan : Theme.signalEmerald,
+            badgeColor: monitor.hasIPv6 ? Theme.primaryAccent : Theme.signalEmerald,
             helpText: "Public IPv6: \(monitor.publicIPv6)\nPublic IPv4: \(monitor.publicIPv4)\nRight-click for options"
         ) {
             VStack(alignment: .leading, spacing: 3) {
@@ -973,7 +967,7 @@ public struct HomeDashboardView: View {
                     dualStackAddressRow(tag: "v4", val: v4Val, tagColor: Theme.azurePro, copyKey: "Public IPv4")
                 }
                 if showV6 {
-                    dualStackAddressRow(tag: "v6", val: v6Val, tagColor: Theme.neonCyan, copyKey: "Public IPv6")
+                    dualStackAddressRow(tag: "v6", val: v6Val, tagColor: Theme.primaryAccent, copyKey: "Public IPv6")
                 }
             }
         }
@@ -1065,7 +1059,7 @@ public struct HomeDashboardView: View {
 
             Text(val)
                 .font(Theme.monoText(11, weight: .semibold))
-                .foregroundStyle(tag == "v6" ? Theme.neonCyan : .primary)
+                .foregroundStyle(tag == "v6" ? Theme.primaryAccent : .primary)
                 .lineLimit(1)
                 .minimumScaleFactor(0.72)
 
@@ -1093,7 +1087,8 @@ public struct HomeDashboardView: View {
             HStack {
                 HStack(spacing: 7) {
                     Image(systemName: "briefcase.fill")
-                        .foregroundStyle(Theme.azurePro)
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(Theme.primaryAccent)
                     Text("Active Investigations")
                         .font(.system(size: 14, weight: .bold))
                 }
@@ -1105,10 +1100,10 @@ public struct HomeDashboardView: View {
                 }
                 .buttonStyle(.plain)
                 .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(Theme.neonCyan)
+                .foregroundStyle(Theme.primaryAccent)
             }
 
-            Divider()
+            Divider().overlay(Theme.borderLight)
 
             if state.investigations.isEmpty {
                 VStack(spacing: 10) {
@@ -1142,9 +1137,10 @@ public struct HomeDashboardView: View {
                         }
                         .padding(.horizontal, 10)
                         .padding(.vertical, 5)
-                        .background(Theme.azurePro.opacity(0.12))
-                        .foregroundStyle(Theme.azurePro)
+                        .background(Theme.primaryAccent.opacity(0.12))
+                        .foregroundStyle(Theme.primaryAccent)
                         .clipShape(RoundedRectangle(cornerRadius: 6))
+                        .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(Theme.primaryAccent.opacity(0.25), lineWidth: 1))
                     }
                     .buttonStyle(.plain)
                 }
@@ -1164,6 +1160,7 @@ public struct HomeDashboardView: View {
                                 VStack(alignment: .leading, spacing: 3) {
                                     Text(inv.title)
                                         .font(.system(size: 12, weight: .semibold))
+                                        .foregroundStyle(.primary)
                                         .lineLimit(1)
                                     Text(inv.createdAt.formatted(date: .abbreviated, time: .shortened))
                                         .font(.system(size: 10))
@@ -1180,8 +1177,9 @@ public struct HomeDashboardView: View {
                                     .clipShape(Capsule())
                             }
                             .padding(10)
-                            .background(Color.primary.opacity(0.02))
+                            .background(Theme.innerChipBackground)
                             .clipShape(RoundedRectangle(cornerRadius: 8))
+                            .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Theme.borderLight, lineWidth: 1))
                         }
                         .buttonStyle(.plain)
                     }
@@ -1198,7 +1196,8 @@ public struct HomeDashboardView: View {
             HStack {
                 HStack(spacing: 7) {
                     Image(systemName: "clock.arrow.circlepath")
-                        .foregroundStyle(Theme.neonCyan)
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(Theme.primaryAccent)
                     Text("Recent Diagnostics")
                         .font(.system(size: 14, weight: .bold))
                 }
@@ -1210,10 +1209,10 @@ public struct HomeDashboardView: View {
                 }
                 .buttonStyle(.plain)
                 .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(Theme.neonCyan)
+                .foregroundStyle(Theme.primaryAccent)
             }
 
-            Divider()
+            Divider().overlay(Theme.borderLight)
 
             if state.recentHistory.isEmpty {
                 VStack(spacing: 10) {
@@ -1223,6 +1222,10 @@ public struct HomeDashboardView: View {
                     Text("No diagnostic runs recorded")
                         .font(.system(size: 12, weight: .medium))
                         .foregroundStyle(.secondary)
+                    Text("Quick-start live deterministic diagnosis on recommended targets:")
+                        .font(.system(size: 10))
+                        .foregroundStyle(.tertiary)
+                        .multilineTextAlignment(.center)
 
                     HStack(spacing: 6) {
                         Button(action: {
@@ -1233,13 +1236,13 @@ public struct HomeDashboardView: View {
                                 Image(systemName: "network")
                                     .font(.system(size: 9))
                                 Text("Gateway Router")
-                                    .font(Theme.monoText(10))
+                                    .font(Theme.monoText(10, weight: .medium))
                             }
                             .padding(.horizontal, 8)
                             .padding(.vertical, 4)
-                            .background(Color.primary.opacity(0.04))
-                            .clipShape(RoundedRectangle(cornerRadius: 5))
-                            .overlay(RoundedRectangle(cornerRadius: 5).strokeBorder(Theme.borderLight, lineWidth: 1))
+                            .background(Theme.innerChipBackground)
+                            .clipShape(RoundedRectangle(cornerRadius: 6))
+                            .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(Theme.borderLight, lineWidth: 1))
                         }
                         .buttonStyle(.plain)
 
@@ -1251,13 +1254,13 @@ public struct HomeDashboardView: View {
                                 Image(systemName: "shield.checkerboard")
                                     .font(.system(size: 9))
                                 Text("Cloudflare DNS")
-                                    .font(Theme.monoText(10))
+                                    .font(Theme.monoText(10, weight: .medium))
                             }
                             .padding(.horizontal, 8)
                             .padding(.vertical, 4)
-                            .background(Color.primary.opacity(0.04))
-                            .clipShape(RoundedRectangle(cornerRadius: 5))
-                            .overlay(RoundedRectangle(cornerRadius: 5).strokeBorder(Theme.borderLight, lineWidth: 1))
+                            .background(Theme.innerChipBackground)
+                            .clipShape(RoundedRectangle(cornerRadius: 6))
+                            .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(Theme.borderLight, lineWidth: 1))
                         }
                         .buttonStyle(.plain)
 
@@ -1269,13 +1272,13 @@ public struct HomeDashboardView: View {
                                 Image(systemName: "globe")
                                     .font(.system(size: 9))
                                 Text("google.com")
-                                    .font(Theme.monoText(10))
+                                    .font(Theme.monoText(10, weight: .medium))
                             }
                             .padding(.horizontal, 8)
                             .padding(.vertical, 4)
-                            .background(Color.primary.opacity(0.04))
-                            .clipShape(RoundedRectangle(cornerRadius: 5))
-                            .overlay(RoundedRectangle(cornerRadius: 5).strokeBorder(Theme.borderLight, lineWidth: 1))
+                            .background(Theme.innerChipBackground)
+                            .clipShape(RoundedRectangle(cornerRadius: 6))
+                            .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(Theme.borderLight, lineWidth: 1))
                         }
                         .buttonStyle(.plain)
                     }
@@ -1314,19 +1317,19 @@ public struct HomeDashboardView: View {
                                     }
                                     .padding(.horizontal, 7)
                                     .padding(.vertical, 3)
-                                    .background(Theme.neonCyan.opacity(0.1))
-                                    .foregroundStyle(Theme.neonCyan)
+                                    .background(Theme.primaryAccent.opacity(0.12))
+                                    .foregroundStyle(Theme.primaryAccent)
                                     .clipShape(RoundedRectangle(cornerRadius: 4))
                                 }
 
                                 Image(systemName: "arrow.right.circle.fill")
                                     .font(.system(size: 12))
-                                    .foregroundStyle(Theme.neonCyan.opacity(0.7))
+                                    .foregroundStyle(Theme.primaryAccent.opacity(0.75))
                             }
                             .padding(10)
-                            .background(Color.primary.opacity(0.02))
+                            .background(Theme.innerChipBackground)
                             .clipShape(RoundedRectangle(cornerRadius: 8))
-                            .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Theme.borderLight.opacity(0.5), lineWidth: 1))
+                            .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Theme.borderLight, lineWidth: 1))
                         }
                         .buttonStyle(.plain)
                         .help("Click to re-run diagnosis on \(item.target)")
@@ -1345,7 +1348,7 @@ public struct HomeDashboardView: View {
                 HStack(spacing: 6) {
                     Image(systemName: "square.grid.2x4.fill")
                         .font(.system(size: 11))
-                        .foregroundStyle(Theme.neonCyan)
+                        .foregroundStyle(Theme.primaryAccent)
                     Text("ENGINEERING STUDIOS & TOOL WORKBENCHES")
                         .font(.system(size: 10, weight: .bold, design: .monospaced))
                         .foregroundStyle(.secondary)
@@ -1364,7 +1367,7 @@ public struct HomeDashboardView: View {
                     title: "Wi-Fi Studio",
                     desc: "RF Spectrum, 6GHz & Spatial Streams",
                     icon: "wifi",
-                    tint: Theme.neonCyan,
+                    tint: Theme.primaryAccent,
                     workspace: .wifi
                 )
                 studioCard(
@@ -1372,7 +1375,7 @@ public struct HomeDashboardView: View {
                     title: "Subnet Calculator",
                     desc: "CIDR, VLSM & Binary Mask Matrix",
                     icon: "number.square.fill",
-                    tint: Theme.electricAzure,
+                    tint: Theme.primaryAccent,
                     workspace: .toolbox
                 )
                 studioCard(
@@ -1380,7 +1383,7 @@ public struct HomeDashboardView: View {
                     title: "Latency Timeline",
                     desc: "Real-time Jitter & RFC 3550 Trends",
                     icon: "chart.xyaxis.line",
-                    tint: Theme.signalEmerald,
+                    tint: Theme.primaryAccent,
                     workspace: .timeline
                 )
                 studioCard(
@@ -1388,7 +1391,7 @@ public struct HomeDashboardView: View {
                     title: "Packet Workbench",
                     desc: "PCAP Hex & Multi-Layer Dissection",
                     icon: "waveform.path.ecg",
-                    tint: Theme.quantumViolet,
+                    tint: Theme.primaryAccent,
                     workspace: .packet
                 )
                 studioCard(
@@ -1396,7 +1399,7 @@ public struct HomeDashboardView: View {
                     title: "Device Discovery",
                     desc: "ARP & Bonjour/mDNS Active Radar",
                     icon: "server.rack",
-                    tint: Theme.solarAmber,
+                    tint: Theme.primaryAccent,
                     workspace: .devices
                 )
                 studioCard(
@@ -1404,7 +1407,7 @@ public struct HomeDashboardView: View {
                     title: "Command Library",
                     desc: "Multi-Vendor CLI Reference & Macros",
                     icon: "terminal.fill",
-                    tint: Theme.azurePro,
+                    tint: Theme.primaryAccent,
                     workspace: .commandLibrary
                 )
                 studioCard(
@@ -1412,7 +1415,7 @@ public struct HomeDashboardView: View {
                     title: "SNMP Studio",
                     desc: "v1/v2c/v3 MIB Tree & OID Inspector",
                     icon: "chart.bar.xaxis",
-                    tint: Theme.pulseCrimson,
+                    tint: Theme.primaryAccent,
                     workspace: .snmp
                 )
                 studioCard(
@@ -1420,7 +1423,7 @@ public struct HomeDashboardView: View {
                     title: "Config Workbench",
                     desc: "Syntax Parsing & Semantic Diffs",
                     icon: "doc.text.magnifyingglass",
-                    tint: Theme.neonCyan,
+                    tint: Theme.primaryAccent,
                     workspace: .config
                 )
             }
@@ -1479,7 +1482,7 @@ public struct HomeDashboardView: View {
                 HStack(spacing: 8) {
                     Image(systemName: "waveform.path.ecg")
                         .font(.system(size: 18))
-                        .foregroundStyle(Theme.neonCyan)
+                        .foregroundStyle(Theme.primaryAccent)
                     Text("SLA Baseline Latency & Quality Audit")
                         .font(.system(size: 16, weight: .bold))
                 }
@@ -1499,7 +1502,7 @@ public struct HomeDashboardView: View {
                         if sla.overallGrade.starts(with: "A") {
                             return (Theme.signalEmerald, "checkmark.seal.fill")
                         } else if sla.overallGrade.starts(with: "B") {
-                            return (Theme.neonCyan, "checkmark.seal")
+                            return (Theme.primaryAccent, "checkmark.seal")
                         } else if sla.overallGrade.starts(with: "C") {
                             return (Theme.solarAmber, "exclamationmark.triangle.fill")
                         } else {
@@ -1551,7 +1554,7 @@ public struct HomeDashboardView: View {
                             title: "INTERNET WAN",
                             val: String(format: "%.1f ms", sla.internetAvgMs),
                             subtext: "Host: \(sla.internetHost)",
-                            tint: Theme.neonCyan
+                            tint: Theme.primaryAccent
                         )
                         slaStatCard(
                             title: "DNS LOOKUP",

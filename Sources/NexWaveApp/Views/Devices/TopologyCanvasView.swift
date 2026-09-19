@@ -948,12 +948,12 @@ public struct TopologyCanvasView: View {
             // Primary Hostname / Device Title (Never Duplicate IP!)
             Text(titleText)
                 .font(Theme.monoText(9.5, weight: .bold))
-                .foregroundStyle(Color.white)
+                .foregroundStyle(.primary)
                 .lineLimit(1)
                 .truncationMode(.tail)
                 .padding(.horizontal, 6)
                 .padding(.vertical, 1.5)
-                .background(Theme.surfaceBackground.opacity(0.92))
+                .background(Theme.innerChipBackground)
                 .clipShape(RoundedRectangle(cornerRadius: 4))
                 .overlay(
                     RoundedRectangle(cornerRadius: 4)
@@ -1211,7 +1211,7 @@ public struct TopologyCanvasView: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(node.label)
                         .font(Theme.monoText(13, weight: .bold))
-                        .foregroundStyle(Color.white)
+                        .foregroundStyle(.primary)
                     Text("\(node.role.rawValue) • \(node.tier.rawValue)")
                         .font(.system(size: 11))
                         .foregroundStyle(.secondary)
@@ -1317,7 +1317,7 @@ public struct TopologyCanvasView: View {
             Spacer()
             Text(value)
                 .font(Theme.monoText(11, weight: .semibold))
-                .foregroundStyle(Color.white)
+                .foregroundStyle(.primary)
         }
     }
 
@@ -1368,11 +1368,11 @@ public struct TopologyCanvasView: View {
                     let nodeNames = trace.nodeIds.compactMap { id in graph.nodes.first(where: { $0.id == id })?.label ?? id }
                     Text("PATH: \(nodeNames.joined(separator: " ⟶ ")) (\(trace.linkIds.count) Hops)")
                         .font(Theme.monoText(11, weight: .bold))
-                        .foregroundStyle(Color.white)
+                        .foregroundStyle(.primary)
                 } else if pathTraceSourceId != nil {
                     Text("SOURCE: \(graph.nodes.first(where: { $0.id == pathTraceSourceId })?.label ?? "") — Now click Destination Device on canvas")
                         .font(.system(size: 11))
-                        .foregroundStyle(Color.white)
+                        .foregroundStyle(.primary)
                 } else {
                     Text("Click any node on the canvas to set Path Source")
                         .font(.system(size: 11))
@@ -1405,7 +1405,7 @@ public struct TopologyCanvasView: View {
                 .foregroundStyle(Theme.cyanPulse)
             Text(text)
                 .font(Theme.monoText(11, weight: .bold))
-                .foregroundStyle(Color.white)
+                .foregroundStyle(.primary)
             Spacer()
             Button(action: { bannerMessage = nil }) {
                 Image(systemName: "xmark")
@@ -1627,7 +1627,7 @@ public struct TopologyCanvasView: View {
 
             Text(neighbor.displayTitle)
                 .font(Theme.monoText(11, weight: .medium))
-                .foregroundStyle(Color.white)
+                .foregroundStyle(.primary)
 
             Spacer()
 

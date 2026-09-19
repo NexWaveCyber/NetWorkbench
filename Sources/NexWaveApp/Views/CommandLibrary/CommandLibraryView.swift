@@ -375,7 +375,7 @@ public struct CommandLibraryView: View {
             HStack(spacing: 8) {
                 Text(cmd.syntax)
                     .font(Theme.monoText(12, weight: .medium))
-                    .foregroundStyle(Color.white)
+                    .foregroundStyle(.primary)
                     .padding(.horizontal, 10)
                     .padding(.vertical, 8)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -515,7 +515,7 @@ public struct CommandLibraryView: View {
             if let cmd = command {
                 Text(cmd.syntax)
                     .font(Theme.monoText(12, weight: .semibold))
-                    .foregroundStyle(Color.white)
+                    .foregroundStyle(.primary)
                     .padding(10)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .background(Theme.cardBackground)
@@ -668,7 +668,7 @@ public struct CommandLibraryView: View {
             HStack(spacing: 8) {
                 Text(cmd.syntax)
                     .font(Theme.monoText(12, weight: .medium))
-                    .foregroundStyle(Color.white)
+                    .foregroundStyle(.primary)
                     .padding(.horizontal, 10)
                     .padding(.vertical, 8)
                     .frame(maxWidth: .infinity, alignment: .leading)

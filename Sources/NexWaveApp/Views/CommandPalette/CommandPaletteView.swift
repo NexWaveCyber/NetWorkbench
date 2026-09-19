@@ -32,7 +32,7 @@ public struct CommandPaletteView: View {
                         .font(Theme.monoText(10, weight: .bold))
                         .padding(.horizontal, 6)
                         .padding(.vertical, 2.5)
-                        .background(Color.white.opacity(0.08))
+                        .background(Theme.innerChipBackground)
                         .clipShape(RoundedRectangle(cornerRadius: 4))
                         .foregroundStyle(.secondary)
                 }
@@ -42,7 +42,7 @@ public struct CommandPaletteView: View {
             .background(.ultraThinMaterial)
 
             Divider()
-                .overlay(Color.white.opacity(0.1))
+                .overlay(Theme.borderLight)
 
             // Suggestions List
             ScrollView {
@@ -80,10 +80,35 @@ public struct CommandPaletteView: View {
                                 title: item.rawValue,
                                 subtitle: "Switch workspace to \(item.rawValue)",
                                 icon: item.iconName,
-                                tint: Theme.electricAzure
+                                tint: Theme.primaryAccent
                             ) {
                                 state.selectedWorkspace = item
                                 state.showCommandPalette = false
+                            }
+                        }
+                    }
+
+                    Text("THEMES & APPEARANCE")
+                        .font(.system(size: 10, weight: .bold, design: .monospaced))
+                        .foregroundStyle(.secondary.opacity(0.8))
+                        .padding(.horizontal, 14)
+                        .padding(.top, 12)
+                        .padding(.bottom, 2)
+
+                    ForEach(AppTheme.allCases) { theme in
+                        if query.isEmpty || "theme".contains(query.lowercased()) || theme.displayName.lowercased().contains(query.lowercased()) {
+                            paletteActionRow(
+                                id: "theme-\(theme.rawValue)",
+                                title: "Theme: \(theme.displayName)",
+                                subtitle: theme.subtitle,
+                                icon: theme.iconName,
+                                tint: theme.previewAccent
+                            ) {
+                                withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                                    ThemeManager.shared.currentTheme = theme
+                                    state.toastMessage = "Switched to \(theme.displayName)"
+                                    state.showCommandPalette = false
+                                }
                             }
                         }
                     }
@@ -160,7 +185,7 @@ public struct CommandPaletteView: View {
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
-            .background(isHovered ? Color.white.opacity(0.06) : Color.clear)
+            .background(isHovered ? (ThemeManager.shared.isLight ? Color.black.opacity(0.06) : Color.white.opacity(0.08)) : Color.clear)
             .clipShape(RoundedRectangle(cornerRadius: 8))
             .onHover { hovering in
                 withAnimation(.easeInOut(duration: 0.15)) {

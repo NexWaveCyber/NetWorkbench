@@ -26,6 +26,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 struct NexWaveApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
     @State private var state = AppState()
+    @ObservedObject private var themeManager = ThemeManager.shared
     @State private var menuBarMonitor = MenuBarMonitorEngine.shared
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
     @State private var showInspector = false
@@ -49,24 +50,8 @@ struct NexWaveApp: App {
                 NetworkInspectorView(result: state.latestResult)
                     .inspectorColumnWidth(min: 260, ideal: 290, max: 350)
             }
-            .preferredColorScheme(.dark)
+            .preferredColorScheme(themeManager.currentColorScheme)
             .toolbar {
-                ToolbarItem(placement: .navigation) {
-                    Button(action: {
-                        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                            if columnVisibility == .detailOnly {
-                                columnVisibility = .all
-                            } else {
-                                columnVisibility = .detailOnly
-                            }
-                        }
-                    }) {
-                        Image(systemName: "sidebar.left")
-                            .font(.system(size: 13))
-                    }
-                    .help("Toggle Sidebar (⌃⌘S)")
-                }
-
                 ToolbarItem(placement: .navigation) {
                     HStack(spacing: 7) {
                         PulsingBeacon(color: Theme.signalEmerald, size: 6, isLive: true)
@@ -112,14 +97,14 @@ struct NexWaveApp: App {
                         HStack(spacing: 7) {
                             Image(systemName: "magnifyingglass")
                                 .font(.system(size: 11, weight: .semibold))
-                                .foregroundStyle(Theme.neonCyan)
+                                .foregroundStyle(Theme.primaryAccent)
                             Text("Command Palette")
                                 .font(.system(size: 12, weight: .medium))
                             Text("⌘K")
                                 .font(Theme.monoText(10, weight: .bold))
                                 .padding(.horizontal, 6)
                                 .padding(.vertical, 1.5)
-                                .background(Color.white.opacity(0.08))
+                                .background(Theme.innerChipBackground)
                                 .clipShape(RoundedRectangle(cornerRadius: 4))
                                 .foregroundStyle(.secondary)
                         }
@@ -129,7 +114,7 @@ struct NexWaveApp: App {
                         .clipShape(RoundedRectangle(cornerRadius: 6))
                         .overlay(
                             RoundedRectangle(cornerRadius: 6)
-                                .strokeBorder(Color.white.opacity(0.1), lineWidth: 0.75)
+                                .strokeBorder(Theme.borderLight, lineWidth: 0.75)
                         )
                     }
                     .buttonStyle(.plain)

@@ -46,7 +46,7 @@ public struct SettingsWorkspaceView: View {
     @State private var selectedCategory: SettingsCategory = .general
 
     // General & UI Tuning
-    @AppStorage("workbenchTheme") private var workbenchTheme: String = "dark"
+    @ObservedObject private var themeManager = ThemeManager.shared
     @AppStorage("accentColorHex") private var accentColorHex: String = "#00E5FF"
     @AppStorage("enableSoundEffects") private var enableSoundEffects: Bool = true
     @AppStorage("toastDurationSec") private var toastDurationSec: Double = 3.0
@@ -107,9 +107,7 @@ public struct SettingsWorkspaceView: View {
     @State private var showingClearHistoryAlert: Bool = false
     @State private var showingResetDefaultsAlert: Bool = false
 
-    // Cursor Blink Animation Timer for Terminal Preview
-    @State private var cursorVisible: Bool = true
-    private let cursorTimer = Timer.publish(every: 0.55, on: .main, in: .common).autoconnect()
+    // Cursor Blink Animation Timer is encapsulated inside TerminalPreviewBoxView for maximum UI responsiveness
 
     public init(state: AppState) {
         self.state = state
@@ -167,13 +165,7 @@ public struct SettingsWorkspaceView: View {
         .onAppear {
             refreshDatabaseMetrics()
         }
-        .onReceive(cursorTimer) { _ in
-            if selectedCategory == .terminal && terminalCursorBlink {
-                cursorVisible.toggle()
-            } else if !cursorVisible {
-                cursorVisible = true
-            }
-        }
+
         .alert("Clear Diagnostic History?", isPresented: $showingClearHistoryAlert) {
             Button("Cancel", role: .cancel) {}
             Button("Clear All History", role: .destructive) {
@@ -315,24 +307,83 @@ public struct SettingsWorkspaceView: View {
         VStack(alignment: .leading, spacing: 18) {
             cardHeader(title: "GENERAL & UI APPEARANCE", icon: "slider.horizontal.3", subtitle: "Configure theme accents, HUD notifications, sound chimes, and micro-animations")
 
-            VStack(spacing: 14) {
-                // Theme Appearance
-                HStack {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Workbench Color Theme")
-                            .font(.system(size: 12, weight: .medium))
-                        Text("Curated high-contrast engineering color profiles")
-                            .font(.system(size: 10))
-                            .foregroundStyle(.secondary)
+            VStack(spacing: 16) {
+                // Theme Appearance Cards
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("WORKBENCH APPEARANCE & THEME")
+                                .font(Theme.monoText(10, weight: .bold))
+                                .foregroundStyle(Theme.primaryAccent)
+                            Text("Select your primary engineering workspace theme")
+                                .font(.system(size: 11))
+                                .foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        Text("Active: \(themeManager.currentTheme.displayName)")
+                            .font(Theme.monoText(10, weight: .semibold))
+                            .foregroundStyle(.tertiary)
                     }
-                    Spacer()
-                    Picker("", selection: $workbenchTheme) {
-                        Text("Dark Modern (Standard)").tag("dark")
-                        Text("Obsidian Deep").tag("obsidian")
-                        Text("Midnight Blue").tag("midnight")
-                        Text("Cyberpunk Neon").tag("cyberpunk")
+
+                    LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
+                        ForEach(AppTheme.allCases) { theme in
+                            Button {
+                                withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                                    themeManager.currentTheme = theme
+                                    state.toastMessage = "Switched to \(theme.displayName)"
+                                }
+                            } label: {
+                                HStack(spacing: 12) {
+                                    ZStack {
+                                        RoundedRectangle(cornerRadius: 8)
+                                            .fill(theme.previewBackground)
+                                            .frame(width: 38, height: 38)
+                                            .overlay(
+                                                RoundedRectangle(cornerRadius: 8)
+                                                    .strokeBorder(theme.previewAccent.opacity(0.4), lineWidth: 1.5)
+                                            )
+
+                                        Image(systemName: theme.iconName)
+                                            .font(.system(size: 16, weight: .semibold))
+                                            .foregroundStyle(theme.previewAccent)
+                                    }
+
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        HStack(spacing: 5) {
+                                            Text(theme.displayName)
+                                                .font(.system(size: 12, weight: .bold))
+                                                .foregroundStyle(.primary)
+
+                                            if themeManager.currentTheme == theme {
+                                                Image(systemName: "checkmark.circle.fill")
+                                                    .font(.system(size: 11))
+                                                    .foregroundStyle(Theme.primaryAccent)
+                                            }
+                                        }
+
+                                        Text(theme.subtitle)
+                                            .font(.system(size: 9.5))
+                                            .foregroundStyle(.secondary)
+                                            .lineLimit(2)
+                                            .multilineTextAlignment(.leading)
+                                    }
+
+                                    Spacer(minLength: 0)
+                                }
+                                .padding(10)
+                                .background(themeManager.currentTheme == theme ? Theme.primaryAccent.opacity(0.08) : Theme.innerChipBackground)
+                                .clipShape(RoundedRectangle(cornerRadius: 10))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 10)
+                                        .strokeBorder(
+                                            themeManager.currentTheme == theme ? Theme.primaryAccent : Theme.borderLight,
+                                            lineWidth: themeManager.currentTheme == theme ? 1.5 : 1.0
+                                        )
+                                )
+                            }
+                            .buttonStyle(.plain)
+                        }
                     }
-                    .frame(width: 200)
                 }
 
                 Divider().overlay(Theme.borderLight)
@@ -1123,74 +1174,17 @@ public struct SettingsWorkspaceView: View {
                     }
                 }
 
-                // Interactive Live Monospace Terminal Box Preview
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack {
-                        Text("LIVE TERMINAL PREVIEW")
-                            .font(Theme.monoText(10, weight: .bold))
-                            .foregroundStyle(Theme.neonCyan)
-                        Spacer()
-                        Text("\(terminalFontFamily) · \(Int(terminalFontSize))pt · \(terminalTheme)")
-                            .font(Theme.monoText(9))
-                            .foregroundStyle(.secondary)
-                    }
-
-                    // Terminal Window Canvas
-                    VStack(alignment: .leading, spacing: 0) {
-                        // Titlebar
-                        HStack(spacing: 6) {
-                            Circle().fill(Color(hex: "#FF5F56")).frame(width: 9, height: 9)
-                            Circle().fill(Color(hex: "#FFBD2E")).frame(width: 9, height: 9)
-                            Circle().fill(Color(hex: "#27C93F")).frame(width: 9, height: 9)
-                            Spacer()
-                            Text("admin@nexwave-core# (pty3)")
-                                .font(Theme.monoText(9, weight: .medium))
-                                .foregroundStyle(.secondary)
-                            Spacer()
-                        }
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 6)
-                        .background(Color.black.opacity(0.4))
-
-                        // Terminal Body
-                        VStack(alignment: .leading, spacing: CGFloat(terminalLineSpacing)) {
-                            HStack(spacing: 0) {
-                                Text("nexwave-core# ")
-                                    .foregroundStyle(Color(hex: currentTerminalTheme.promptColorHex))
-                                Text("show ip bgp summary")
-                                    .foregroundStyle(Color(hex: currentTerminalTheme.foregroundColorHex))
-                                if cursorVisible {
-                                    Text(activeCursorGlyph)
-                                        .foregroundStyle(Color(hex: currentTerminalTheme.promptColorHex))
-                                }
-                            }
-
-                            Text("BGP router identifier 10.0.0.1, local AS number 65001")
-                                .foregroundStyle(Color(hex: currentTerminalTheme.foregroundColorHex).opacity(0.85))
-
-                            Text("Neighbor        V    AS MsgRcvd MsgSent   TblVer  InQ OutQ Up/Down  State/PfxRcd")
-                                .foregroundStyle(Color(hex: currentTerminalTheme.foregroundColorHex).opacity(0.7))
-
-                            Text("192.168.1.2     4 65002    1420    1419       12    0    0 02:45:11            4")
-                                .foregroundStyle(Theme.signalEmerald)
-
-                            Text("192.168.2.2     4 65003     890     892       12    0    0 01:12:30            6")
-                                .foregroundStyle(Theme.signalEmerald)
-                        }
-                        .font(customTerminalFont)
-                        .padding(12)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                    }
-                    .background(Color(hex: currentTerminalTheme.backgroundColorHex))
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 8)
-                            .stroke(Theme.cardBorderHighContrast, lineWidth: 1)
-                    )
-                }
-                .padding(12)
-                .background(Theme.innerChipBackground)
-                .clipShape(RoundedRectangle(cornerRadius: 8))
+                // Interactive Live Monospace Terminal Box Preview (Isolated lifecycle)
+                TerminalPreviewBoxView(
+                    currentTerminalTheme: currentTerminalTheme,
+                    activeCursorGlyph: activeCursorGlyph,
+                    terminalCursorBlink: terminalCursorBlink,
+                    terminalLineSpacing: terminalLineSpacing,
+                    customTerminalFont: customTerminalFont,
+                    terminalFontFamily: terminalFontFamily,
+                    terminalFontSize: terminalFontSize,
+                    terminalTheme: terminalTheme
+                )
             }
             .engineeringCard(padding: 16)
         }
@@ -1460,7 +1454,7 @@ public struct SettingsWorkspaceView: View {
             VStack(alignment: .leading, spacing: 1) {
                 Text("\(count)")
                     .font(Theme.monoText(12, weight: .bold))
-                    .foregroundStyle(Color.white)
+                    .foregroundStyle(.primary)
                 Text(title)
                     .font(.system(size: 9))
                     .foregroundStyle(.secondary)
@@ -1589,7 +1583,7 @@ public struct SettingsWorkspaceView: View {
             Spacer()
             Text(value)
                 .font(Theme.monoText(11, weight: .semibold))
-                .foregroundStyle(Color.white)
+                .foregroundStyle(.primary)
         }
     }
 
@@ -1609,7 +1603,7 @@ public struct SettingsWorkspaceView: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(title)
                     .font(Theme.monoText(12, weight: .bold))
-                    .foregroundStyle(Color.white)
+                    .foregroundStyle(.primary)
                 Text(subtitle)
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
@@ -1629,7 +1623,7 @@ public struct SettingsWorkspaceView: View {
     }
 
     private func resetAllPreferencesToDefaults() {
-        workbenchTheme = "dark"
+        themeManager.currentTheme = .cyberDark
         accentColorHex = "#00E5FF"
         enableSoundEffects = true
         toastDurationSec = 3.0
@@ -1676,5 +1670,97 @@ public struct SettingsWorkspaceView: View {
         snmpDefaultOidGroup = "system"
 
         state.toastMessage = "All preferences reset to factory defaults."
+    }
+}
+
+// MARK: - Dedicated Terminal Live Preview with Isolated Cursor Timer
+private struct TerminalPreviewBoxView: View {
+    let currentTerminalTheme: TerminalTheme
+    let activeCursorGlyph: String
+    let terminalCursorBlink: Bool
+    let terminalLineSpacing: Double
+    let customTerminalFont: Font
+    let terminalFontFamily: String
+    let terminalFontSize: Double
+    let terminalTheme: String
+
+    @State private var cursorVisible: Bool = true
+    private let cursorTimer = Timer.publish(every: 0.55, on: .main, in: .common).autoconnect()
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text("LIVE TERMINAL PREVIEW")
+                    .font(Theme.monoText(10, weight: .bold))
+                    .foregroundStyle(Theme.neonCyan)
+                Spacer()
+                Text("\(terminalFontFamily) · \(Int(terminalFontSize))pt · \(terminalTheme)")
+                    .font(Theme.monoText(9))
+                    .foregroundStyle(.secondary)
+            }
+
+            // Terminal Window Canvas
+            VStack(alignment: .leading, spacing: 0) {
+                // Titlebar
+                HStack(spacing: 6) {
+                    Circle().fill(Color(hex: "#FF5F56")).frame(width: 9, height: 9)
+                    Circle().fill(Color(hex: "#FFBD2E")).frame(width: 9, height: 9)
+                    Circle().fill(Color(hex: "#27C93F")).frame(width: 9, height: 9)
+                    Spacer()
+                    Text("admin@nexwave-core# (pty3)")
+                        .font(Theme.monoText(9, weight: .medium))
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(Color.black.opacity(0.4))
+
+                // Terminal Body
+                VStack(alignment: .leading, spacing: CGFloat(terminalLineSpacing)) {
+                    HStack(spacing: 0) {
+                        Text("nexwave-core# ")
+                            .foregroundStyle(Color(hex: currentTerminalTheme.promptColorHex))
+                        Text("show ip bgp summary")
+                            .foregroundStyle(Color(hex: currentTerminalTheme.foregroundColorHex))
+                        if cursorVisible {
+                            Text(activeCursorGlyph)
+                                .foregroundStyle(Color(hex: currentTerminalTheme.promptColorHex))
+                        }
+                    }
+
+                    Text("BGP router identifier 10.0.0.1, local AS number 65001")
+                        .foregroundStyle(Color(hex: currentTerminalTheme.foregroundColorHex).opacity(0.85))
+
+                    Text("Neighbor        V    AS MsgRcvd MsgSent   TblVer  InQ OutQ Up/Down  State/PfxRcd")
+                        .foregroundStyle(Color(hex: currentTerminalTheme.foregroundColorHex).opacity(0.7))
+
+                    Text("192.168.1.2     4 65002    1420    1419       12    0    0 02:45:11            4")
+                        .foregroundStyle(Theme.signalEmerald)
+
+                    Text("192.168.2.2     4 65003     890     892       12    0    0 01:12:30            6")
+                        .foregroundStyle(Theme.signalEmerald)
+                }
+                .font(customTerminalFont)
+                .padding(12)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .background(Color(hex: currentTerminalTheme.backgroundColorHex))
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+            .overlay(
+                RoundedRectangle(cornerRadius: 8)
+                    .stroke(Theme.cardBorderHighContrast, lineWidth: 1)
+            )
+        }
+        .padding(12)
+        .background(Theme.innerChipBackground)
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .onReceive(cursorTimer) { _ in
+            if terminalCursorBlink {
+                cursorVisible.toggle()
+            } else if !cursorVisible {
+                cursorVisible = true
+            }
+        }
     }
 }

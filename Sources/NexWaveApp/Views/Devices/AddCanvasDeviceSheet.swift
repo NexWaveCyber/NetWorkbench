@@ -37,7 +37,7 @@ public struct AddCanvasDeviceSheet: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Add Network Device to Canvas")
                         .font(Theme.monoText(14, weight: .bold))
-                        .foregroundStyle(Color.white)
+                        .foregroundStyle(.primary)
                     Text("Place a new router, switch, firewall, or server onto the canvas")
                         .font(.system(size: 11))
                         .foregroundStyle(.secondary)

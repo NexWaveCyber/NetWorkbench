@@ -429,7 +429,7 @@ struct ConfigStudioTab: View {
                                         .foregroundStyle(Theme.neonCyan)
                                     Text("Drop configuration file here to import")
                                         .font(.system(size: 13, weight: .bold))
-                                        .foregroundStyle(.white)
+                                        .foregroundStyle(.primary)
                                 }
                             )
                     }
@@ -926,6 +926,7 @@ struct StructuralDiffTab: View {
                     Text("Side-by-Side").tag(false)
                     Text("Unified").tag(true)
                 }
+                .labelsHidden()
                 .pickerStyle(.segmented)
                 .frame(width: 170)
             }

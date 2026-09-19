@@ -2,61 +2,391 @@ import SwiftUI
 import AppKit
 import TerminalKit
 
+/// Curated engineering themes for NexWave Network Workbench.
+public enum AppTheme: String, CaseIterable, Identifiable, Sendable {
+    case cyberDark = "cyberDark"
+    case systemNative = "systemNative"
+    case midnightOLED = "midnightOLED"
+    case daylightClean = "daylightClean"
+
+    public var id: String { rawValue }
+
+    public var displayName: String {
+        switch self {
+        case .cyberDark: return "NexWave Cyber Dark"
+        case .systemNative: return "macOS System Native"
+        case .midnightOLED: return "Midnight OLED"
+        case .daylightClean: return "Daylight Clean"
+        }
+    }
+
+    public var subtitle: String {
+        switch self {
+        case .cyberDark: return "Obsidian slate with signature electric cyan telemetry glow"
+        case .systemNative: return "Harmonizes with macOS Sequoia appearance (auto day/night)"
+        case .midnightOLED: return "Pitch-black #000000 with razor-sharp contrast for XDR screens"
+        case .daylightClean: return "Crisp, bright engineering paper aesthetic for daylight environments"
+        }
+    }
+
+    public var iconName: String {
+        switch self {
+        case .cyberDark: return "sparkles"
+        case .systemNative: return "macwindow"
+        case .midnightOLED: return "moon.stars.fill"
+        case .daylightClean: return "sun.max.fill"
+        }
+    }
+
+    public var previewAccent: Color {
+        switch self {
+        case .cyberDark: return Color(red: 0.0, green: 0.94, blue: 1.0)
+        case .systemNative: return Color(red: 0.04, green: 0.52, blue: 1.0)
+        case .midnightOLED: return Color(red: 0.0, green: 0.94, blue: 1.0)
+        case .daylightClean: return Color(red: 0.02, green: 0.44, blue: 0.92)
+        }
+    }
+
+    public var previewBackground: Color {
+        switch self {
+        case .cyberDark: return Color(red: 0.07, green: 0.09, blue: 0.14)
+        case .systemNative: return Color(nsColor: .windowBackgroundColor)
+        case .midnightOLED: return Color.black
+        case .daylightClean: return Color(red: 0.95, green: 0.96, blue: 0.98)
+        }
+    }
+}
+
+/// Reactive Theme Manager controlling application appearance across all workspaces.
+public final class ThemeManager: ObservableObject, @unchecked Sendable {
+    public static let shared = ThemeManager()
+
+    nonisolated(unsafe) private static var _cachedTheme: AppTheme = .cyberDark
+
+    @Published public var currentTheme: AppTheme {
+        didSet {
+            Self._cachedTheme = currentTheme
+            UserDefaults.standard.set(currentTheme.rawValue, forKey: "workbenchTheme")
+            if isLight {
+                UserDefaults.standard.set(TerminalTheme.cleanLight.rawValue, forKey: "terminal_theme")
+            } else {
+                let existing = UserDefaults.standard.string(forKey: "terminal_theme")
+                if existing == TerminalTheme.cleanLight.rawValue || existing == nil {
+                    UserDefaults.standard.set(TerminalTheme.obsidian.rawValue, forKey: "terminal_theme")
+                }
+            }
+        }
+    }
+
+    private init() {
+        let saved = UserDefaults.standard.string(forKey: "workbenchTheme") ?? "cyberDark"
+        let resolved: AppTheme
+        switch saved {
+        case "obsidian", "midnightOLED":
+            resolved = .midnightOLED
+        case "light", "daylightClean":
+            resolved = .daylightClean
+        case "system", "systemNative":
+            resolved = .systemNative
+        case "cyberDark", "dark", "cyberpunk", "midnight":
+            resolved = .cyberDark
+        default:
+            resolved = AppTheme(rawValue: saved) ?? .cyberDark
+        }
+        Self._cachedTheme = resolved
+        self.currentTheme = resolved
+
+        NotificationCenter.default.addObserver(forName: UserDefaults.didChangeNotification, object: nil, queue: .main) { [weak self] _ in
+            guard let self = self else { return }
+            let updated = UserDefaults.standard.string(forKey: "workbenchTheme") ?? "cyberDark"
+            let next: AppTheme
+            switch updated {
+            case "obsidian", "midnightOLED":
+                next = .midnightOLED
+            case "light", "daylightClean":
+                next = .daylightClean
+            case "system", "systemNative":
+                next = .systemNative
+            case "cyberDark", "dark", "cyberpunk", "midnight":
+                next = .cyberDark
+            default:
+                next = AppTheme(rawValue: updated) ?? .cyberDark
+            }
+            if self.currentTheme != next {
+                self.currentTheme = next
+            }
+        }
+
+        DistributedNotificationCenter.default().addObserver(
+            forName: NSNotification.Name("AppleInterfaceThemeChangedNotification"),
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.objectWillChange.send()
+        }
+    }
+
+    public var activeTheme: AppTheme {
+        Self._cachedTheme
+    }
+
+    public var currentColorScheme: ColorScheme? {
+        switch activeTheme {
+        case .cyberDark, .midnightOLED:
+            return .dark
+        case .daylightClean:
+            return .light
+        case .systemNative:
+            return nil // Lets macOS dynamically adapt to the user's OS Dark/Light mode!
+        }
+    }
+
+    public var isLight: Bool {
+        switch activeTheme {
+        case .daylightClean:
+            return true
+        case .cyberDark, .midnightOLED:
+            return false
+        case .systemNative:
+            #if canImport(AppKit)
+            if Thread.isMainThread {
+                return MainActor.assumeIsolated {
+                    NSApplication.shared.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .aqua
+                }
+            } else {
+                return DispatchQueue.main.sync {
+                    MainActor.assumeIsolated {
+                        NSApplication.shared.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .aqua
+                    }
+                }
+            }
+            #else
+            return false
+            #endif
+        }
+    }
+}
+
 /// Design tokens and semantic styling for NexWave Network Workbench.
 /// Combines Apple macOS HIG precision with high-tech engineering workstation aesthetics.
 public enum Theme {
     // MARK: - Semantic Cyber & Telemetry Colors
-    public static let cyanPulse = Color(red: 0.0, green: 0.88, blue: 1.0)
-    public static let neonCyan = Color(red: 0.0, green: 0.94, blue: 1.0)
+    public static var cyanPulse: Color {
+        ThemeManager.shared.isLight ? Color(red: 0.02, green: 0.48, blue: 0.90) : Color(red: 0.0, green: 0.88, blue: 1.0)
+    }
+
+    public static var neonCyan: Color {
+        ThemeManager.shared.isLight ? Color(red: 0.01, green: 0.45, blue: 0.86) : Color(red: 0.0, green: 0.94, blue: 1.0)
+    }
+
     public static let azurePro = Color(red: 0.04, green: 0.52, blue: 1.0)
     public static let electricAzure = Color(red: 0.12, green: 0.58, blue: 1.0)
-    public static let emeraldHealthy = Color(red: 0.18, green: 0.82, blue: 0.38)
-    public static let signalEmerald = Color(red: 0.20, green: 0.88, blue: 0.42)
-    public static let amberWarning = Color(red: 1.0, green: 0.62, blue: 0.05)
-    public static let solarAmber = Color(red: 1.0, green: 0.68, blue: 0.10)
-    public static let crimsonCritical = Color(red: 1.0, green: 0.24, blue: 0.24)
-    public static let pulseCrimson = Color(red: 1.0, green: 0.28, blue: 0.30)
-    public static let purpleInferred = Color(red: 0.72, green: 0.36, blue: 0.96)
-    public static let quantumViolet = Color(red: 0.76, green: 0.40, blue: 1.0)
 
-    // MARK: - Surfaces & Depths
+    public static var emeraldHealthy: Color {
+        ThemeManager.shared.isLight ? Color(red: 0.08, green: 0.58, blue: 0.28) : Color(red: 0.18, green: 0.82, blue: 0.38)
+    }
+
+    public static var signalEmerald: Color {
+        ThemeManager.shared.isLight ? Color(red: 0.06, green: 0.62, blue: 0.30) : Color(red: 0.20, green: 0.88, blue: 0.42)
+    }
+
+    public static var amberWarning: Color {
+        ThemeManager.shared.isLight ? Color(red: 0.82, green: 0.48, blue: 0.02) : Color(red: 1.0, green: 0.62, blue: 0.05)
+    }
+
+    public static var solarAmber: Color {
+        ThemeManager.shared.isLight ? Color(red: 0.85, green: 0.52, blue: 0.05) : Color(red: 1.0, green: 0.68, blue: 0.10)
+    }
+
+    public static var crimsonCritical: Color {
+        ThemeManager.shared.isLight ? Color(red: 0.85, green: 0.18, blue: 0.18) : Color(red: 1.0, green: 0.24, blue: 0.24)
+    }
+
+    public static var pulseCrimson: Color {
+        ThemeManager.shared.isLight ? Color(red: 0.88, green: 0.20, blue: 0.22) : Color(red: 1.0, green: 0.28, blue: 0.30)
+    }
+
+    public static var purpleInferred: Color {
+        ThemeManager.shared.isLight ? Color(red: 0.55, green: 0.22, blue: 0.82) : Color(red: 0.72, green: 0.36, blue: 0.96)
+    }
+
+    public static var quantumViolet: Color {
+        ThemeManager.shared.isLight ? Color(red: 0.58, green: 0.25, blue: 0.86) : Color(red: 0.76, green: 0.40, blue: 1.0)
+    }
+
+    // MARK: - Dynamic Theme-Adaptive Surfaces & Depths
     public static var surfaceBackground: Color {
-        Color(nsColor: .windowBackgroundColor)
+        switch ThemeManager.shared.activeTheme {
+        case .cyberDark:
+            return Color(red: 0.04, green: 0.05, blue: 0.08)
+        case .midnightOLED:
+            return Color.black
+        case .daylightClean:
+            return Color(red: 0.93, green: 0.94, blue: 0.96)
+        case .systemNative:
+            if ThemeManager.shared.isLight {
+                return Color(red: 0.93, green: 0.94, blue: 0.96)
+            } else {
+                return Color(nsColor: .windowBackgroundColor)
+            }
+        }
     }
 
     public static var cardBackground: Color {
-        Color(nsColor: .controlBackgroundColor)
+        switch ThemeManager.shared.activeTheme {
+        case .cyberDark:
+            return Color(red: 0.08, green: 0.10, blue: 0.15)
+        case .midnightOLED:
+            return Color(red: 0.05, green: 0.05, blue: 0.06)
+        case .daylightClean:
+            return Color.white
+        case .systemNative:
+            if ThemeManager.shared.isLight {
+                return Color.white
+            } else {
+                return Color(nsColor: .controlBackgroundColor)
+            }
+        }
     }
 
     public static var secondaryBackground: Color {
-        Color(nsColor: .underPageBackgroundColor)
+        switch ThemeManager.shared.activeTheme {
+        case .cyberDark:
+            return Color(red: 0.05, green: 0.07, blue: 0.11)
+        case .midnightOLED:
+            return Color(red: 0.02, green: 0.02, blue: 0.03)
+        case .daylightClean:
+            return Color(red: 0.89, green: 0.91, blue: 0.94)
+        case .systemNative:
+            if ThemeManager.shared.isLight {
+                return Color(red: 0.89, green: 0.91, blue: 0.94)
+            } else {
+                return Color(nsColor: .underPageBackgroundColor)
+            }
+        }
+    }
+
+    public static var elevatedCardBackground: Color {
+        switch ThemeManager.shared.activeTheme {
+        case .cyberDark:
+            return Color(red: 0.10, green: 0.13, blue: 0.19)
+        case .midnightOLED:
+            return Color(red: 0.08, green: 0.08, blue: 0.09)
+        case .daylightClean:
+            return Color.white
+        case .systemNative:
+            if ThemeManager.shared.isLight {
+                return Color.white
+            } else {
+                return Color(nsColor: .controlBackgroundColor)
+            }
+        }
+    }
+
+    public static var innerChipBackground: Color {
+        switch ThemeManager.shared.activeTheme {
+        case .cyberDark:
+            return Color(red: 0.05, green: 0.07, blue: 0.11)
+        case .midnightOLED:
+            return Color(red: 0.03, green: 0.03, blue: 0.04)
+        case .daylightClean:
+            return Color(red: 0.90, green: 0.92, blue: 0.95)
+        case .systemNative:
+            return Color.primary.opacity(ThemeManager.shared.isLight ? 0.07 : 0.04)
+        }
     }
 
     public static var borderLight: Color {
-        Color.primary.opacity(0.08)
+        switch ThemeManager.shared.activeTheme {
+        case .cyberDark:
+            return Color.white.opacity(0.09)
+        case .midnightOLED:
+            return Color.white.opacity(0.14)
+        case .daylightClean:
+            return Color(red: 0.78, green: 0.82, blue: 0.88)
+        case .systemNative:
+            return Color.primary.opacity(ThemeManager.shared.isLight ? 0.14 : 0.08)
+        }
     }
 
     public static var borderHighlight: Color {
-        Color.white.opacity(0.14)
+        switch ThemeManager.shared.activeTheme {
+        case .cyberDark:
+            return Color.white.opacity(0.16)
+        case .midnightOLED:
+            return Color.white.opacity(0.25)
+        case .daylightClean:
+            return Color.black.opacity(0.20)
+        case .systemNative:
+            return Color.primary.opacity(ThemeManager.shared.isLight ? 0.22 : 0.14)
+        }
     }
 
     public static var glassBackground: Color {
         Color.primary.opacity(0.03)
     }
 
-    // MARK: - High-Contrast Engineering Surfaces
-    public static let obsidianDark = Color(red: 0.04, green: 0.05, blue: 0.08)
-    public static let elevatedCardBackground = Color(red: 0.08, green: 0.10, blue: 0.15)
-    public static let innerChipBackground = Color(red: 0.05, green: 0.07, blue: 0.11)
-    public static let cardBorderHighContrast = Color.white.opacity(0.12)
+    public static var cardBorderHighContrast: Color {
+        switch ThemeManager.shared.activeTheme {
+        case .cyberDark:
+            return Color.white.opacity(0.14)
+        case .midnightOLED:
+            return Color.white.opacity(0.24)
+        case .daylightClean:
+            return Color.black.opacity(0.12)
+        case .systemNative:
+            return Color.primary.opacity(0.12)
+        }
+    }
+
+    public static var primaryAccent: Color {
+        switch ThemeManager.shared.activeTheme {
+        case .cyberDark:
+            return neonCyan
+        case .midnightOLED:
+            return neonCyan
+        case .daylightClean:
+            return Color(red: 0.01, green: 0.44, blue: 0.88)
+        case .systemNative:
+            return ThemeManager.shared.isLight ? Color(red: 0.01, green: 0.44, blue: 0.88) : azurePro
+        }
+    }
+
+    public static var obsidianDark: Color {
+        Color(red: 0.04, green: 0.05, blue: 0.08)
+    }
 
     // MARK: - Gradients
+    public static var titleGradient: LinearGradient {
+        if ThemeManager.shared.isLight {
+            return LinearGradient(
+                colors: [Color(red: 0.08, green: 0.12, blue: 0.20), Color(red: 0.20, green: 0.26, blue: 0.36)],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+        } else {
+            return LinearGradient(
+                colors: [.white, Color.white.opacity(0.88)],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+        }
+    }
+
     public static var cyanGlowGradient: LinearGradient {
-        LinearGradient(
-            colors: [neonCyan, azurePro],
-            startPoint: .topLeading,
-            endPoint: .bottomTrailing
-        )
+        if ThemeManager.shared.isLight {
+            return LinearGradient(
+                colors: [Color(red: 0.02, green: 0.44, blue: 0.92), Color(red: 0.05, green: 0.32, blue: 0.80)],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+        } else {
+            return LinearGradient(
+                colors: [neonCyan, azurePro],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+        }
     }
 
     public static var emeraldGlowGradient: LinearGradient {
@@ -93,25 +423,43 @@ public enum Theme {
 
     public static var ambientMeshView: some View {
         ZStack {
-            Color(red: 0.04, green: 0.05, blue: 0.08)
-            RadialGradient(
-                colors: [Color(red: 0.0, green: 0.28, blue: 0.42).opacity(0.16), Color.clear],
-                center: .topLeading,
-                startRadius: 80,
-                endRadius: 750
-            )
-            RadialGradient(
-                colors: [Color(red: 0.15, green: 0.05, blue: 0.35).opacity(0.12), Color.clear],
-                center: .bottomTrailing,
-                startRadius: 100,
-                endRadius: 800
-            )
-            RadialGradient(
-                colors: [Color(red: 0.0, green: 0.35, blue: 0.30).opacity(0.08), Color.clear],
-                center: .center,
-                startRadius: 50,
-                endRadius: 600
-            )
+            switch ThemeManager.shared.activeTheme {
+            case .cyberDark:
+                Color(red: 0.04, green: 0.05, blue: 0.08)
+                RadialGradient(
+                    colors: [Color(red: 0.0, green: 0.28, blue: 0.42).opacity(0.16), Color.clear],
+                    center: .topLeading,
+                    startRadius: 80,
+                    endRadius: 750
+                )
+                RadialGradient(
+                    colors: [Color(red: 0.15, green: 0.05, blue: 0.35).opacity(0.12), Color.clear],
+                    center: .bottomTrailing,
+                    startRadius: 100,
+                    endRadius: 800
+                )
+                RadialGradient(
+                    colors: [Color(red: 0.0, green: 0.35, blue: 0.30).opacity(0.08), Color.clear],
+                    center: .center,
+                    startRadius: 50,
+                    endRadius: 600
+                )
+
+            case .midnightOLED:
+                Color.black
+
+            case .daylightClean:
+                Color(red: 0.95, green: 0.96, blue: 0.98)
+                RadialGradient(
+                    colors: [Color(red: 0.0, green: 0.44, blue: 0.92).opacity(0.04), Color.clear],
+                    center: .topLeading,
+                    startRadius: 80,
+                    endRadius: 750
+                )
+
+            case .systemNative:
+                Color(nsColor: .windowBackgroundColor)
+            }
         }
         .ignoresSafeArea()
     }
@@ -153,45 +501,43 @@ public struct PulsingBeacon: View {
         ZStack {
             if isLive {
                 Circle()
-                    .fill(color.opacity(0.25))
-                    .frame(width: size + 4, height: size + 4)
+                    .fill(color.opacity(0.35))
+                    .frame(width: size * 2.1, height: size * 2.1)
             }
-
             Circle()
                 .fill(color)
                 .frame(width: size, height: size)
-                .shadow(color: color.opacity(0.8), radius: 2.5, x: 0, y: 0)
+                .shadow(color: isLive ? color.opacity(0.6) : .clear, radius: 4)
         }
-        .frame(width: size + 6, height: size + 6)
     }
 }
 
-// MARK: - HUD Telemetry Metric Tile
-public struct HUDMetricTile: View {
+// MARK: - Reusable Metric Stat Capsule
+public struct MetricStatCard: View {
     let title: String
     let value: String
-    var unit: String = ""
+    let unit: String
+    let statusColor: Color
+    var icon: String? = nil
     var delta: String? = nil
     var deltaIsPositive: Bool = true
-    var statusColor: Color = Theme.neonCyan
-    var icon: String? = nil
 
     public init(
         title: String,
         value: String,
         unit: String = "",
+        statusColor: Color = Theme.signalEmerald,
+        icon: String? = nil,
         delta: String? = nil,
-        deltaIsPositive: Bool = true,
-        statusColor: Color = Theme.neonCyan,
-        icon: String? = nil
+        deltaIsPositive: Bool = true
     ) {
         self.title = title
         self.value = value
         self.unit = unit
-        self.delta = delta
-        self.deltaIsPositive = deltaIsPositive
         self.statusColor = statusColor
         self.icon = icon
+        self.delta = delta
+        self.deltaIsPositive = deltaIsPositive
     }
 
     public var body: some View {
@@ -252,36 +598,64 @@ public struct EngineeringCardModifier: ViewModifier {
     var hasHoverEffect: Bool = false
     var accentBorder: Color? = nil
     
+    @ObservedObject private var themeManager = ThemeManager.shared
     @State private var isHovered = false
 
     public func body(content: Content) -> some View {
+        let isLight = themeManager.isLight
+        let cardBg = Theme.cardBackground
+        let strokeColor = accentBorder ?? (isHovered ? Theme.primaryAccent.opacity(0.45) : Theme.borderLight)
+        let strokeWidth: CGFloat = (hasHoverEffect && isHovered) ? 1.5 : 1.0
+
         content
             .padding(padding)
             .background(
                 RoundedRectangle(cornerRadius: cornerRadius)
-                    .fill(Theme.cardBackground)
+                    .fill(cardBg)
             )
             .overlay(
                 RoundedRectangle(cornerRadius: cornerRadius)
-                    .strokeBorder(
-                        accentBorder ?? (isHovered ? Theme.cyanPulse.opacity(0.4) : Theme.borderLight),
-                        lineWidth: isHovered ? 1.5 : 1.0
-                    )
+                    .strokeBorder(strokeColor, lineWidth: strokeWidth)
             )
-            .scaleEffect(hasHoverEffect && isHovered ? 1.012 : 1.0)
-            .shadow(
-                color: isHovered ? Theme.cyanPulse.opacity(0.14) : Color.black.opacity(0.04),
-                radius: isHovered ? 10 : 2,
-                x: 0,
-                y: isHovered ? 4 : 1
-            )
-            .onHover { hovering in
-                if hasHoverEffect {
+            .modifier(CardInteractiveLiftModifier(
+                hasHoverEffect: hasHoverEffect,
+                isHovered: $isHovered,
+                isLight: isLight,
+                accentColor: Theme.primaryAccent
+            ))
+    }
+}
+
+private struct CardInteractiveLiftModifier: ViewModifier {
+    let hasHoverEffect: Bool
+    @Binding var isHovered: Bool
+    let isLight: Bool
+    let accentColor: Color
+
+    func body(content: Content) -> some View {
+        if hasHoverEffect {
+            content
+                .scaleEffect(isHovered ? 1.01 : 1.0)
+                .shadow(
+                    color: isHovered ? accentColor.opacity(isLight ? 0.14 : 0.18) : Color.black.opacity(isLight ? 0.06 : 0.08),
+                    radius: isHovered ? 8 : 3,
+                    x: 0,
+                    y: isHovered ? 3 : 1.5
+                )
+                .onHover { hovering in
                     withAnimation(.spring(response: 0.25, dampingFraction: 0.75)) {
                         isHovered = hovering
                     }
                 }
-            }
+        } else {
+            content
+                .shadow(
+                    color: Color.black.opacity(isLight ? 0.05 : 0.07),
+                    radius: 3,
+                    x: 0,
+                    y: 1.5
+                )
+        }
     }
 }
 

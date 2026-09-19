@@ -50,9 +50,23 @@ public struct TerminalWorkbenchView: View {
         session.fontFamilyOverride ?? globalFontFamily
     }
 
+    private var defaultAdaptiveTheme: TerminalTheme {
+        ThemeManager.shared.isLight ? .cleanLight : .obsidian
+    }
+
     private func effectiveTheme(for session: TerminalSession) -> TerminalTheme {
         if let ov = session.themeOverride { return ov }
-        return TerminalTheme(rawValue: globalThemeName) ?? .obsidian
+        if ThemeManager.shared.isLight {
+            if let custom = TerminalTheme(rawValue: globalThemeName), custom == .cleanLight {
+                return custom
+            }
+            return .cleanLight
+        } else {
+            if let custom = TerminalTheme(rawValue: globalThemeName), custom != .cleanLight {
+                return custom
+            }
+            return .obsidian
+        }
     }
 
     private func effectiveCursorStyle(for session: TerminalSession) -> TerminalCursorStyle {
@@ -63,7 +77,17 @@ public struct TerminalWorkbenchView: View {
     private var selectedTheme: TerminalTheme {
         get {
             if let s = activeSession { return effectiveTheme(for: s) }
-            return TerminalTheme(rawValue: globalThemeName) ?? .obsidian
+            if ThemeManager.shared.isLight {
+                if let custom = TerminalTheme(rawValue: globalThemeName), custom == .cleanLight {
+                    return custom
+                }
+                return .cleanLight
+            } else {
+                if let custom = TerminalTheme(rawValue: globalThemeName), custom != .cleanLight {
+                    return custom
+                }
+                return .obsidian
+            }
         }
         nonmutating set {
             if let s = activeSession, s.themeOverride != nil {
@@ -340,7 +364,7 @@ public struct TerminalWorkbenchView: View {
                         .foregroundStyle(Theme.emeraldHealthy)
                     Text(toast)
                         .font(Theme.monoText(11, weight: .bold))
-                        .foregroundStyle(.white)
+                        .foregroundStyle(.primary)
                 }
                 .padding(.horizontal, 14)
                 .padding(.vertical, 7)
@@ -948,7 +972,7 @@ public struct TerminalWorkbenchView: View {
 
                             Text(session.title)
                                 .font(.system(size: 11, weight: isSelected ? .semibold : .medium, design: .monospaced))
-                                .foregroundStyle(isSelected ? Color.white : .secondary)
+                                .foregroundStyle(isSelected ? Color.primary : .secondary)
                                 .lineLimit(1)
 
                             Button(action: {
@@ -956,7 +980,7 @@ public struct TerminalWorkbenchView: View {
                             }) {
                                 Image(systemName: "xmark")
                                     .font(.system(size: 8.5, weight: .bold))
-                                    .foregroundStyle(isSelected ? .white.opacity(0.8) : .secondary.opacity(0.6))
+                                    .foregroundStyle(isSelected ? Color.primary.opacity(0.8) : .secondary.opacity(0.6))
                                     .frame(width: 14, height: 14)
                                     .contentShape(Rectangle())
                             }
@@ -1465,7 +1489,7 @@ public struct TerminalWorkbenchView: View {
             Spacer()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color(hex: selectedTheme.backgroundColorHex).opacity(0.95))
+        .background(Theme.surfaceBackground)
     }
 
     private var emptySessionPlaceholder: some View {
@@ -1492,7 +1516,7 @@ public struct TerminalWorkbenchView: View {
 
                     Text("Terminal & Network Console")
                         .font(.system(size: 20, weight: .bold))
-                        .foregroundStyle(.primary)
+                        .foregroundStyle(Theme.titleGradient)
 
                     Text("Select a connection protocol, pick a saved session, or launch an interactive shell.")
                         .font(.system(size: 12))
@@ -1620,7 +1644,7 @@ public struct TerminalWorkbenchView: View {
             .frame(maxWidth: .infinity)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color(hex: selectedTheme.backgroundColorHex).opacity(0.96))
+        .background(Theme.surfaceBackground)
     }
 
     private func launchpadProtocolCard(
@@ -5106,7 +5130,7 @@ public struct TerminalWorkbenchView: View {
                         .foregroundStyle(Theme.cyanPulse)
                     Text("SFTP / SCP INTERACTIVE FILE EXPLORER")
                         .font(Theme.monoText(13, weight: .bold))
-                        .foregroundStyle(.white)
+                        .foregroundStyle(.primary)
                 }
 
                 Spacer()

@@ -52,7 +52,7 @@ public struct TopologyLinkInspectorView: View {
                         .foregroundStyle(Color(hex: link.linkType.badgeColorHex))
                     Text(link.linkType.rawValue)
                         .font(Theme.monoText(13, weight: .bold))
-                        .foregroundStyle(Color.white)
+                        .foregroundStyle(.primary)
                 }
 
                 Spacer()
@@ -182,7 +182,7 @@ public struct TopologyLinkInspectorView: View {
                 .foregroundStyle(.secondary)
             Text(label)
                 .font(Theme.monoText(11, weight: .bold))
-                .foregroundStyle(Color.white)
+                .foregroundStyle(.primary)
                 .lineLimit(1)
             Text(interface)
                 .font(Theme.monoText(10, weight: .semibold))
@@ -205,7 +205,7 @@ public struct TopologyLinkInspectorView: View {
             Spacer()
             Text(value)
                 .font(Theme.monoText(11, weight: .semibold))
-                .foregroundStyle(Color.white)
+                .foregroundStyle(.primary)
         }
     }
 

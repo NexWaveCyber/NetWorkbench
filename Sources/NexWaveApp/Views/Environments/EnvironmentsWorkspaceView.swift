@@ -493,7 +493,7 @@ public struct EnvironmentsWorkspaceView: View {
             Spacer()
             Text(value)
                 .font(Theme.monoText(11, weight: .semibold))
-                .foregroundStyle(Color.white)
+                .foregroundStyle(.primary)
         }
     }
 
@@ -635,7 +635,7 @@ public struct EnvironmentsWorkspaceView: View {
 
                                         Text(dev.managementIP)
                                             .font(Theme.monoText(11, weight: .semibold))
-                                            .foregroundStyle(Color.white)
+                                            .foregroundStyle(.primary)
 
                                         Text(dev.role.rawValue)
                                             .font(Theme.monoText(9, weight: .bold))

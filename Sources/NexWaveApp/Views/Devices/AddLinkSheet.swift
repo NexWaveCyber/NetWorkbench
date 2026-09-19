@@ -45,7 +45,7 @@ public struct AddLinkSheet: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Patch New Cable Connection")
                         .font(Theme.monoText(14, weight: .bold))
-                        .foregroundStyle(Color.white)
+                        .foregroundStyle(.primary)
                     Text("\(sourceNode.label)  ⟶  \(targetNode.label)")
                         .font(.system(size: 11))
                         .foregroundStyle(.secondary)

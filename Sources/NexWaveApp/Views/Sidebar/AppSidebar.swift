@@ -2,6 +2,7 @@ import SwiftUI
 
 public struct AppSidebar: View {
     @Bindable var state: AppState
+    @ObservedObject private var themeManager = ThemeManager.shared
 
     public init(state: AppState) {
         self.state = state
@@ -11,7 +12,7 @@ public struct AppSidebar: View {
         List(selection: $state.selectedWorkspace) {
             Section {
                 ForEach([WorkspaceItem.home, .diagnose, .toolbox], id: \.self) { item in
-                    sidebarRow(item: item, tint: Theme.cyanPulse)
+                    sidebarRow(item: item)
                         .tag(item)
                 }
             } header: {
@@ -22,7 +23,7 @@ public struct AppSidebar: View {
 
             Section {
                 ForEach([WorkspaceItem.wifi, .timeline, .devices, .terminal, .snmp, .config, .packet], id: \.self) { item in
-                    sidebarRow(item: item, tint: Theme.electricAzure)
+                    sidebarRow(item: item)
                         .tag(item)
                 }
             } header: {
@@ -32,26 +33,8 @@ public struct AppSidebar: View {
             }
 
             Section {
-                HStack(spacing: 9) {
-                    iconBadge(name: WorkspaceItem.investigations.iconName, tint: Theme.signalEmerald)
-                    Text(WorkspaceItem.investigations.rawValue)
-                        .font(.system(size: 13, weight: .medium))
-                    Spacer()
-                    if !state.investigations.isEmpty {
-                        Text("\(state.investigations.count)")
-                            .font(Theme.monoText(10, weight: .bold))
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 2)
-                            .background(Theme.signalEmerald.opacity(0.18))
-                            .foregroundStyle(Theme.signalEmerald)
-                            .clipShape(Capsule())
-                    }
-                }
-                .padding(.vertical, 2)
-                .tag(WorkspaceItem.investigations)
-
-                ForEach([WorkspaceItem.environments, .commandLibrary, .history, .settings], id: \.self) { item in
-                    sidebarRow(item: item, tint: Theme.quantumViolet)
+                ForEach([WorkspaceItem.investigations, .environments, .commandLibrary, .history, .settings], id: \.self) { item in
+                    sidebarRow(item: item)
                         .tag(item)
                 }
             } header: {
@@ -61,51 +44,61 @@ public struct AppSidebar: View {
             }
         }
         .listStyle(.sidebar)
+        .scrollContentBackground(.hidden)
+        .background(Theme.surfaceBackground)
         .safeAreaInset(edge: .bottom) {
             VStack(spacing: 0) {
                 Divider()
                 sidebarFooter
             }
         }
-        .navigationTitle("NexWave")
     }
 
-    private func sidebarRow(item: WorkspaceItem, tint: Color) -> some View {
+    private func sidebarRow(item: WorkspaceItem) -> some View {
         HStack(spacing: 9) {
-            iconBadge(name: item.iconName, tint: tint)
+            iconBadge(name: item.iconName)
             Text(item.rawValue)
                 .font(.system(size: 13, weight: .medium))
             Spacer()
-            if item == .devices && !state.managedDevices.isEmpty {
-                Text("\(state.managedDevices.count)")
-                    .font(Theme.monoText(10, weight: .bold))
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 2)
-                    .background(Theme.electricAzure.opacity(0.18))
-                    .foregroundStyle(Theme.electricAzure)
-                    .clipShape(Capsule())
-            } else if item == .terminal && !state.terminalManager.sessions.isEmpty {
-                Text("\(state.terminalManager.sessions.count)")
-                    .font(Theme.monoText(10, weight: .bold))
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 2)
-                    .background(Theme.quantumViolet.opacity(0.18))
-                    .foregroundStyle(Theme.quantumViolet)
-                    .clipShape(Capsule())
+            if let count = badgeCount(for: item) {
+                countBadge(count)
             }
         }
         .padding(.vertical, 2)
     }
 
-    private func iconBadge(name: String, tint: Color) -> some View {
+    private func badgeCount(for item: WorkspaceItem) -> Int? {
+        switch item {
+        case .devices:
+            return state.managedDevices.isEmpty ? nil : state.managedDevices.count
+        case .terminal:
+            return state.terminalManager.sessions.isEmpty ? nil : state.terminalManager.sessions.count
+        case .investigations:
+            return state.investigations.isEmpty ? nil : state.investigations.count
+        default:
+            return nil
+        }
+    }
+
+    private func countBadge(_ count: Int) -> some View {
+        Text("\(count)")
+            .font(Theme.monoText(10, weight: .bold))
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
+            .background(Theme.primaryAccent.opacity(themeManager.isLight ? 0.12 : 0.18))
+            .foregroundStyle(Theme.primaryAccent)
+            .clipShape(Capsule())
+    }
+
+    private func iconBadge(name: String) -> some View {
         ZStack {
             RoundedRectangle(cornerRadius: 6)
-                .fill(tint.opacity(0.12))
+                .fill(Theme.primaryAccent.opacity(themeManager.isLight ? 0.12 : 0.16))
                 .frame(width: 22, height: 22)
 
             Image(systemName: name)
                 .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(tint)
+                .foregroundStyle(Theme.primaryAccent)
         }
     }
 
@@ -128,7 +121,7 @@ public struct AppSidebar: View {
                 .font(Theme.monoText(10, weight: .bold))
                 .padding(.horizontal, 6)
                 .padding(.vertical, 2)
-                .background(Color.white.opacity(0.06))
+                .background(Color.primary.opacity(0.06))
                 .clipShape(RoundedRectangle(cornerRadius: 4))
                 .foregroundStyle(.secondary)
         }
@@ -137,3 +130,4 @@ public struct AppSidebar: View {
         .background(.ultraThinMaterial)
     }
 }
+

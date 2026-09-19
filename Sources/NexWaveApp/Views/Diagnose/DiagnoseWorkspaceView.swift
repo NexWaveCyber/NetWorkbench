@@ -54,6 +54,7 @@ public struct DiagnoseWorkspaceView: View {
                                 Text(tab.rawValue).tag(tab)
                             }
                         }
+                        .labelsHidden()
                         .pickerStyle(.segmented)
                         .frame(maxWidth: 540)
 

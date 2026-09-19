@@ -148,7 +148,7 @@ public struct PacketWorkbenchView: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("PACKET WORKBENCH")
                         .font(Theme.monoText(13, weight: .bold))
-                        .foregroundStyle(Color.white)
+                        .foregroundStyle(.primary)
                     Text("Zero-GPL Native Streaming PCAP/PCAPNG Forensics & Deep Dissector")
                         .font(.system(size: 11))
                         .foregroundStyle(.secondary)
@@ -240,7 +240,7 @@ public struct PacketWorkbenchView: View {
                     VStack(alignment: .leading, spacing: 1) {
                         Text("BPF Packet Capture requires macOS authorization")
                             .font(.system(size: 11, weight: .bold))
-                            .foregroundStyle(Color.white)
+                            .foregroundStyle(.primary)
                         Text("/dev/bpf* devices require admin group access to capture live traffic on \(selectedInterfaceName).")
                             .font(.system(size: 10))
                             .foregroundStyle(.secondary)
@@ -452,7 +452,7 @@ public struct PacketWorkbenchView: View {
 
                         Text(String(format: "%.2f Mbps", liveSession.bitrateMbps))
                             .font(Theme.monoText(11, weight: .semibold))
-                            .foregroundStyle(Color.white)
+                            .foregroundStyle(.primary)
 
                         Text("•")
                             .foregroundStyle(.secondary)
@@ -1343,7 +1343,7 @@ public struct PacketWorkbenchView: View {
                                     Spacer()
                                     Text(ByteCountFormatter.string(fromByteCount: Int64(talker.totalBytes), countStyle: .binary))
                                         .font(Theme.monoText(12, weight: .bold))
-                                        .foregroundStyle(Color.white)
+                                        .foregroundStyle(.primary)
                                 }
                                 // Progress bar
                                 let maxBytes = max(1, summary.topTalkers.first?.totalBytes ?? 1)
@@ -1411,7 +1411,7 @@ public struct PacketWorkbenchView: View {
 
                                     Text("\(flow.source) ⟷ \(flow.destination)")
                                         .font(Theme.monoText(11, weight: .semibold))
-                                        .foregroundStyle(Color.white)
+                                        .foregroundStyle(.primary)
                                         .lineLimit(1)
                                     Spacer()
                                     Text(ByteCountFormatter.string(fromByteCount: Int64(flow.totalBytes), countStyle: .binary))
@@ -1492,7 +1492,7 @@ public struct PacketWorkbenchView: View {
                                     HStack {
                                         Text(anomaly.description)
                                             .font(Theme.monoText(12, weight: .bold))
-                                            .foregroundStyle(Color.white)
+                                            .foregroundStyle(.primary)
                                         Spacer()
                                         Text(anomaly.severity.rawValue)
                                             .font(Theme.monoText(9, weight: .bold))

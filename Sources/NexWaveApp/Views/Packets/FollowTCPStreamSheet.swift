@@ -57,7 +57,7 @@ public struct FollowTCPStreamSheet: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text("FOLLOW TCP STREAM")
                     .font(Theme.monoText(13, weight: .bold))
-                    .foregroundStyle(Color.white)
+                    .foregroundStyle(.primary)
                 Text(result.streamId)
                     .font(Theme.monoText(11))
                     .foregroundStyle(Theme.cyanPulse)
@@ -86,6 +86,7 @@ public struct FollowTCPStreamSheet: View {
                     Text(mode.rawValue).tag(mode)
                 }
             }
+            .labelsHidden()
             .pickerStyle(.segmented)
             .frame(maxWidth: 420)
 
